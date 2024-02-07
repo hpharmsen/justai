@@ -1,0 +1,19 @@
+SYSTEM = """You are a translator."""
+
+TRANSLATE = """Vertaal de volgende {count} teksten naar {language}.
+
+{translate_str}
+
+Vertaal steeds alleen het deel tussen [[ en ]].
+Als er spaties of leestekens in de tekst staan, vertaal die dan ook.
+Belangrijk: als er || in de tekst staat, dan moet die ook in de vertaling komen.
+
+Geef de vertaling terug in dezelfde vorm als de originele tekst. Dus:
+
+1 [[Vertaling van de eerste tekst]]
+2 [[Vertaling van de tweede tekst]]
+..
+{count} [[Vertaling van de laatste tekst]]
+
+Vertaal ze alle {count}.
+Geef geen andere input terug dan deze lijst"""

@@ -1,0 +1,39 @@
+[build-system]
+requires      = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "justai"
+version = "2.0.0"
+description = "Makes working with OpenAI's GPT API and other LLM's super easy"
+readme = "README.md"
+authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["ChatGPT", "GPT4", "GPT3.5", "api"]
+dependencies = [
+    "openai",
+    "tenacity",
+    "python-dateutil",
+    "python-dotenv",
+    "rich",
+    "tenacity",
+    "requests",
+    "tiktoken"
+]
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = ["black", "pytest", "build", "twine", "nox"]
+
+[project.urls]
+Homepage = "https://github.com/hpharmsen/justai"
+
+[tool.setuptools.packages.find]
+where = ["."]  # list of folders that contain the packages (["."] by default)
+include = ["justai"]  # package names should match these glob patterns (["*"] by default)
+exclude = []  # exclude packages matching these glob patterns (empty by default)
+namespaces = false  # to disable scanning PEP 420 namespaces (true by default)

@@ -1,0 +1,11 @@
+python-dateutil
+openai
+python-dotenv
+rich
+tenacity
+requests
+setuptools
+packaging
+pip
+pytest
+tiktoken

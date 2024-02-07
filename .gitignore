@@ -1,5 +1,12 @@
-.env
-venv/
-__pycache__/
 .envrc
-.idea
+.idea/
+.env
+.DS_Store
+dist/
+__pycache__/
+build/
+venv/
+justai.egg-info
+justai.egg-info/
+justai/saves
+/examples/translation_target.xlf

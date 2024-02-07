@@ -1,0 +1,179 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xliff
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema" version="1.2"
+		xmlns="urn:oasis:names:tc:xliff:document:1.2">
+	<file original="C:\Users\GLR\OneDrive - Innovam\Documenten\AutoNiveau\nieuw opleidingsplan\Tech inzicht\Artifical intelligence\AI.story" source-language="nl-NL" datatype="xml">
+		<body>
+			<trans-unit id="6etfc0KfEFI.Name" datatype="plaintext">
+				<source>Welkom</source>
+			</trans-unit>
+			<trans-unit id="6Ca3VrNvKsH" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style FlowDirection="LeftToRight" LeadingMargin="0" TrailingMargin="0" FirstLineMargin="0" Justification="Center" DefaultTabStop="55.3513565" ListLevel="0" LineSpacingRule="Multiple" LineSpacing="20" SpacingBefore="0" SpacingAfter="0"&gt;&lt;ListStyle ListType="None" ListTypeFormat="Plain" Start="0" Color="#000000,00" Size="100" /&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="Source Sans Pro" FontSize="19.45946" FontIsBold="True" FontIsItalic="False" FontIsUnderline="False" FontIsStrikeout="False" UnderlineStyle="Normal" ForegroundColor="#000000" BackgroundColor="#000000,00" UnderlineColor="#000000,00" Elevation="Normal" Spacing="0" IgnoreKerningTable="False" DisplayCase="AsIs" LanguageId="0" LinkColor="#000000"&gt;&#xD;
+  &lt;Shadow Offset="0x0" Color="#FFFFFF,00" /&gt;&#xD;
+&lt;/Style&gt;</bpt>
+					<g ctype="x-text" id="text_2">Start</g>
+					<ept id="span_2" />
+					<ept id="block_0" />
+				</source>
+			</trans-unit>
+			<trans-unit id="6WwHy8NS5rj" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style FlowDirection="LeftToRight" LeadingMargin="0" TrailingMargin="0" FirstLineMargin="0" Justification="Left" DefaultTabStop="55.3513565" ListLevel="0" LineSpacingRule="Multiple" LineSpacing="20" SpacingBefore="0" SpacingAfter="0"&gt;&lt;ListStyle ListType="None" ListTypeFormat="Plain" Start="0" Color="#000000,00" Size="100" /&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="Flaticon" FontSize="16.216217" FontIsBold="True" FontIsItalic="False" FontIsUnderline="False" FontIsStrikeout="False" UnderlineStyle="Normal" ForegroundColor="#000000" BackgroundColor="#000000,00" UnderlineColor="#000000,00" Elevation="Normal" Spacing="0" IgnoreKerningTable="False" DisplayCase="AsIs" LanguageId="0" LinkColor="#000000"&gt;&#xD;
+  &lt;Shadow Offset="0x0" Color="#FFFFFF,00" /&gt;&#xD;
+&lt;/Style&gt;</bpt>
+					<g ctype="x-text" id="text_2"></g>
+					<ept id="span_2" />
+					<ept id="block_0" />
+				</source>
+			</trans-unit>
+			<trans-unit id="6Z2Wks2l405" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<g ctype="x-text" id="text_2">%VNaamtraining%</g>
+					<ept id="block_0" />
+				</source>
+			</trans-unit>
+			<trans-unit id="69wnRvn5JDU" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style FlowDirection="LeftToRight" TrailingMargin="0" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="None" ListTypeFormat="Parentheses" Start="1" Color="accent1,00" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_2">De translator agent vertaalt teksten naar elke gewenste taal.
+</g>
+					<ept id="span_2" />
+					<ept id="block_0" />
+					<bpt ctype="x-block" id="block_3" />
+					<ph id="generic_4">&lt;Style FlowDirection="LeftToRight" TrailingMargin="0" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="None" ListTypeFormat="Parentheses" Start="1" Color="accent1,00" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_5">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_5">De input is xliff 1.2 formaat. Op dit moment worden geen andere formaten ondersteund.
+</g>
+					<ept id="span_5" />
+					<ept id="block_3" />
+					<bpt ctype="x-block" id="block_6" />
+					<ph id="generic_7">&lt;Style FlowDirection="LeftToRight" TrailingMargin="0" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="None" ListTypeFormat="Parentheses" Start="1" Color="accent1,00" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_8">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_8">De AI probeert het document zo veel mogelijk in één keer te vertalen zodat de context bewaard wordt.</g>
+					<ept id="span_8" />
+					<ept id="block_6" />
+				</source>
+			</trans-unit>
+			<trans-unit id="5oZ3fZGtLUE" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="Source Sans Pro Black" FontSize="22.7027035" /&gt;</bpt>
+					<g ctype="x-text" id="text_2">Inleiding</g>
+					<ept id="span_2" />
+					<ept id="block_0" />
+				</source>
+			</trans-unit>
+			<trans-unit id="6hp9FLEcMMM" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="Flaticon" FontSize="12.9729729" /&gt;</bpt>
+					<g ctype="x-text" id="text_2"></g>
+					<ept id="span_2" />
+					<ept id="block_0" />
+				</source>
+			</trans-unit>
+			<trans-unit id="619IADcoNtQ" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="Flaticon" FontSize="12.9729729" ForegroundColor="#FFFFFF" LinkColor="#FFFFFF" /&gt;</bpt>
+					<g ctype="x-text" id="text_2"></g>
+					<ept id="span_2" />
+					<ept id="block_0" />
+				</source>
+			</trans-unit>
+			<trans-unit id="6GpRjJouJsq" xml:space="preserve" datatype="x-DocumentState">
+				<source>
+					<bpt ctype="x-block" id="block_0" />
+					<ph id="generic_1">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<bpt ctype="x-style" id="span_2">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_2">In </g>
+					<ept id="span_2" />
+					<bpt ctype="x-style" id="span_3">&lt;Style FontFamily="Source Sans Pro" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_3">Sommige zinnen zijn</g>
+					<ept id="span_3" />
+					<bpt ctype="x-style" id="span_4">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_4">verdeeld over meerdere blolkken
+</g>
+					<ept id="span_4" />
+					<ept id="block_0" />
+					<bpt ctype="x-block" id="block_5" />
+					<ph id="generic_6">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<bpt ctype="x-style" id="span_7">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_7"></g>
+					<ept id="span_7" />
+					<ept id="block_5" />
+					<bpt ctype="x-block" id="block_8" />
+					<ph id="generic_9">&lt;Style DefaultTabStop="55.3513527" /&gt;</ph>
+					<bpt ctype="x-style" id="span_10">&lt;Style FontFamily="+minor" FontSize="11.3513517" FontIsBold="True" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_10">Onderwerpen van de training:</g>
+					<ept id="span_10" />
+					<bpt ctype="x-style" id="span_11">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_11"></g>
+					<ept id="span_11" />
+					<ept id="block_8" />
+					<bpt ctype="x-block" id="block_12" />
+					<ph id="generic_13">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_14">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_14">Dat maakt het vertalen soms lastiger.
+</g>
+					<ept id="span_14" />
+					<ept id="block_12" />
+					<bpt ctype="x-block" id="block_15" />
+					<ph id="generic_16">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_17">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_17">Of losse
+</g>
+					<ept id="span_17" />
+					<ept id="block_15" />
+					<bpt ctype="x-block" id="block_18" />
+					<ph id="generic_19">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_20">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_20">woorden
+</g>
+					<ept id="span_20" />
+					<ept id="block_18" />
+					<bpt ctype="x-block" id="block_21" />
+					<ph id="generic_22">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_23">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_23">en namen zoals Hans-Peter
+</g>
+					<ept id="span_23" />
+					<ept id="block_21" />
+					<bpt ctype="x-block" id="block_24" />
+					<ph id="generic_25">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_26">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_26">Ook heb je soms te maken met [dingen tussen haakjes].
+</g>
+					<ept id="span_26" />
+					<ept id="block_24" />
+					<bpt ctype="x-block" id="block_27" />
+					<ph id="generic_28">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_29">&lt;Style FontFamily="+minor" FontSize="11.3513517" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_29">Die moeten dan bewaard worden.
+</g>
+					<ept id="span_29" />
+					<ept id="block_27" />
+					<bpt ctype="x-block" id="block_30" />
+					<ph id="generic_31">&lt;Style FirstLineMargin="-23.5135136" DefaultTabStop="55.3513527" LineSpacingRule="Single"&gt;&lt;ListStyle ListType="Bullet" Start="1" Color="#666666" BulletChar="•" BulletFont="Arial"&gt;&lt;BulletPicture Size="0x0" /&gt;&lt;/ListStyle&gt;&lt;/Style&gt;</ph>
+					<bpt ctype="x-style" id="span_32">&lt;Style FontFamily="+minor" FontSize="14" ForegroundColor="dk1,00" LinkColor="dk1,00" /&gt;</bpt>
+					<g ctype="x-text" id="text_32"></g>
+					<ept id="span_32" />
+					<ept id="block_30" />
+				</source>
+			</trans-unit>
+		</body>
+	</file>
+</xliff>
