@@ -3,7 +3,7 @@
 Package to make working with Large Language models in Python super easy.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
-Current version: 2.0.13
+Current version: 2.0.14
 
 ## Installation
 1. Install the package:
