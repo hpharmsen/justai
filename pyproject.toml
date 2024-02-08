@@ -1,10 +1,10 @@
 [build-system]
-requires      = ["setuptools>=61.0.0", "wheel"]
+requires      = ["setuptools>=69", "wheel>=0.42"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "2.0.12"
+version = "2.0.13"
 description = "Makes working with OpenAI's GPT API and other LLM's super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
@@ -32,8 +32,8 @@ dev = ["black", "pytest", "build", "twine", "nox"]
 [project.urls]
 Homepage = "https://github.com/hpharmsen/justai"
 
-[tool.setuptools.packages.find]
-where = [".", "justai"]  # list of folders that contain the packages (["."] by default)
-include = ["justai", "agent", "interactive", "tools", "translator"]  # package names should match these glob patterns (["*"] by default)
-exclude = []  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+#[tool.setuptools.packages.find]
+#where = [".", "justai"]  # list of folders that contain the packages (["."] by default)
+#include = ["justai", "agent", "interactive", "tools", "translator"]  # package names should match these glob patterns (["*"] by default)
+#exclude = []  # exclude packages matching these glob patterns (empty by default)
+#namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
