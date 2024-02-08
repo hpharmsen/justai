@@ -35,4 +35,7 @@ if __name__ == "__main__":
     what = sys.argv[1]
     version = bump('pyproject.toml', "version = ", what=what)
     bump("README.md", "Current version: ", new_version=version)
-    print('Updated version to', version)
+    if '-v' in sys.argv:
+        print(version)
+    else:
+        print('Updated version to', version)
