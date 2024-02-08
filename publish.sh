@@ -1,10 +1,13 @@
 pip install --upgrade pip
 pip install twine build
 /bin/rm -f dist/*
-python bumpversion.py patch
+export VERSION=`python bumpversion.py -v patch`
 python -m build
 twine upload dist/*
 git commit -v -a -m "publish `date`"
-git push
+git tag -a $VERSION -m "version $VERSION"
+git push origin $VERSION
 echo "run:"
-echo "pip install --upgrade pip; pip install --no-cache --force-reinstall justai"
+echo "pip install git+https://github.com/hpharmsen/justai@$VERSION"
+echo "of:"
+echo "pip install --upgrade pip; pip install justai==$VERSION"

@@ -1,0 +1,4 @@
+recursive-include justai/agent *.py
+recursive-include justai/interactive *.py
+recursive-include justai/tools *.py
+recursive-include justai/translator *
