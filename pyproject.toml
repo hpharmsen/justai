@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "2.0.14"
+version = "2.0.15"
 description = "Makes working with OpenAI's GPT API and other LLM's super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
@@ -32,8 +32,8 @@ dev = ["black", "pytest", "build", "twine", "nox"]
 [project.urls]
 Homepage = "https://github.com/hpharmsen/justai"
 
-[tool.setuptools]
-packages = ["justai", "justai.agent", "justai.interactive", "justai.tools", "justai.translator"]
+#[tool.setuptools]
+#packages = ["justai", "justai.agent", "justai.interactive", "justai.tools", "justai.translator"]
 
 #[tool.setuptools.packages.find]
 #where = [".", "justai"]  # list of folders that contain the packages (["."] by default)
