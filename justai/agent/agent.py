@@ -88,7 +88,7 @@ class Agent:
 
     @classmethod
     def from_json(cls, s, *args, **kwargs):
-        agent = cls(*args, **kwargs)
+        agent = cls(None, *args, **kwargs)
         dictionary = json.loads(s)
         for key, value in dictionary.items():
             match key:
