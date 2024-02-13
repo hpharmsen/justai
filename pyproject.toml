@@ -20,9 +20,9 @@ dependencies = [
     "python-dateutil",
     "python-dotenv",
     "rich",
-    "tenacity",
     "requests",
-    "tiktoken"
+    "tiktoken",
+    "lxml"
 ]
 requires-python = ">=3.10"
 
@@ -31,12 +31,3 @@ dev = ["black", "pytest", "build", "twine", "nox"]
 
 [project.urls]
 Homepage = "https://github.com/hpharmsen/justai"
-
-#[tool.setuptools]
-#packages = ["justai", "justai.agent", "justai.interactive", "justai.tools", "justai.translator"]
-
-#[tool.setuptools.packages.find]
-#where = [".", "justai"]  # list of folders that contain the packages (["."] by default)
-#include = ["justai", "agent", "interactive", "tools", "translator"]  # package names should match these glob patterns (["*"] by default)
-#exclude = []  # exclude packages matching these glob patterns (empty by default)
-#namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
