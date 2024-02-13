@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from ..agent.agent import Agent
 from ..tools.prompts import get_prompt, set_prompt_file
 from ..tools.cache import cached
-
+from .languages import LANGUAGES
 
 class Translator(Agent):
 
@@ -85,6 +85,10 @@ class Translator(Agent):
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
         namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
+
+        # Speciaal voor xliff 2.0: voeg de target language toe aan het root element
+        language_code = LANGUAGES.get(language)
+        root.attrib['trgLang'] = language_code
 
         # Verzamel alle te vertalen teksten en hun paden
         texts_to_translate = []
