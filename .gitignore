@@ -9,5 +9,5 @@ venv/
 justai.egg-info
 justai.egg-info/
 justai/saves
-/examples/translation_target.xlf
+*.xlf
 /test.sh

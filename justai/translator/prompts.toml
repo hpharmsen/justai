@@ -1,11 +1,16 @@
 SYSTEM = """You are a translator."""
 
-TRANSLATE = """Vertaal de volgende {count} teksten naar {language}.
+TRANSLATE_SINGLE = """Vertaal de volgende tekst naar {language}.
+Als er spaties, leestekens of vreemde tekens in de tekst staan, hou die dan in tact.
+
+{translate_str}"""
+
+TRANSLATE_MULTIPLE = """Vertaal de volgende {count} teksten naar {language}.
 
 {translate_str}
 
 Vertaal steeds alleen het deel tussen [[ en ]].
-Als er spaties of leestekens in de tekst staan, vertaal die dan ook.
+Als er spaties, leestekens of vreemde tekens in de tekst staan, hou die dan in tact.
 Belangrijk: als er || in de tekst staat, dan moet die ook in de vertaling komen.
 
 Geef de vertaling terug in dezelfde vorm als de originele tekst. Dus:
