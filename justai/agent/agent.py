@@ -83,7 +83,9 @@ class Agent:
         self.message_memory = 20  # Number of messages to remember. Limits token usage.
         self.messages = []
 
-        self._last_token_count = 0
+        self.input_token_count = 0
+        self.output_token_count = 0
+        self.total_token_count = 0
         self.debug = False
 
     @classmethod
@@ -119,7 +121,7 @@ class Agent:
         return result
 
     def last_token_count(self):
-        return self._last_token_count
+        return (self.input_token_count, self.output_token_count, self.total_token_count)
 
     def set_return_type(self, model):
         self.return_type = [{
@@ -159,7 +161,9 @@ class Agent:
                     )
                     if self.debug and hasattr(completion.choices[0], 'text'):
                         color_print(f"{completion.choices[0].text}", color=DEBUG_COLOR2)
-                    self._last_token_count = completion.usage.total_tokens
+                    self.input_token_count = completion.usage.prompt_tokens
+                    self.output_token_count = completion.usage.completion_tokens
+                    self.total_token_count = completion.usage.total_tokens
                     return completion
                 except APIConnectionError as e:
                     color_print("Connection error.", color=SYSTEM_COLOR)

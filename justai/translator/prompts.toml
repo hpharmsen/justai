@@ -10,15 +10,18 @@ TRANSLATE_MULTIPLE = """Vertaal de volgende {count} teksten naar {language}.
 {translate_str}
 
 Vertaal steeds alleen het deel tussen [[ en ]].
-Als er spaties, leestekens of vreemde tekens in de tekst staan, hou die dan in tact.
-Belangrijk: als er || in de tekst staat, dan moet die ook in de vertaling komen.
+Als er spaties, leestekens of vreemde tekens of @@ in de tekst staan, hou die dan in tact.
+Belangrijk! als er regelovergangen (enter, \n ) in een tekst staat of aan het eind van een tekst,
+dan moet die ook op dezelfde manier in de vertaling komen.
 
 Geef de vertaling terug in dezelfde vorm als de originele tekst. Dus:
 
 1 [[Vertaling van de eerste tekst]]
-2 [[Vertaling van de tweede tekst]]
+2 [[Vertaling van de tweede tekst
+]]
+3 [[Vertaling van de derde tekst]]
 ..
 {count} [[Vertaling van de laatste tekst]]
 
-Vertaal ze alle {count}.
+Vertaal ze alle {count}. Vergeet niet om de newlines te bewaren in de vertaalde tekst.
 Geef geen andere input terug dan deze lijst"""

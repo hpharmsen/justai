@@ -13,10 +13,15 @@ def get_xliff_version(input_string):
     return 'xliff ' + xlif_version
 
 
-def translate_xliff_1_2(xml: str, translate_function, language: str):
-    # XML-data laden met lxml
+def translate_xliff_1_2(source_xml: str, translate_function, language: str):
+    texts_to_translate = xliff_12_to_string_list(source_xml)
+    translated_texts, rest = translate_function(texts_to_translate, language)
+    return xliff_12_add_translations(source_xml, translated_texts, language)
+
+
+def xliff_12_to_string_list(source_xml:str) -> list[str]:
     parser = etree.XMLParser(ns_clean=True)
-    root = etree.fromstring(xml.encode('utf-8'), parser=parser)
+    root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
     namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:1.2'}
 
     # Verzamel alle te vertalen teksten en hun paden
@@ -26,9 +31,13 @@ def translate_xliff_1_2(xml: str, translate_function, language: str):
     for trans_unit in root.xpath('.//ns:trans-unit', namespaces=namespaces):
         source = trans_unit.xpath('.//ns:source', namespaces=namespaces)[0]
         texts_to_translate.extend(collect_texts_from_element(source))
+    return texts_to_translate
 
-    # Vertaal met AI
-    translated_texts = translate_function(texts_to_translate, language)
+
+def xliff_12_add_translations(source_xml:str, translated_texts:list[str], language:str) -> str:
+    parser = etree.XMLParser(ns_clean=True)
+    root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
+    namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:1.2'}
 
     # Plaats vertaalde teksten terug in nieuwe <target> elementen met behoud van structuur
     counter = [0]
@@ -43,15 +52,16 @@ def translate_xliff_1_2(xml: str, translate_function, language: str):
     return updated_xml
 
 
-def translate_xliff_2_0(xml:str, translate_function, language:str):
-    # XML-data laden met lxml
-    parser = etree.XMLParser(ns_clean=True)
-    root = etree.fromstring(xml.encode('utf-8'), parser=parser)
-    namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
+def translate_xliff_2_0(source_xml:str, translate_function, language:str) -> str:
+    texts_to_translate = xliff_20_to_string_list(source_xml)
+    translated_texts, rest = translate_function(texts_to_translate, language)
+    return xliff_20_add_translations(source_xml, translated_texts, language)
 
-    # Speciaal voor xliff 2.0: voeg de target language toe aan het root element
-    language_code = LANGUAGES.get(language)
-    root.attrib['trgLang'] = language_code
+
+def xliff_20_to_string_list(source_xml:str) -> list[str]:
+    parser = etree.XMLParser(ns_clean=True)
+    root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
+    namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
 
     # Verzamel alle te vertalen teksten en hun paden
     texts_to_translate = []
@@ -59,9 +69,17 @@ def translate_xliff_2_0(xml:str, translate_function, language:str):
     # Start het verzamelproces vanuit <source> elementen en vertaal de teksten
     for source in root.xpath('.//ns:source', namespaces=namespaces):
         texts_to_translate.extend(collect_texts_from_element(source))
+    return texts_to_translate
 
-    # Vertaal met AI
-    translated_texts = translate_function(texts_to_translate, language)
+
+def xliff_20_add_translations(source_xml:str, translated_texts:list[str], language:str) -> str:
+    parser = etree.XMLParser(ns_clean=True)
+    root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
+    namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
+
+    # Speciaal voor xliff 2.0: voeg de target language toe aan het root element
+    language_code = LANGUAGES.get(language)
+    root.attrib['trgLang'] = language_code
 
     # Plaats vertaalde teksten terug in nieuwe <target> elementen met behoud van structuur
     counter = [0]
@@ -78,7 +96,7 @@ def translate_xliff_2_0(xml:str, translate_function, language:str):
 def collect_texts_from_element(element):
     texts = []
     if element.text and element.text.strip():
-        texts.append(element.text.strip())
+        texts.append(element.text)
     for child in element:
         texts.extend(collect_texts_from_element(child))
     return texts
