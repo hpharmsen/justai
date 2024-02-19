@@ -127,14 +127,14 @@ class Translator(Agent):
             with ThreadPoolExecutor(max_workers=len(sub_lists)) as executor:
                 for sub_list in sub_lists:
                     source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(sub_list)])
-                    prompt = get_prompt('TRANSLATE', language=language, translate_str=source_str, count=len(source_list))
+                    prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(source_list))
                     futures += [executor.submit(run_prompt, prompt)]
                 for index, future in enumerate(futures):
                     target_list = [t.split(']]')[0] for t in future.result().split('[[')[1:]]
                     translation_dict.update(dict(zip(sub_lists[index], target_list)))
         else:
             source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(source_list)])
-            prompt = get_prompt('TRANSLATE', language=language, translate_str=source_str, count=len(source_list))
+            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(source_list))
             target_str = run_prompt(prompt)
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(source_list, target_list))
