@@ -155,7 +155,7 @@ class Translator(Agent):
 
         if non_cached_list:
             source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(non_cached_list)])
-            prompt = get_prompt('TRANSLATE', language=language, translate_str=source_str, count=len(non_cached_list))
+            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(non_cached_list))
             target_str = run_prompt(prompt)
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(non_cached_list, target_list))
