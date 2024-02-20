@@ -2,6 +2,7 @@ import os
 import time
 import hashlib
 import pickle
+import re
 from pathlib import Path
 from lxml import etree
 from concurrent.futures import ThreadPoolExecutor
@@ -154,17 +155,40 @@ class Translator(Agent):
         non_cached_list = [text for text in source_list if text not in cache]
 
         if non_cached_list:
-            source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(non_cached_list)])
+            source_str = ''
+            variables = []
+            for index, text in enumerate(non_cached_list):
+                text_with_no_vars, vars = replace_variables_with_hash(text)
+                source_str += f'{index + 1} [[{text_with_no_vars}]]\n'
+                variables.extend(vars)
             prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(non_cached_list))
-            target_str = run_prompt(prompt)
+            target_str_no_variables = run_prompt(prompt)
+            target_str = replace_has_with_variables(target_str_no_variables, variables)
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(non_cached_list, target_list))
             cache.update(translation_dict)
             if string_cached:
                 cache.save()
-        translations = [cache.get('text', text) for text in source_list]
+        translations = [cache.get(text, text) for text in source_list]
 
         return translations
+
+
+def replace_variables_with_hash(text):
+    # Vindt alle variabelen in de tekst
+    variables = re.findall(r'%[^%]+%', text)
+    # Vervang alle variabelen in de tekst met ###
+    # Het model heeft moeite met newlines. Daarom vervangen we ze door @@ en na vertaling weer terug.
+    modified_text = re.sub(r'%[^%]+%', '###', text).replace('\n', '@@')
+    return modified_text, variables
+
+
+def replace_has_with_variables(text, variables):
+    for variable in variables:
+        text = text.replace('###', variable, 1)
+    # en zet de newlines terug
+    text = text.replace('@@', '\n')
+    return text
 
 
 def collect_texts_from_element(element):
