@@ -5,14 +5,13 @@ import pickle
 import re
 from pathlib import Path
 from lxml import etree
-from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 
 from ..agent.agent import Agent
 from ..tools.prompts import get_prompt, set_prompt_file
-from ..tools.cache import cached
 from .languages import LANGUAGES
+
 
 class Translator(Agent):
 
@@ -44,7 +43,7 @@ class Translator(Agent):
         try:
             self.version = self.xml.split('xliff:document:')[1].split('"')[0].split("'")[0]
         except IndexError:
-            raise ValueError(f'No XLIFF version found in input')
+            raise ValueError('No XLIFF version found in input')
         if self.version not in ['1.2', '2.0']:
             raise ValueError(f'Unsupported XLIFF version: {self.version}')
 
@@ -120,25 +119,12 @@ class Translator(Agent):
 
         source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
 
-        multiprocessing = False
-        if multiprocessing:
-            translation_dict = {}
-            sub_lists = split_list_in_sublists(source_list, 100)
-            futures = []
-            with ThreadPoolExecutor(max_workers=len(sub_lists)) as executor:
-                for sub_list in sub_lists:
-                    source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(sub_list)])
-                    prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(source_list))
-                    futures += [executor.submit(run_prompt, prompt)]
-                for index, future in enumerate(futures):
-                    target_list = [t.split(']]')[0] for t in future.result().split('[[')[1:]]
-                    translation_dict.update(dict(zip(sub_lists[index], target_list)))
-        else:
-            source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(source_list)])
-            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(source_list))
-            target_str = run_prompt(prompt)
-            target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
-            translation_dict = dict(zip(source_list, target_list))
+        source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(source_list)])
+        prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str,
+                            count=len(source_list))
+        target_str = run_prompt(prompt)
+        target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
+        translation_dict = dict(zip(source_list, target_list))
         translations = [translation_dict.get(text, text) for text in texts]
 
         count = 1
@@ -152,7 +138,7 @@ class Translator(Agent):
             return self.chat(prompt, return_json=False)
 
         cache = StringCache(language) if string_cached else {}
-        non_cached_list = [text for text in source_list if text not in cache]
+        non_cached_list = [text for text in source_list if text not in cache and is_translatable(text)]
 
         if non_cached_list:
             source_str = ''
@@ -161,9 +147,11 @@ class Translator(Agent):
                 text_with_no_vars, vars = replace_variables_with_hash(text)
                 source_str += f'{index + 1} [[{text_with_no_vars}]]\n'
                 variables.extend(vars)
-            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str, count=len(non_cached_list))
+            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str,
+                                count=len(non_cached_list))
             target_str_no_variables = run_prompt(prompt)
-            target_str = replace_has_with_variables(target_str_no_variables, variables)
+            print(self.input_token_count, self.output_token_count, 'tokens')
+            target_str = replace_hash_with_variables(target_str_no_variables, variables)
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(non_cached_list, target_list))
             cache.update(translation_dict)
@@ -183,7 +171,7 @@ def replace_variables_with_hash(text):
     return modified_text, variables
 
 
-def replace_has_with_variables(text, variables):
+def replace_hash_with_variables(text, variables):
     for variable in variables:
         text = text.replace('###', variable, 1)
     # en zet de newlines terug
@@ -215,7 +203,7 @@ def copy_structure_with_texts(source, target, translated_texts, counter=[0]):
 
 def is_translatable(text) -> bool:
     """ Returns True if the unit should be translated """
-    return text and len(text.strip()) > 1 and text[0] not in ('%', '<')
+    return text and re.search('[a-zA-Z]{2}', text) and text[0] not in ('%', '<')
 
 
 def split_list_in_sublists(source_list, max_chunk_len):
@@ -263,9 +251,8 @@ class StringCache:
         self.cache = {}
         self.save()
 
-
     @classmethod
-    def get_key(self, source):
+    def get_key(cls, source):
         return hashlib.md5(source.encode('utf-8')).hexdigest()
 
 
@@ -285,11 +272,10 @@ if __name__ == "__main__":
         outfile = f'{input_file.stem} {language}.xlf'
         with open(outfile, 'w') as f:
             f.write(translated)
-        #print(outfile)
 
     start = time.time()
-    #run_test('AI_2.1.xlf', 'Oekraïens')
+    # run_test('AI_2.1.xlf', 'Oekraïens')
     run_test('short 2.0.xlf', 'Pools')
     duration = time.time() - start
     print(f'Duration: {duration:.2f} seconds')
-    #run_test('Proefbestand 2.0.xlf', 'Engels')
+    # run_test('Proefbestand 2.0.xlf', 'Engels')
