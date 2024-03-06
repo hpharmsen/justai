@@ -12,9 +12,11 @@ def get_story():
 
 
 if __name__ == "__main__":
-    agent = Agent('gpt-4-turbo-preview')
+    #agent = Agent('gpt-4-turbo-preview')
+    agent = Agent('/users/hp/cache/models/llama-2-7b-chat.Q4_K_M.gguf', debug=1)
     prompt = "Read the following story and give me a list of the persons involved. " +\
              "Return json with keys name, profession and house number\n\n" + get_story()
 
     data = agent.chat(prompt, return_json=True)
     print(json.dumps(data, indent=4))
+    print(agent.last_token_count()) # (input_token_count, output_token_count, total_token_count)

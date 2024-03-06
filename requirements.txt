@@ -10,3 +10,5 @@ pip
 pytest
 tiktoken
 lxml
+llama-cpp-python
+anthropic

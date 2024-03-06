@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "2.1.6"
+version = "3.0.-1"
 description = "Makes working with OpenAI's GPT API and other LLM's super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["ChatGPT", "GPT4", "GPT3.5", "api"]
+keywords = ["ChatGPT", "GPT4", "GPT3.5", "api", "Claude", "Anthropic", "Lllama"]
 dependencies = [
     "openai",
     "tenacity",
@@ -22,7 +22,9 @@ dependencies = [
     "rich",
     "requests",
     "tiktoken",
-    "lxml"
+    "lxml",
+    "llama-cpp-python",
+    "anthropic"
 ]
 requires-python = ">=3.10"
 

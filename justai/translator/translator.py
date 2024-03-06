@@ -26,7 +26,7 @@ class Translator(Agent):
 
     def load(self, input_file: str | Path):
         with open(input_file, 'r') as f:
-            self.load(f.read())
+            self.read(f.read())
 
     def read(self, input_string: str):
         # Input bestaat uit <transunit> elementen. Die hebben een datatype property.

@@ -3,19 +3,20 @@
 Package to make working with Large Language models in Python super easy.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
-Current version: 2.1.6
+Current version: 3.0.-1
 
 ## Installation
 1. Install the package:
 ~~~~bash
 python -m pip install justai
 ~~~~
-2. Create an OpenAI acccount [here](https://platform.openai.com/)
-3. Create OpenAI api keys [here](https://platform.openai.com/account/api-keys)
+2. Create an OpenAI acccount (for GPT3.5 / 4) [here](https://platform.openai.com/) or an Anthropic account [here](https://console.anthropic.com/)
+3. Create an OpenAI api key (for Claude) [here](https://platform.openai.com/account/api-keys) or an Anthropic api key [here](https://console.anthropic.com/settings/keys)
 4. Create a .env file with the following content:
 ```bash
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_ORGANIZATION=your-openai-organization-id
+ANTHROPIC_API_KEY=your-anthropic-api-key
 ```
 ## Usage
 
@@ -24,7 +25,7 @@ from justai import Agent
 
 if __name__ == "__main__":
     agent = Agent('gpt-3.5-turbo')
-    agent.system = lambda: "You are a movie critic. I feed you with movie titles and you give me a review in 50 words."
+    agent.system = "You are a movie critic. I feed you with movie titles and you give me a review in 50 words."
 
     message = agent.chat("Forrest Gump")
     print(message)
@@ -37,6 +38,16 @@ events in history. Tom Hanks gives an unforgettable performance,
 making us both laugh and cry. A heartwarming and nostalgic 
 movie that still resonates with audiences today.
 ```
+## Other models
+Justai can use different types of models:
+
+**OpenAI** models like GPT-3.5, GPT-4-turbo-preview\
+**Anthropic** models like claude-3-opus-20240229 and claude-3-sonnet-20240229\
+**Open source** models like Llama2-7b or Mixtral-8x7b-instruct as long as they are in the GGUF format.
+
+The provider is chosen depending on the model name. E.g. if a model name starts with gpt, OpenAI is chosen as the provider.
+To use an open source model, just pass the full path to the .gguf file as the model name.
+
 
 ## Using the examples
 Install dependencies:

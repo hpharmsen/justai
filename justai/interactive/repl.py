@@ -21,11 +21,11 @@ class Repl:
                     break
             else:
                 message = self.agent.chat(prompt)
-                if type(message) == str:
+                if isinstance(message, str):
                     print_message(message, 'assistant')
                 self.agent.after_response()
                 if self.show_token_count:
-                    print(f"[{self.agent.last_token_count()}]")
+                    print(f"{self.agent.last_token_count()} tokens")
 
     @staticmethod
     def get_prompt():
