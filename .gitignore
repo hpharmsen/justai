@@ -11,3 +11,4 @@ justai.egg-info/
 justai/saves
 *.xlf
 /test.sh
+/main.log
