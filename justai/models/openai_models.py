@@ -72,46 +72,54 @@ class OpenAIModel(Model):
     def chat(self, prompt: str, return_json: bool, messages: list[dict], use_cache: bool = False, max_retries: int = 3):
 
         @cached
-        def cached_request():
-            return chat_completion_request()
+        def cached_request(model_name, messages, temperature, max_tokens, n, top_p, frequency_penalty,
+                           presence_penalty, stop, return_json):
+            return chat_completion_request(model_name, messages, temperature, max_tokens, n, top_p, frequency_penalty,
+                                           presence_penalty, stop, return_json)
 
-        def chat_completion_request():
-            if self.debug:
-                color_print("\nRunning completion with these messages", color=DEBUG_COLOR1)
-                [color_print(m, color=DEBUG_COLOR1) for m in messages if hasattr(m, 'text')]
-                print()
+        def chat_completion_request(model_name, messages, temperature, max_tokens, n, top_p, frequency_penalty,
+                                    presence_penalty, stop, return_json):
+            completion = self.client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                n=n,
+                top_p=top_p,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
+                stop=stop,
+                response_format={"type": "json_object"} if return_json else NOT_GIVEN,
+            )
+            return completion
 
-            last_error = None
-            for _ in range(max_retries):
-                try:
-                    completion = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens,
-                        n=self.n,
-                        top_p=self.top_p,
-                        frequency_penalty=self.frequency_penalty,
-                        presence_penalty=self.presence_penalty,
-                        stop=self.stop,
-                        response_format={"type": "json_object"} if return_json else NOT_GIVEN,
-                    )
-                    if self.debug and hasattr(completion.choices[0], 'text'):
-                        color_print(f"{completion.choices[0].text}", color=DEBUG_COLOR2)
-                    return completion
-                except APIConnectionError as e:
-                    color_print("Connection error.", color=SYSTEM_COLOR)
-                    last_error = e
-                except APIError as e:
-                    color_print("API error", color=SYSTEM_COLOR)
-                    last_error = e
-                except RateLimitError as e:
-                    color_print(f"{self.model_name} is overloaded", color=SYSTEM_COLOR)
-                    last_error = e
+        if self.debug:
+            color_print("\nRunning completion with these messages", color=DEBUG_COLOR1)
+            [color_print(m, color=DEBUG_COLOR1) for m in messages if hasattr(m, 'text')]
+            print()
+
+        last_error = None
+        completion_function = cached_request if use_cache else chat_completion_request
+        for _ in range(max_retries):
+            try:
+                completion = completion_function(self.model_name, messages, self.temperature, self.max_tokens, self.n, 
+                                                 self.top_p,  self.frequency_penalty, self.presence_penalty, self.stop, 
+                                                 return_json)
+                if self.debug and hasattr(completion.choices[0], 'text'):
+                    color_print(f"{completion.choices[0].text}", color=DEBUG_COLOR2)
+                break
+            except APIConnectionError as e:
+                color_print("Connection error.", color=SYSTEM_COLOR)
+                last_error = e
+            except APIError as e:
+                color_print("API error", color=SYSTEM_COLOR)
+                last_error = e
+            except RateLimitError as e:
+                color_print(f"{self.model_name} is overloaded", color=SYSTEM_COLOR)
+                last_error = e
+        else:
             print('Too many errors. Aborting.')
             raise last_error
-
-        completion = cached_request() if use_cache else chat_completion_request()
 
         message_text = completion.choices[0].message.content
         if message_text.startswith('```json'):
