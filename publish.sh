@@ -10,4 +10,4 @@ git push origin $VERSION
 echo "run:"
 echo "pip install git+https://github.com/hpharmsen/justai@$VERSION"
 echo "of:"
-echo "pip install --upgrade pip; pip install justai==$VERSION"
+echo "python -m pip install --upgrade pip; pip install justai==$VERSION"

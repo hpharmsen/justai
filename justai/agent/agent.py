@@ -5,6 +5,7 @@ import re
 import time
 from pathlib import Path
 
+from justai.tools.cache import cached_llm_response
 from justai.tools.display import print_message, color_print, SYSTEM_COLOR
 from justai.agent.message import Message
 from justai.models.modelfactory import ModelFactory
@@ -69,7 +70,7 @@ class Agent:
         start_time = time.time()
         self.messages.append(Message('user', prompt))
         messages_dict = self.get_messages()
-        model_response = self.model.chat(prompt, return_json, messages_dict, cached)
+        model_response = cached_llm_response(self.model, self.get_messages(), return_json, messages_dict)
         text, self.input_token_count, self.output_token_count = model_response
         self.messages.append(Message('assistant', text))
         self.last_response_time = time.time() - start_time

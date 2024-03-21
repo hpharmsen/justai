@@ -1,28 +1,104 @@
 import hashlib
-import pickle
-from functools import wraps
-import json
+import os
+import sqlite3
+from pathlib import Path
 
-cache = None
-FILE_NAME = "prompt_cache.pickle"
+from justdays import Day
 
-def cached(func):
-    global cache
-    if cache is None:
-        try:
-            with open(FILE_NAME, 'rb') as f:
-                cache = pickle.load(f)
-        except FileNotFoundError:
-            cache = {}
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        key_data = json.dumps((func.__name__, args, tuple(kwargs.items()))).encode('utf-8')
-        key = hashlib.md5(key_data).hexdigest()
-        if key not in cache:
-            cache[key] = func(*args, **kwargs)
-            with open(FILE_NAME, "wb") as fout:
-                pickle.dump(cache, fout)
-        return cache[key]
+def cached_llm_response(model, messages, return_json, use_cache=True, max_retries=None) \
+        -> tuple[[str | object], int, int]:
+    if not use_cache:
+        return model.chat(messages, return_json, max_retries)
+        
+    hashcode = recursive_hash((model, messages, return_json))
+    cachedb = CachDB()
+    result = cachedb.read(hashcode)
+    if result:
+        return result
+    result = model.chat(messages, return_json, max_retries)
+    cachedb.write(hashcode, result)
+    return result
 
-    return wrapper
+
+cache_dir = ''
+cache_file = 'llmcache.db'
+
+
+def set_cache_dir(_dir):
+    global cache_dir
+    cache_dir = _dir
+    
+
+class CachDB:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):  # Make this class a singleton
+        if cls._instance is None:
+            cls._instance = super(CachDB, cls).__new__(cls, *args, **kwargs)
+        return cls._instance
+
+    def __init__(self):
+        global cache_dir, cache_file
+        dir_ = os.getenv('CACHE_DIR', cache_dir) or Path(__file__).resolve().parent
+        self.db_path = os.path.join(dir_, cache_file)
+        self.conn = sqlite3.connect(self.db_path)
+        # Een cursor-object creëren om commando's uit te voeren
+
+        self.cursor = self.conn.cursor()
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS cache (
+                                    hashkey VARCHAR(32) PRIMARY KEY,
+                                    value TEXT,
+                                    tokens_in INT,
+                                    tokens_out INT,
+                                    valid_until DATETIME)''')
+        self.cursor.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
+        self.conn.commit()
+    
+    def write(self, key: str, llm_response: str, valid_until: str = ''):
+        if not valid_until:
+            valid_until = str(Day().plus_months(1))
+        value, tokens_in, tokens_out = llm_response
+        self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
+                                VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
+        self.conn.commit()
+    
+    def read(self, key):
+        self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[1], result[2], result[3]
+        
+    def clear(self):
+        self.cursor.execute('DELETE FROM cache')
+        self.conn.commit()
+    
+    def close(self):
+        self.conn.close()
+
+
+def recursive_hash(value, depth=0, ignore_params=[]):
+    """Hash primitives recursively with maximum depth. Via https://docs.sweep.dev/blogs/file-cache"""
+    if depth > 6:
+        return hash_code("max_depth_reached")
+    if isinstance(value, (int, float, str, bool, bytes)):
+        return hash_code(str(value))
+    if isinstance(value, (list, tuple)):
+        return hash_code("".join([recursive_hash(item, depth + 1, ignore_params) for item in value]))
+    if isinstance(value, dict):
+        return hash_code(
+            "".join(
+                [
+                    recursive_hash(key, depth + 1, ignore_params)
+                    + recursive_hash(val, depth + 1, ignore_params)
+                    for key, val in value.items()
+                    if key not in ignore_params
+                ]
+            ))
+    if hasattr(value, "__dict__") and value.__class__.__name__ not in ignore_params:
+        return recursive_hash(value.__dict__, depth + 1, ignore_params)
+    return hash_code("unknown")
+
+
+def hash_code(code):
+    return hashlib.md5(code.encode()).hexdigest()

@@ -10,5 +10,7 @@ justai.egg-info
 justai.egg-info/
 justai/saves
 *.xlf
+*.pickle
 /test.sh
 /main.log
+/justai/tools/llmcache.db

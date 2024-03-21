@@ -15,8 +15,8 @@ class AnthropicModel(Model):
 
     def __init__(self, model_name: str, params: dict):
         """ Model implemention should create attributes for all supported parameters """
-        self.model_name = model_name  # e.g. "claude-3-opus-20240229"
-        self.system_message = f"You are {model_name}, a large language model trained by Anthropic."
+        system_message = f"You are {model_name}, a large language model trained by Anthropic."
+        super().__init__(model_name, params, system_message)
 
         # Authentication
         if not os.getenv("ANTHROPIC_API_KEY"):
@@ -25,14 +25,17 @@ class AnthropicModel(Model):
         if not api_key:
             color_print("No Anthropic API key found. Create one at https://console.anthropic.com/settings/keys and " +
                         "set it in the .env file like ANTHROPIC_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
+        
+        # Client
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.debug = params.get('debug', False)
 
-        self.max_tokens = params.get('max_tokens', 800)
-        self.temperature = params.get('temperature', 0.8)
+        # Model specific parameters
+        self.model_params['max_tokens'] = params.get('max_tokens', 800)
+        self.model_params['temperature'] = params.get('temperature', 0.8)
 
-    def chat(self, prompt: str, return_json: bool, messages: list[dict], use_cache: bool = False,
-             max_retries: int = 3) -> tuple[[str | object], int, int]:
+    def chat(self,  messages: list[dict], return_json: bool, max_retries=None) -> tuple[[str | object], int, int]:
+        if max_retries is None:
+            max_retries = 3
 
         authropic_messages = [{"role": m['role'],
                                "content": [{"type": "text",
@@ -41,8 +44,8 @@ class AnthropicModel(Model):
 
         message = self.client.messages.create(
             model=self.model_name,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
+            max_tokens=self.model_params['max_tokens'],
+            temperature=self.model_params['temperature'],
             system=self.system_message,
             messages=authropic_messages
         )
