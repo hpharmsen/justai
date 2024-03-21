@@ -25,6 +25,14 @@ class Agent:
         self.input_token_count = 0
         self.output_token_count = 0
         self.last_response_time = 0
+        
+    def __setattr__(self, name, value):
+        if name not in self.__dict__ and hasattr(self, 'model') and name in self.model.model_params:
+            # Not an existing property model but a model_params property. Set it in model_params
+            self.model.model_params[name] = value
+        else:
+            # Update the property as intended
+            super().__setattr__(name, value)
 
     @classmethod
     def from_json(cls, s, **kwargs):
