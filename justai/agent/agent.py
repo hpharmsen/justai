@@ -66,11 +66,10 @@ class Agent:
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def chat(self, prompt, return_json=False, cached=False):
+    def chat(self, prompt, return_json=False, cached=True):
         start_time = time.time()
         self.messages.append(Message('user', prompt))
-        messages_dict = self.get_messages()
-        model_response = cached_llm_response(self.model, self.get_messages(), return_json, messages_dict)
+        model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, use_cache=cached)
         text, self.input_token_count, self.output_token_count = model_response
         self.messages.append(Message('assistant', text))
         self.last_response_time = time.time() - start_time
