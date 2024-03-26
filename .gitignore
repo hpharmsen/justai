@@ -14,3 +14,5 @@ justai/saves
 /test.sh
 /main.log
 /justai/tools/llmcache.db
+/upautoniveau.sh
+/upharmsen.sh

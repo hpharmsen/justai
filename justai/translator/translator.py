@@ -1,12 +1,10 @@
 import os
-import time
 import hashlib
 import pickle
 import re
 from pathlib import Path
 from lxml import etree
 
-from dotenv import load_dotenv
 
 from justai.agent.agent import Agent
 from justai.tools.prompts import get_prompt, set_prompt_file
@@ -40,6 +38,7 @@ class Translator(Agent):
         # In de source zit ofwel direct tekst, ofwel een <pc> element
         # met daarin nog een <pc> element met daarin de te vertalen tekst
         self.xml = input_string
+        self.messages = []  # No need to resend old messages to the model
         try:
             self.version = self.xml.split('xliff:document:')[1].split('"')[0].split("'")[0]
         except IndexError:
@@ -314,78 +313,3 @@ def parse_xliff_with_unit_clusters(xliff_content, max_chunk_size):
     footer = xliff_content.split(footer_re)[-1]
 
     return {"header": header, "units": units, "footer": footer, "version": version}
-
-if __name__ == "__main__":
-    load_dotenv()
-
-    def language_code(language):
-        languages = {
-            "Bulgaars": "bg-BG",
-            "Duits": "de-DE",
-            "Engels": "en-GB",
-            "Frans": "fr-FR",
-            "Grieks": "el-GR",
-            "Italiaans": "it-IT",
-            "Oekraïens": "uk-UA",
-            "Pools": "pl-PL",
-            "Portugees": "pt-PT",
-            "Roemeens": "ro-RO",
-            "Russisch": "ru-RU",
-            "Spaans": "es-ES"
-        }
-        return languages.get(language, None)  # Retourneert None als de taal niet gevonden is.
-
-    def run_test(input_file: [Path | str], language: str, use_clusters=False):
-        if isinstance(input_file, str):
-            input_file = Path(input_file)
-        tr = Translator()
-        if use_clusters:
-            with open(input_file, 'r') as f:
-                xliff_content = f.read()
-            result = parse_xliff_with_unit_clusters(xliff_content, 32768)
-            header = result['header']
-            clusters = result['units']
-            footer = result['footer']
-            xliff_version = result['version']
-            translated = ''
-            for cluster in clusters:
-                tr.read(header + cluster + footer)
-                translated_cluster = tr.translate(language, string_cached=True)
-
-                if xliff_version == '2.0':
-                    xliff_without_header_and_footer_match = re.search(r'<unit[\s\S]*<\/unit>', translated_cluster)
-                else:
-                    xliff_without_header_and_footer_match = re.search(r'<trans-unit[\s\S]*<\/trans-unit>',
-                                                                      translated_cluster)
-
-                # Controleer of er een match gevonden is en voeg deze toe aan translated_units
-                if xliff_without_header_and_footer_match:
-                    translated_cluster = xliff_without_header_and_footer_match.group(0)
-                    translated += translated_cluster
-
-            # In geval van XLIFF 2.0, voeg de target language (trgLang) toe aan de header.
-            if xliff_version == "2.0":
-                lang_code = language_code(language)
-                # Vervang om trgLang="en-GB" of een andere taalcode, zoals nl-NL, in de header te zetten.
-                header = re.sub(r'(<xliff [^>]*)(>)', r'\1 trgLang="{}"\2'.format(lang_code), header)
-
-            translated = header + translated + footer
-        else:
-            try:
-                tr.load(input_file)
-            except ValueError as e:
-                print(e.args[0])
-                return
-            translated = tr.translate(language)
-        outfile = f'{input_file.stem} {language}.xlf'
-        with open(outfile, 'w') as f:
-            f.write(translated)
-
-    start = time.time()
-    
-    # run_test('AI_2.1.xlf', 'Oekraïens')
-    run_test('TR 5234 Diagnose Motormanagement en Aandrijflijn 2023.xlf', 'Duits', use_clusters = True)
-    
-    duration = time.time() - start
-    print(f'Duration: {duration:.2f} seconds')
-    # run_test('Proefbestand 2.0.xlf', 'Engels')
