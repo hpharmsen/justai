@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 from lxml import etree
 
-
 from justai.agent.agent import Agent
 from justai.tools.prompts import get_prompt, set_prompt_file
 from justai.translator.languages import LANGUAGES
@@ -38,7 +37,7 @@ class Translator(Agent):
         # In de source zit ofwel direct tekst, ofwel een <pc> element
         # met daarin nog een <pc> element met daarin de te vertalen tekst
         self.xml = input_string
-        self.messages = []  # No need to resend old messages to the model
+        self.messages = []
         try:
             self.version = self.xml.split('xliff:document:')[1].split('"')[0].split("'")[0]
         except IndexError:
@@ -46,13 +45,13 @@ class Translator(Agent):
         if self.version not in ['1.2', '2.0']:
             raise ValueError(f'Unsupported XLIFF version: {self.version}')
 
-    def translate(self, language: str, string_cached:bool=False) -> str:
+    def translate(self, language: str, string_cached: bool = False) -> str:
         if self.version == '1.2':
             return self.translate1_2(language, string_cached=string_cached)
         elif self.version == '2.0':
             return self.translate2_0(language, string_cached=string_cached)
 
-    def translate1_2(self, language, string_cached:bool=False):
+    def translate1_2(self, language, string_cached: bool = False):
         # XML-data laden met lxml
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
@@ -81,7 +80,7 @@ class Translator(Agent):
         updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
         return updated_xml
 
-    def translate2_0(self, language, string_cached:bool=False):
+    def translate2_0(self, language, string_cached: bool = False):
         # XML-data laden met lxml
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
@@ -112,36 +111,39 @@ class Translator(Agent):
         return updated_xml
 
     def do_translate(self, texts, language: str, string_cached=False):
-        def run_prompt(prompt: str):
-            return self.chat(prompt, return_json=False)
-
         source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
 
         cache = StringCache(language) if string_cached else {}
         source_list = [text for text in source_list if text not in cache]
 
-        if source_list:        
+        if source_list:
             source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(source_list)])
             prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str,
                                 count=len(source_list))
-            target_str = run_prompt(prompt)
+            target_str = self.chat(prompt, return_json=False)
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(source_list, target_list))
-            
-            cache.update(translation_dict)
-            if string_cached:
-                cache.save()
-                
+
             count = 1
             for key, val in translation_dict.items():
-                print(f'{count}. {key} -> {val}')
+                if key.strip() and (key[0] == ' ' or key[-1] == ' '):
+                    # Code om zeker te maken dat de vertaling dezelfde whitespace aan het begin en eind heefdt heeft als de bron
+                    start_spaces = (len(key) - len(key.lstrip(' '))) * ' '
+                    end_spaces = (len(key) - len(key.rstrip(' '))) * ' '
+                    translation_dict[key] = start_spaces + val.strip() + end_spaces
+                    val = translation_dict[key]
+                print(f'{count}. [{key}] -> [{val}]')
                 count += 1
                 ratio = len(key) / len(val)
                 if ratio >= 1.5 or ratio <= 0.7:
                     print(f'Vertaling van {key} naar {val} is onverwacht lang of kort')
 
+            cache.update(translation_dict)
+            if string_cached:
+                cache.save()
+
         translations = [cache.get(text, text) for text in texts]
-        
+
         return translations
 
     def translate_stringlist(self, source_list, language: str, string_cached=False):
@@ -192,7 +194,7 @@ def replace_hash_with_variables(text, variables):
 
 def collect_texts_from_element(element):
     texts = []
-    #if element.text and element.text.strip():
+    # if element.text and element.text.strip():
     #    texts.append(element.text.strip())
     if element.text:
         texts.append(element.text)
@@ -203,7 +205,7 @@ def collect_texts_from_element(element):
 
 def copy_structure_with_texts(source, target, translated_texts, counter=[0]):
     """ Kopieer de structuur van <source> naar <target> en behoud de teksten """
-    if source.text: # and source.text.strip():
+    if source.text:  # and source.text.strip():
         try:
             target.text = translated_texts[counter[0]]
             counter[0] += 1
@@ -272,7 +274,7 @@ class StringCache:
 def parse_xliff_with_unit_clusters(xliff_content, max_chunk_size):
     # Functie alleen gebruikt voor tests. Deze is gelijk aan de parseXLIFFWithUnitClusters uit javascript
     # en is bedoeld om de real life situatie met het splitsen van de XLIFF in clusters te simuleren.
-    
+
     # Bepaal de versie van xliffContent
     version_match = re.search(r'<xliff[^>]*\s+version="([0-9.]+)"', xliff_content)
     version = version_match.group(1) if version_match else None

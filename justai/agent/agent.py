@@ -13,7 +13,7 @@ from justai.models.modelfactory import ModelFactory
 
 class Agent:
     def __init__(self, model_name: str, **kwargs):
-
+        
         # Model parameters
         self.model = ModelFactory.create(model_name, **kwargs)
 
@@ -35,10 +35,10 @@ class Agent:
             super().__setattr__(name, value)
 
     @classmethod
-    def from_json(cls, s, **kwargs):
+    def from_json(cls, model_name, model_data, **kwargs):
         """ Creates an agent from a json string. Usefull in stateless environments like a web page """
-        agent = cls('', **kwargs)
-        dictionary = json.loads(s)
+        agent = cls(model_name, **kwargs)
+        dictionary = json.loads(model_data)
         for key, value in dictionary.items():
             match key:
                 case 'save_dir':
@@ -46,7 +46,7 @@ class Agent:
                 case 'messages':
                     agent.messages = [Message.from_dict(m) for m in value]
                 case _:
-                    agent.model.set(key, value)
+                    agent.__setattr__(key, value)
         return agent
 
     def set_api_key(self, key: str):
