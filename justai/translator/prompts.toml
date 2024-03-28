@@ -17,7 +17,8 @@ TRANSLATE_MULTIPLE = """Vertaal de volgende {count} teksten naar {language}.
 
 **Vertaalverzoek:**
 
-Geef de vertalingen terug met behoud van de originele structuur, nummering, en formatteerkenmerken."""
+Geef de vertalingen terug met behoud van de originele structuur, nummering, en formatteerkenmerken.
+Gebruik de dubbele rechte haakjes om de vertaalde tekst aan te geven."""
 
 
 TRANSLATE_XML = """Vertaal de volgende XML tussen ''' naar {language}.
