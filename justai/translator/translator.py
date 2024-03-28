@@ -81,6 +81,8 @@ class Translator(Agent):
         return updated_xml
 
     def translate2_0(self, language, string_cached: bool = False):
+        #return self.experiment_with_translating_xml_source_blocks(language, string_cached)
+
         # XML-data laden met lxml
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
@@ -110,6 +112,31 @@ class Translator(Agent):
         updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
         return updated_xml
 
+    def experiment_with_translating_xml_source_blocks(self, language, string_cached: bool = False):
+        # Test of we de XML van een source element ook in z'n geheel kunnen laten vertalen
+        xml = self.xml
+        sources = []
+        fillers = []
+        while '<source>' in xml:
+            filler, xml = xml.split('<source>', 1)
+            fillers += [filler]
+            source, xml = xml.split('</source>', 1)
+            sources += [source]
+        fillers += [xml]
+        assert len(fillers) == len(sources) + 1
+
+        to_translate = '[[' + ']]\n[['.join(sources) + ']]'
+        # Dit werkt niet want \n wordt ook vervangen door @@ dus moet per string
+        text_with_no_vars, vars = replace_variables_with_hash(to_translate)
+        prompt = get_prompt('TRANSLATE_XMLS', language=language, translate_str=text_with_no_vars, count=1)
+        target_str_no_variables = self.chat(prompt, return_json=False)
+        target_str = replace_hash_with_variables(target_str_no_variables, vars)
+        target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
+        pass # Tot hier.
+        # Dit werkt niet want er zit veel te veel rommel tussen wat anders non-translatable strings zouden zijn.
+        # Die zou je er eigenlijk uit willen filteren maar dat maakt het dan weer lastig omdat de teksten in <pc>'s
+        # zitten die ook weer in <pc>'s kunnen zitten.
+
     def do_translate(self, texts, language: str, string_cached=False):
         source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
 
@@ -118,9 +145,11 @@ class Translator(Agent):
 
         if source_list:
             source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(source_list)])
-            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str,
+            source_str_no_vars, vars = replace_variables_with_hash(source_str)
+            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str_no_vars,
                                 count=len(source_list))
-            target_str = self.chat(prompt, return_json=False)
+            target_str_no_vars = self.chat(prompt, return_json=False)
+            target_str = replace_hash_with_variables(target_str_no_vars, vars)
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(source_list, target_list))
 

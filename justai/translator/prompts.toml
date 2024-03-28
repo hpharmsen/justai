@@ -18,3 +18,17 @@ TRANSLATE_MULTIPLE = """Vertaal de volgende {count} teksten naar {language}.
 **Vertaalverzoek:**
 
 Geef de vertalingen terug met behoud van de originele structuur, nummering, en formatteerkenmerken."""
+
+
+TRANSLATE_XML = """Vertaal de volgende XML tussen ''' naar {language}.
+
+'''{translate_str}'''
+
+**Belangrijke instructies voor de vertaling:**
+
+- **Behoud van speciale tekens:** Alle spaties, tabs, leestekens, `@@`, `###`, symbolen, en andere speciale tekens moeten exact behouden blijven zoals ze in de oorspronkelijke tekst staan.
+- **Formatteerkenmerken behouden:** Als een tekst eindigt op `@@`, de vertaalde tekst moet ook eindigen op `@@`.
+
+**Vertaalverzoek:**
+
+Geef de vertalingen terug met behoud van de originele structuur, nummering, formatteerkenmerken en de dubbele rechte haakjes."""
