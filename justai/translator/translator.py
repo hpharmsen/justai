@@ -14,7 +14,7 @@ class Translator(Agent):
 
     def __init__(self, model=None):
         if not model:
-            model = os.environ.get('OPENAI_MODEL', 'gpt-4-turbo-preview')
+            model = os.environ.get('MODEL', 'claude-3-opus-20240229')
         super().__init__(model, temperature=0, max_tokens=4096)
         set_prompt_file(Path(__file__).parent / 'prompts.toml')
         self.system_message = get_prompt('SYSTEM')
@@ -81,7 +81,7 @@ class Translator(Agent):
         return updated_xml
 
     def translate2_0(self, language, string_cached: bool = False):
-        #return self.experiment_with_translating_xml_source_blocks(language, string_cached)
+        # return self.experiment_with_translating_xml_source_blocks(language, string_cached)
 
         # XML-data laden met lxml
         parser = etree.XMLParser(ns_clean=True)
@@ -134,10 +134,12 @@ class Translator(Agent):
 
         # Vertaal de lijst van samengevoegde strings
         translated_texts_list = self.do_translate(translatable_texts, language, string_cached=string_cached)
+        original_translated_texts_list = translated_texts_list[:]
 
-        # Zet nu de delen die niet vertaald hoevden te worden terug in de lijst
-        for line in all_texts:
+        # Zet nu de delen die niet vertaald hoefden te worden terug in de lijst
+        for i1, line in enumerate(all_texts):
             if any(is_translatable(text) for text in line):
+                assert len([l for l in line if is_translatable(l)]) == len(translated_texts_list[0].split("||"))
                 translated = translated_texts_list.pop(0).split("||")
                 for index, text in enumerate(line):
                     if is_translatable(text):
@@ -154,7 +156,6 @@ class Translator(Agent):
         updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
         return updated_xml
 
-
     def do_translate(self, texts, language: str, string_cached=False):
         source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
 
@@ -168,22 +169,43 @@ class Translator(Agent):
                                 count=len(source_list))
             target_str_no_vars = self.chat(prompt, return_json=False)
             target_str = replace_hash_with_variables(target_str_no_vars, vars)
+
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(source_list, target_list))
 
             count = 1
-            for key, val in translation_dict.items():
-                if key.strip() and (key[0] == ' ' or key[-1] == ' '):
-                    # Code om zeker te maken dat de vertaling dezelfde whitespace aan het begin en eind heefdt heeft als de bron
-                    start_spaces = (len(key) - len(key.lstrip(' '))) * ' '
-                    end_spaces = (len(key) - len(key.rstrip(' '))) * ' '
-                    translation_dict[key] = start_spaces + val.strip() + end_spaces
-                    val = translation_dict[key]
-                print(f'{count}. [{key}] -> [{val}]')
+            for source, translation in translation_dict.items():
+
+                source_parts = source.split('||')
+                translation_parts = translation.split('||')
+
+                # Check op het aantal onderdelen tussen ||. Dit moet gelijk zijn in de bron en de vertaling
+                sc = len(source_parts)
+                tc = len(translation_parts)
+                if tc != sc:
+                    print(f'Number of translated texts ({tc})does not match number of source texts ({sc}).')
+                    if tc < sc:
+                        translation_parts += [' '] * (sc - tc)
+                    else:
+                        # Dit is een hack! Het model geeft kennelijk meer ||'s terug in dan in het origineel.
+                        # Dat breekt de code verderop. Daarom voegen we de laatste onderdelen samen.
+                        # Maar dat levert wel een onjuiste vertaling op.
+                        translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
+                assert len(source_parts) == len(translation_parts)
+
+                # Zorg dat de vertaling dezelfde whitespace aan het begin en eind heeft heeft als de bron
+                for i, (source_part, translation_part) in enumerate(zip(source_parts, translation_parts)):
+                    if source_part.strip() and (source_part[0] == ' ' or source_part[-1] == ' '):
+                        start_spaces = (len(source_part) - len(source_part.lstrip(' '))) * ' '
+                        end_spaces = (len(source_part) - len(source_part.rstrip(' '))) * ' '
+                        translation_parts[i] = start_spaces + translation_part.strip() + end_spaces
+                translation = '||'.join(translation_parts)
+
+                print(f'{count}. [{source}] -> [{translation}]')
                 count += 1
-                ratio = len(key) / len(val)
+                ratio = len(source) / len(translation)
                 if ratio >= 1.5 or ratio <= 0.7:
-                    print(f'Vertaling van {key} naar {val} is onverwacht lang of kort')
+                    print(f'Vertaling van {source} naar {translation} is onverwacht lang of kort')
 
             cache.update(translation_dict)
             if string_cached:
