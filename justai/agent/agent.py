@@ -26,6 +26,8 @@ class Agent:
         self.output_token_count = 0
         self.last_response_time = 0
         
+        self.logger = None
+        
     def __setattr__(self, name, value):
         if name not in self.__dict__ and hasattr(self, 'model') and name in self.model.model_params:
             # Not an existing property model but a model_params property. Set it in model_params

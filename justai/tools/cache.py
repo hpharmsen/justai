@@ -43,7 +43,6 @@ class CachDB:
         dir_ = os.getenv('CACHE_DIR', cache_dir) or Path(__file__).resolve().parent
         self.db_path = os.path.join(dir_, cache_file)
         self.conn = sqlite3.connect(self.db_path)
-        # Een cursor-object creëren om commando's uit te voeren
 
         self.cursor = self.conn.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS cache (

@@ -4,10 +4,31 @@ import pickle
 import re
 from pathlib import Path
 from lxml import etree
+import datetime
 
 from justai.agent.agent import Agent
+from justai.tools.log import Log
 from justai.tools.prompts import get_prompt, set_prompt_file
 from justai.translator.languages import LANGUAGES
+
+
+def log(message, param):
+    def nonl(text):
+        return str(text).replace('\n', '<br/>')
+
+    with open('justai.txt', 'a') as f:
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        f.write(f'<p><b>{timestamp} - {message.upper()}</b><br/>')
+        if isinstance(param, list):
+            for item in param:
+                f.write('-' + nonl(item) + '<br/>')
+            f.write(f'{len(param)}<br/>')
+        elif isinstance(param, dict):
+            for key, value in param.items():
+                f.write(f'{key}: {nonl(value)}<br/>')
+        else:
+            f.write(nonl(param))
+        f.write('</p>')
 
 
 class Translator(Agent):
@@ -20,6 +41,7 @@ class Translator(Agent):
         self.system_message = get_prompt('SYSTEM')
         self.xml = ''
         self.version = ''
+        self.logger = Log()
 
     def load(self, input_file: str | Path):
         with open(input_file, 'r') as f:
@@ -113,6 +135,7 @@ class Translator(Agent):
         return updated_xml
 
     def translate2_01(self, language, string_cached: bool = False):
+        log = self.logger
         # Versie van 2_0 die teksten uit een <source> samen aan de AI aanbiedt ter vertaling.
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
@@ -131,16 +154,26 @@ class Translator(Agent):
             translatable_text = "||".join(text for text in texts if is_translatable(text))
             if translatable_text:
                 translatable_texts.append(translatable_text)
+        log.info('all_texts', all_texts)
+        log.info('translatable_texts', translatable_texts)
 
         # Vertaal de lijst van samengevoegde strings
-        translated_texts_list = self.do_translate(translatable_texts, language, string_cached=string_cached)
-        original_translated_texts_list = translated_texts_list[:]
+        translated_texts = self.do_translate(translatable_texts, language, string_cached=string_cached)
+        original_translated_texts_list = translated_texts[:]
+        log.info('translated_texts', translated_texts)
 
         # Zet nu de delen die niet vertaald hoefden te worden terug in de lijst
         for i1, line in enumerate(all_texts):
             if any(is_translatable(text) for text in line):
-                assert len([l for l in line if is_translatable(l)]) == len(translated_texts_list[0].split("||"))
-                translated = translated_texts_list.pop(0).split("||")
+                if len([l for l in line if is_translatable(l)]) != len(translated_texts[0].split("||")):
+                    log.error('mismatch', f'Number of translated texts ({len(translated_texts[0].split("||"))}) '
+                          f'does not match number of source texts ({len([l for l in line if is_translatable(l)])})')
+                    log.info('line', line)
+                    log.info('original:', [l for l in line if is_translatable(l)])
+                    log.info('Translated:', translated_texts[0].split("||"))
+
+                assert len([l for l in line if is_translatable(l)]) == len(translated_texts[0].split("||"))
+                translated = translated_texts.pop(0).split("||")
                 for index, text in enumerate(line):
                     if is_translatable(text):
                         line[index] = translated.pop(0)
@@ -157,33 +190,44 @@ class Translator(Agent):
         return updated_xml
 
     def do_translate(self, texts, language: str, string_cached=False):
-        source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
-
+        # source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
+        assert all(is_translatable(text) for text in texts)  # !! Tijdelijk
+        source_list = list(set(texts))
         cache = StringCache(language) if string_cached else {}
         source_list = [text for text in source_list if text not in cache]
 
         if source_list:
-            source_str = '\n'.join([f'{index + 1} [[{text}]]' for index, text in enumerate(source_list)])
-            source_str_no_vars, vars = replace_variables_with_hash(source_str)
+            vars = []
+            source_str_no_vars = ''
+            for index, text in enumerate(source_list):
+                text_no_vars, v = replace_variables_with_hash(text)
+                vars.extend(v)
+                source_str_no_vars += f'{index + 1} [[{text_no_vars}]]\n'
             prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str_no_vars,
                                 count=len(source_list))
+            log.prompt('prompt', prompt)
             target_str_no_vars = self.chat(prompt, return_json=False)
+            log.response('target_str_no_vars', target_str_no_vars)
             target_str = replace_hash_with_variables(target_str_no_vars, vars)
+            log.info('target_str', target_str)
 
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(source_list, target_list))
+            log.info('translation_dict', translation_dict)
 
             count = 1
             for source, translation in translation_dict.items():
 
                 source_parts = source.split('||')
                 translation_parts = translation.split('||')
+                log.info('source_parts', source_parts)
+                log.info('translation_parts', translation_parts)
 
                 # Check op het aantal onderdelen tussen ||. Dit moet gelijk zijn in de bron en de vertaling
                 sc = len(source_parts)
                 tc = len(translation_parts)
                 if tc != sc:
-                    print(f'Number of translated texts ({tc})does not match number of source texts ({sc}).')
+                    log.error('do_translate', f'Number of translated texts ({tc}) does not match number of source texts ({sc}).')
                     if tc < sc:
                         translation_parts += [' '] * (sc - tc)
                     else:
@@ -201,45 +245,17 @@ class Translator(Agent):
                         translation_parts[i] = start_spaces + translation_part.strip() + end_spaces
                 translation = '||'.join(translation_parts)
 
-                print(f'{count}. [{source}] -> [{translation}]')
+                log.info('', f'{count}. [{source}] -> [{translation}]')
                 count += 1
                 ratio = len(source) / len(translation)
                 if ratio >= 1.5 or ratio <= 0.7:
-                    print(f'Vertaling van {source} naar {translation} is onverwacht lang of kort')
+                    log.warning('', f'Vertaling van {source} naar {translation} is onverwacht lang of kort')
 
             cache.update(translation_dict)
             if string_cached:
                 cache.save()
 
         translations = [cache.get(text, text) for text in texts]
-
-        return translations
-
-    def translate_stringlist(self, source_list, language: str, string_cached=False):
-        def run_prompt(prompt: str):
-            return self.chat(prompt, return_json=False)
-
-        cache = StringCache(language) if string_cached else {}
-        non_cached_list = [text for text in source_list if text not in cache and is_translatable(text)]
-
-        if non_cached_list:
-            source_str = ''
-            variables = []
-            for index, text in enumerate(non_cached_list):
-                text_with_no_vars, vars = replace_variables_with_hash(text)
-                source_str += f'{index + 1} [[{text_with_no_vars}]]\n'
-                variables.extend(vars)
-            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str,
-                                count=len(non_cached_list))
-            target_str_no_variables = run_prompt(prompt)
-            print(self.input_token_count, self.output_token_count, 'tokens')
-            target_str = replace_hash_with_variables(target_str_no_variables, variables)
-            target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
-            translation_dict = dict(zip(non_cached_list, target_list))
-            cache.update(translation_dict)
-            if string_cached:
-                cache.save()
-        translations = [cache.get(text, text) for text in source_list]
 
         return translations
 
@@ -279,7 +295,7 @@ def copy_structure_with_texts(source, target, translated_texts, counter=[0]):
             target.text = translated_texts[counter[0]]
             counter[0] += 1
         except IndexError:
-            print('IndexError in copy_structure_with_texts')
+            log.error('IndexError', 'IndexError in copy_structure_with_texts')
     for child in source:
         child_copy = etree.SubElement(target, child.tag, attrib=child.attrib)
         copy_structure_with_texts(child, child_copy, translated_texts, counter)
