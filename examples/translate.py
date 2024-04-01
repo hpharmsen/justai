@@ -10,6 +10,6 @@ if __name__ == "__main__":
     tr.system = "You are a translator who translates texts for highscool students from Dutch to other languages"
     cur_path = Path(__file__).parent.resolve()
     tr.load(cur_path / 'translation_source.xlf')
-    translated = tr.translate('Engels')
+    translated = tr.translate('Engels', string_cached=False)
     with open(cur_path / 'translation_target.xlf', 'w') as f:
         f.write(translated)

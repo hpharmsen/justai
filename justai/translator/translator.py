@@ -4,31 +4,11 @@ import pickle
 import re
 from pathlib import Path
 from lxml import etree
-import datetime
 
 from justai.agent.agent import Agent
 from justai.tools.log import Log
 from justai.tools.prompts import get_prompt, set_prompt_file
 from justai.translator.languages import LANGUAGES
-
-
-def log(message, param):
-    def nonl(text):
-        return str(text).replace('\n', '<br/>')
-
-    with open('justai.txt', 'a') as f:
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        f.write(f'<p><b>{timestamp} - {message.upper()}</b><br/>')
-        if isinstance(param, list):
-            for item in param:
-                f.write('-' + nonl(item) + '<br/>')
-            f.write(f'{len(param)}<br/>')
-        elif isinstance(param, dict):
-            for key, value in param.items():
-                f.write(f'{key}: {nonl(value)}<br/>')
-        else:
-            f.write(nonl(param))
-        f.write('</p>')
 
 
 class Translator(Agent):
@@ -68,81 +48,16 @@ class Translator(Agent):
             raise ValueError(f'Unsupported XLIFF version: {self.version}')
 
     def translate(self, language: str, string_cached: bool = False) -> str:
-        if self.version == '1.2':
-            return self.translate1_2(language, string_cached=string_cached)
-        elif self.version == '2.0':
-            return self.translate2_01(language, string_cached=string_cached)
-
-    def translate1_2(self, language, string_cached: bool = False):
-        # XML-data laden met lxml
-        parser = etree.XMLParser(ns_clean=True)
-        root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
-        namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:1.2'}
-
-        # Verzamel alle te vertalen teksten en hun paden
-        texts_to_translate = []
-
-        # Start het verzamelproces vanuit <source> elementen en vertaal de teksten
-        for trans_unit in root.xpath('.//ns:trans-unit', namespaces=namespaces):
-            source = trans_unit.xpath('.//ns:source', namespaces=namespaces)[0]
-            texts_to_translate.extend(collect_texts_from_element(source))
-
-        # Vertaal met AI
-        translated_texts = self.do_translate(texts_to_translate, language, string_cached=string_cached)
-
-        # Plaats vertaalde teksten terug in nieuwe <target> elementen met behoud van structuur
-        counter = [0]
-        for trans_unit in root.xpath('.//ns:trans-unit', namespaces=namespaces):
-            source = trans_unit.xpath('.//ns:source', namespaces=namespaces)[0]
-            target = etree.Element('{urn:oasis:names:tc:xliff:document:1.2}target')
-            copy_structure_with_texts(source, target, translated_texts, counter)
-            trans_unit.append(target)
-
-        # De bijgewerkte XLIFF-structuur omzetten naar een string en afdrukken
-        updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
-        return updated_xml
-
-    def translate2_0(self, language, string_cached: bool = False):
-        # return self.experiment_with_translating_xml_source_blocks(language, string_cached)
-
-        # XML-data laden met lxml
-        parser = etree.XMLParser(ns_clean=True)
-        root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
-        namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
-
-        # Speciaal voor xliff 2.0: voeg de target language toe aan het root element
-        language_code = LANGUAGES.get(language)
-        root.attrib['trgLang'] = language_code
-
-        # Verzamel alle te vertalen teksten en hun paden
-        texts_to_translate = []
-
-        # Start het verzamelproces vanuit <source> elementen en vertaal de teksten
-        for source in root.xpath('.//ns:source', namespaces=namespaces):
-            texts_to_translate.extend(collect_texts_from_element(source))
-
-        # Vertaal met AI
-        translated_texts = self.do_translate(texts_to_translate, language, string_cached=string_cached)
-
-        # Plaats vertaalde teksten terug in nieuwe <target> elementen met behoud van structuur
-        counter = [0]
-        for segment in root.xpath('.//ns:segment', namespaces=namespaces):
-            source = segment.xpath('.//ns:source', namespaces=namespaces)[0]
-            target = etree.SubElement(segment, '{urn:oasis:names:tc:xliff:document:2.0}target')
-            copy_structure_with_texts(source, target, translated_texts, counter)
-
-        updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
-        return updated_xml
-
-    def translate2_01(self, language, string_cached: bool = False):
         log = self.logger
-        # Versie van 2_0 die teksten uit een <source> samen aan de AI aanbiedt ter vertaling.
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
-        namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
+        namespaces = {'ns': f'urn:oasis:names:tc:xliff:document:{self.version}'}
 
-        language_code = LANGUAGES.get(language)
-        root.attrib['trgLang'] = language_code
+        if self.version == '1.2':
+            segment_name = 'trans-unit'
+        elif self.version == '2.0':
+            segment_name = 'segment'
+            root.attrib['trgLang'] = LANGUAGES.get(language)
 
         # Verzamel teksten als lijst van samengevoegde strings per <source>
         all_texts = []
@@ -159,37 +74,96 @@ class Translator(Agent):
 
         # Vertaal de lijst van samengevoegde strings
         translated_texts = self.do_translate(translatable_texts, language, string_cached=string_cached)
-        original_translated_texts_list = translated_texts[:]
-        log.info('translated_texts', translated_texts)
-
+        log.info('translated_texts', translated_texts)      
+        for src, dst in zip(translatable_texts, translated_texts):
+            assert len(src.split('||')) == len(dst.split('||'))
+        
         # Zet nu de delen die niet vertaald hoefden te worden terug in de lijst
         for i1, line in enumerate(all_texts):
             if any(is_translatable(text) for text in line):
-                if len([l for l in line if is_translatable(l)]) != len(translated_texts[0].split("||")):
-                    log.error('mismatch', f'Number of translated texts ({len(translated_texts[0].split("||"))}) '
-                          f'does not match number of source texts ({len([l for l in line if is_translatable(l)])})')
+                sc = len([l for l in line if is_translatable(l)])
+                tc = len(translated_texts[0].split("||"))
+                if sc != tc:
+                    log.error('mismatch', f'Translated texts ({sc}) does not match number of source texts ({tc})')
                     log.info('line', line)
                     log.info('original:', [l for l in line if is_translatable(l)])
                     log.info('Translated:', translated_texts[0].split("||"))
-
                 assert len([l for l in line if is_translatable(l)]) == len(translated_texts[0].split("||"))
+                
                 translated = translated_texts.pop(0).split("||")
                 for index, text in enumerate(line):
                     if is_translatable(text):
                         line[index] = translated.pop(0)
         translated_texts = [item for sublist in all_texts for item in sublist]  # And flatten
 
-        # Plaats vertaalde teksten terug in nieuwe <target> elementen met behoud van structuur
+        # Plaats vertaalde teksten in nieuwe <target> elementen met behoud van structuur
         counter = [0]
-        for segment in root.xpath('.//ns:segment', namespaces=namespaces):
+        for segment in root.xpath(f'.//ns:{segment_name}', namespaces=namespaces):
             source = segment.xpath('.//ns:source', namespaces=namespaces)[0]
-            target = etree.SubElement(segment, '{urn:oasis:names:tc:xliff:document:2.0}target')
+            target = etree.SubElement(segment, f'{{urn:oasis:names:tc:xliff:document:{self.version}}}target')
             copy_structure_with_texts(source, target, translated_texts, counter)
 
         updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
         return updated_xml
 
+
+    # def translate2_0(self, language, string_cached: bool = False):
+    #     log = self.logger
+    #     parser = etree.XMLParser(ns_clean=True)
+    #     root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
+    #     namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
+    # 
+    #     language_code = LANGUAGES.get(language)
+    #     root.attrib['trgLang'] = language_code
+    # 
+    #     # Verzamel teksten als lijst van samengevoegde strings per <source>
+    #     all_texts = []
+    #     translatable_texts = []
+    #     for source in root.xpath('.//ns:source', namespaces=namespaces):
+    #         texts = collect_texts_from_element(source)
+    #         all_texts.append(texts)
+    #         # Verzamel alleen de teksten die ook echt vertaald moeten worden
+    #         translatable_text = "||".join(text for text in texts if is_translatable(text))
+    #         if translatable_text:
+    #             translatable_texts.append(translatable_text)
+    #     log.info('all_texts', all_texts)
+    #     log.info('translatable_texts', translatable_texts)
+    # 
+    #     # Vertaal de lijst van samengevoegde strings
+    #     translated_texts = self.do_translate(translatable_texts, language, string_cached=string_cached)
+    #     log.info('translated_texts', translated_texts)
+    # 
+    #     # Zet nu de delen die niet vertaald hoefden te worden terug in de lijst
+    #     for i1, line in enumerate(all_texts):
+    #         if any(is_translatable(text) for text in line):
+    #             sc = len([l for l in line if is_translatable(l)])
+    #             tc = len(translated_texts[0].split("||"))
+    #             if  sc != tc:
+    #                 log.error('mismatch', f'Translated texts ({sc}) does not match number of source texts ({tc})')
+    #                 log.info('line', line)
+    #                 log.info('original:', [l for l in line if is_translatable(l)])
+    #                 log.info('Translated:', translated_texts[0].split("||"))
+    # 
+    #             assert len([l for l in line if is_translatable(l)]) == len(translated_texts[0].split("||"))
+    #             translated = translated_texts.pop(0).split("||")
+    #             for index, text in enumerate(line):
+    #                 if is_translatable(text):
+    #                     line[index] = translated.pop(0)
+    #     translated_texts = [item for sublist in all_texts for item in sublist]  # And flatten
+    # 
+    #     # Plaats vertaalde teksten terug in nieuwe <target> elementen met behoud van structuur
+    #     counter = [0]
+    #     for segment in root.xpath('.//ns:segment', namespaces=namespaces):
+    #         source = segment.xpath('.//ns:source', namespaces=namespaces)[0]
+    #         target = etree.SubElement(segment, '{urn:oasis:names:tc:xliff:document:2.0}target')
+    #         copy_structure_with_texts(source, target, translated_texts, counter)
+    # 
+    #     updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
+    #     return updated_xml
+
     def do_translate(self, texts, language: str, string_cached=False):
+        log = self.logger
+
         # source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
         assert all(is_translatable(text) for text in texts)  # !! Tijdelijk
         source_list = list(set(texts))
@@ -197,18 +171,18 @@ class Translator(Agent):
         source_list = [text for text in source_list if text not in cache]
 
         if source_list:
-            vars = []
+            variables = []
             source_str_no_vars = ''
             for index, text in enumerate(source_list):
                 text_no_vars, v = replace_variables_with_hash(text)
-                vars.extend(v)
+                variables.extend(v)
                 source_str_no_vars += f'{index + 1} [[{text_no_vars}]]\n'
             prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str_no_vars,
                                 count=len(source_list))
             log.prompt('prompt', prompt)
             target_str_no_vars = self.chat(prompt, return_json=False)
             log.response('target_str_no_vars', target_str_no_vars)
-            target_str = replace_hash_with_variables(target_str_no_vars, vars)
+            target_str = replace_hash_with_variables(target_str_no_vars, variables)
             log.info('target_str', target_str)
 
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
@@ -227,7 +201,8 @@ class Translator(Agent):
                 sc = len(source_parts)
                 tc = len(translation_parts)
                 if tc != sc:
-                    log.error('do_translate', f'Number of translated texts ({tc}) does not match number of source texts ({sc}).')
+                    log.error('do_translate',
+                              f'Number of translated texts ({tc}) does not match number of source texts ({sc}).')
                     if tc < sc:
                         translation_parts += [' '] * (sc - tc)
                     else:
@@ -237,7 +212,7 @@ class Translator(Agent):
                         translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
                 assert len(source_parts) == len(translation_parts)
 
-                # Zorg dat de vertaling dezelfde whitespace aan het begin en eind heeft heeft als de bron
+                # Zorg dat de vertaling dezelfde whitespace aan het begin en eind heeft als de bron
                 for i, (source_part, translation_part) in enumerate(zip(source_parts, translation_parts)):
                     if source_part.strip() and (source_part[0] == ' ' or source_part[-1] == ' '):
                         start_spaces = (len(source_part) - len(source_part.lstrip(' '))) * ' '
@@ -288,17 +263,18 @@ def collect_texts_from_element(element):
     return texts
 
 
-def copy_structure_with_texts(source, target, translated_texts, counter=[0]):
+def copy_structure_with_texts(source, target, translated_texts, counter=[0], log=None):
     """ Kopieer de structuur van <source> naar <target> en behoud de teksten """
     if source.text:  # and source.text.strip():
         try:
             target.text = translated_texts[counter[0]]
             counter[0] += 1
         except IndexError:
-            log.error('IndexError', 'IndexError in copy_structure_with_texts')
+            if log:
+                log.error('IndexError', 'IndexError in copy_structure_with_texts')
     for child in source:
         child_copy = etree.SubElement(target, child.tag, attrib=child.attrib)
-        copy_structure_with_texts(child, child_copy, translated_texts, counter)
+        copy_structure_with_texts(child, child_copy, translated_texts, counter, log)
 
 
 def is_translatable(text) -> bool:
