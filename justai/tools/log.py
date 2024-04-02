@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -36,7 +37,7 @@ class Log:
 
         dir_ = os.getenv('LOG_DIR', log_dir) or Path(__file__).resolve().parent
         self.log_path = os.path.join(dir_, log_file)
-        self.conn = sqlite3.connect(self.log_path)
+        self.conn = sqlite3.connect(self.log_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS log (
                                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,

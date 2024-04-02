@@ -1,5 +1,6 @@
 import hashlib
 import os
+import json
 import sqlite3
 from pathlib import Path
 
@@ -10,14 +11,19 @@ def cached_llm_response(model, messages, return_json, use_cache=True, max_retrie
         -> tuple[[str | object], int, int]:
     if not use_cache:
         return model.chat(messages, return_json, max_retries)
-        
+
     hashcode = recursive_hash((model, messages, return_json))
     cachedb = CachDB()
     result = cachedb.read(hashcode)
     if result:
+        if return_json:
+            return json.loads(result[0]), result[1], result[2]
         return result
     result = model.chat(messages, return_json, max_retries)
-    cachedb.write(hashcode, result)
+    if return_json:
+        cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2]))
+    else:
+        cachedb.write(hashcode, result)
     return result
 
 
@@ -28,7 +34,7 @@ cache_file = 'llmcache.db'
 def set_cache_dir(_dir):
     global cache_dir
     cache_dir = _dir
-    
+
 
 class CachDB:
     _instance = None
@@ -53,25 +59,25 @@ class CachDB:
                                     valid_until DATETIME)''')
         self.cursor.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
         self.conn.commit()
-    
-    def write(self, key: str, llm_response: str, valid_until: str = ''):
+
+    def write(self, key: str, llm_response: tuple[str, int, int], valid_until: str = ''):
         if not valid_until:
             valid_until = str(Day().plus_months(1))
         value, tokens_in, tokens_out = llm_response
         self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
                                 VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
         self.conn.commit()
-    
+
     def read(self, key):
         self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
         result = self.cursor.fetchone()
         if result:
             return result[1], result[2], result[3]
-        
+
     def clear(self):
         self.cursor.execute('DELETE FROM cache')
         self.conn.commit()
-    
+
     def close(self):
         self.conn.close()
 

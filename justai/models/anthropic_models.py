@@ -1,3 +1,4 @@
+import json
 import os
 
 import anthropic
@@ -37,21 +38,29 @@ class AnthropicModel(Model):
         if max_retries is None:
             max_retries = 3
 
-        authropic_messages = [{"role": m['role'],
+        anthropic_messages = [{"role": m['role'],
                                "content": [{"type": "text",
                                             "text": m['content']}]
                                } for m in messages if m['role'] != 'system']
+        if return_json:
+            anthropic_messages += [{"role": 'assistant',
+                                    "content": [{"type": "text",
+                                                "text": "sure here's your json: {"}]
+                                    }]
 
         message = self.client.messages.create(
             model=self.model_name,
             max_tokens=self.model_params['max_tokens'],
             temperature=self.model_params['temperature'],
             system=self.system_message,
-            messages=authropic_messages
+            messages=anthropic_messages
         )
+        response = message.content[0].text
+        if return_json:
+            response = json.loads('{' + response)
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
-        return message.content[0].text, input_tokens, output_tokens
+        return response, input_tokens, output_tokens
 
     def token_count(self, text: str) -> int:
         return -1  # Not implemented

@@ -13,7 +13,8 @@ def get_story():
 
 if __name__ == "__main__":
     #agent = Agent('gpt-4-turbo-preview')
-    agent = Agent('/users/hp/cache/models/llama-2-7b-chat.Q4_K_M.gguf', debug=1)
+    #agent = Agent('/users/hp/cache/models/llama-2-7b-chat.Q4_K_M.gguf', debug=1)
+    agent = Agent('claude-3-opus-20240229')
     prompt = "Read the following story and give me a list of the persons involved. " +\
              "Return json with keys name, profession and house number\n\n" + get_story()
 
