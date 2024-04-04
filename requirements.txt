@@ -9,7 +9,7 @@ packaging
 pip
 pytest
 tiktoken
-lxml
+lxml==5.1.1 # for translator, vanaf 5.2.0 moet lxml_clean apart geïnstalleerd worden
 llama-cpp-python
 anthropic
 justdays
