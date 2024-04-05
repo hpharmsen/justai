@@ -17,9 +17,12 @@ class OpenAIModel(Model):
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        if not os.getenv("OPENAI_API_KEY"):
-            load_dotenv()  # Load the .env file into the environment
-        openai.api_key = os.getenv("OPENAI_API_KEY")
+        if "OPENAI_API_KEY" in params:
+            api_key = params["OPENAI_API_KEY"]
+        else:
+            if not os.getenv("OPENAI_API_KEY"):
+                load_dotenv()  # Load the .env file into the environment
+            openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key:
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
@@ -70,7 +73,7 @@ class OpenAIModel(Model):
     def chat(self, messages: list[dict], return_json: bool, use_cache: bool = False, max_retries=None):
         if max_retries is None:
             max_retries = 3
-            
+
         if self.debug:
             color_print("\nRunning completion with these messages", color=DEBUG_COLOR1)
             [color_print(m, color=DEBUG_COLOR1) for m in messages if hasattr(m, 'text')]

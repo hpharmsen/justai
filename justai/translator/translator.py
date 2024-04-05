@@ -13,10 +13,10 @@ from justai.translator.languages import LANGUAGES
 
 class Translator(Agent):
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, **kwargs):
         if not model:
             model = os.environ.get('MODEL', 'claude-3-opus-20240229')
-        super().__init__(model, temperature=0, max_tokens=4096)
+        super().__init__(model, temperature=0, max_tokens=4096, **kwargs)
         set_prompt_file(Path(__file__).parent / 'prompts.toml')
         self.system_message = get_prompt('SYSTEM')
         self.xml = ''
@@ -54,7 +54,7 @@ class Translator(Agent):
         namespaces = {'ns': f'urn:oasis:names:tc:xliff:document:{self.version}'}
 
         segment_name = 'trans-unit' if self.version == '1.2' else 'segment'
-            
+
         if self.version >= '2.0':
             root.attrib['trgLang'] = LANGUAGES.get(language)
 
@@ -68,27 +68,26 @@ class Translator(Agent):
             translatable_text = "||".join(text for text in texts if is_translatable(text))
             if translatable_text:
                 translatable_texts.append(translatable_text)
-        log.info('all_texts', all_texts)
-        log.info('translatable_texts', translatable_texts)
+        log.info('translate - all_texts', all_texts)
+        log.info('translate - translatable_texts', translatable_texts)
 
         # Vertaal de lijst van samengevoegde strings
         translated_texts = self.do_translate(translatable_texts, language, string_cached=string_cached)
-        log.info('translated_texts', translated_texts)      
-        for src, dst in zip(translatable_texts, translated_texts):
-            assert len(src.split('||')) == len(dst.split('||'))
-        
+
         # Zet nu de delen die niet vertaald hoefden te worden terug in de lijst
         for i1, line in enumerate(all_texts):
             if any(is_translatable(text) for text in line):
                 sc = len([l for l in line if is_translatable(l)])
                 tc = len(translated_texts[0].split("||"))
                 if sc != tc:
-                    log.error('mismatch', f'Translated texts ({sc}) does not match number of source texts ({tc})')
-                    log.info('line', line)
-                    log.info('original:', [l for l in line if is_translatable(l)])
-                    log.info('Translated:', translated_texts[0].split("||"))
-                assert len([l for l in line if is_translatable(l)]) == len(translated_texts[0].split("||"))
-                
+                    log.error('translate - mismatch',
+                              f'Translated texts ({sc}) does not match number of source texts ({tc})')
+                    log.info('translate - line', line)
+                    log.info('translate - Original:', [l for l in line if is_translatable(l)])
+                    log.info('translate - Translated:', translated_texts[0].split("||"))
+                assert len([l for l in line if is_translatable(l)]) == len(
+                    translated_texts[0].split("||")), 'Mismatch see log'
+
                 translated = translated_texts.pop(0).split("||")
                 for index, text in enumerate(line):
                     if is_translatable(text):
@@ -108,8 +107,7 @@ class Translator(Agent):
     def do_translate(self, texts, language: str, string_cached=False):
         log = self.logger
 
-        # source_list = list(set([text for text in texts if is_translatable(text)]))  # Filter out doubles
-        assert all(is_translatable(text) for text in texts)  # !! Tijdelijk
+        assert all(is_translatable(text) for text in texts), "Not all translatable"  # !! Tijdelijk
         source_list = list(set(texts))
         cache = StringCache(language) if string_cached else {}
         source_list = [text for text in source_list if text not in cache]
@@ -127,26 +125,25 @@ class Translator(Agent):
             target_str_no_vars = self.chat(prompt, return_json=False)
             log.response('target_str_no_vars', target_str_no_vars)
             target_str = replace_hash_with_variables(target_str_no_vars, variables)
-            log.info('target_str', target_str)
+            log.info('do_translate - target_str', target_str)
 
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
             translation_dict = dict(zip(source_list, target_list))
-            log.info('translation_dict', translation_dict)
+            log.info('do_translate - translation_dict', translation_dict)
 
             count = 1
             for source, translation in translation_dict.items():
 
                 source_parts = source.split('||')
                 translation_parts = translation.split('||')
-                log.info('source_parts', source_parts)
-                log.info('translation_parts', translation_parts)
+                log.info('do_translate - source_parts', source_parts)
 
                 # Check op het aantal onderdelen tussen ||. Dit moet gelijk zijn in de bron en de vertaling
                 sc = len(source_parts)
                 tc = len(translation_parts)
                 if tc != sc:
-                    log.error('do_translate',
-                              f'Number of translated texts ({tc}) does not match number of source texts ({sc}).')
+                    log.warning('do_translate',
+                                f'Number of translated texts ({tc}) does not match number of source texts ({sc}). Correcting.')
                     if tc < sc:
                         translation_parts += [' '] * (sc - tc)
                     else:
@@ -154,7 +151,12 @@ class Translator(Agent):
                         # Dat breekt de code verderop. Daarom voegen we de laatste onderdelen samen.
                         # Maar dat levert wel een onjuiste vertaling op.
                         translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
-                assert len(source_parts) == len(translation_parts)
+                    sc = len(source_parts)
+                    tc = len(translation_parts)
+                    if tc != sc:
+                        log.error('do_translate',
+                                  f'Number of translated texts ({tc}) still does not match number of source texts ({sc}). Correcting.')
+                    assert (tc == sc), 'Mismatch in number of parts, see log for info'
 
                 # Zorg dat de vertaling dezelfde whitespace aan het begin en eind heeft als de bron
                 for i, (source_part, translation_part) in enumerate(zip(source_parts, translation_parts)):
@@ -162,6 +164,7 @@ class Translator(Agent):
                         start_spaces = (len(source_part) - len(source_part.lstrip(' '))) * ' '
                         end_spaces = (len(source_part) - len(source_part.rstrip(' '))) * ' '
                         translation_parts[i] = start_spaces + translation_part.strip() + end_spaces
+                log.info('do_translate - translation_parts', source_parts)
                 translation = '||'.join(translation_parts)
 
                 log.info('', f'{count}. [{source}] -> [{translation}]')
