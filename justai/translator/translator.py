@@ -60,46 +60,49 @@ class Translator(Agent):
 
         # Verzamel teksten als lijst van samengevoegde strings per <source>
         all_texts = []
-        translatable_texts = []
+        translatable = []
         for source in root.xpath('.//ns:source', namespaces=namespaces):
-            texts = collect_texts_from_element(source)
-            all_texts.append(texts)
+            texts_from_source_element = collect_texts_from_element(source)
+            all_texts.append(texts_from_source_element)
             # Verzamel alleen de teksten die ook echt vertaald moeten worden
-            translatable_text = "||".join(text for text in texts if is_translatable(text))
-            if translatable_text:
-                translatable_texts.append(translatable_text)
+            translatable_from_source_element = [text for text in texts_from_source_element if is_translatable(text)]
+            if translatable_from_source_element:
+                translatable.append("||".join(translatable_from_source_element))
         log.info('translate - all_texts', all_texts)
-        log.info('translate - translatable_texts', translatable_texts)
+        log.info('translate - translatable_texts', translatable)
 
-        # Vertaal de lijst van samengevoegde strings
-        translated_texts = self.do_translate(translatable_texts, language, string_cached=string_cached)
+        # Vertaal de lijst van met || samengevoegde strings
+        flattened_all_texts = self.do_translate(translatable, language, string_cached=string_cached)
 
-        # Zet nu de delen die niet vertaald hoefden te worden terug in de lijst
-        for i1, line in enumerate(all_texts):
-            if any(is_translatable(text) for text in line):
-                sc = len([l for l in line if is_translatable(l)])
-                tc = len(translated_texts[0].split("||"))
+        # Zet nu de vertaalde delen terug in all_texts
+        index_in_translated_texts = 0
+        for texts_from_source_element in all_texts:
+            translatable_from_source_element = [text for text in texts_from_source_element if is_translatable(text)]
+            if translatable_from_source_element:
+                translated_version = flattened_all_texts[index_in_translated_texts].split("||")
+
+                # Check
+                sc = len(translatable_from_source_element)
+                tc = len(translated_version)
                 if sc != tc:
                     log.error('translate - mismatch',
-                              f'Translated texts ({sc}) does not match number of source texts ({tc})')
-                    log.info('translate - line', line)
-                    log.info('translate - Original:', [l for l in line if is_translatable(l)])
-                    log.info('translate - Translated:', translated_texts[0].split("||"))
-                assert len([l for l in line if is_translatable(l)]) == len(
-                    translated_texts[0].split("||")), 'Mismatch see log'
+                              f'Source texts ({sc}) does not match number of translated texts ({tc})')
+                    log.info('translate - translatable_from_source_element:', translatable_from_source_element)
+                    log.info('translate - translated_version:', translated_version)
+                assert sc==tc, 'Mismatch see log'
 
-                translated = translated_texts.pop(0).split("||")
-                for index, text in enumerate(line):
+                for index, text in enumerate(texts_from_source_element):
                     if is_translatable(text):
-                        line[index] = translated.pop(0)
-        translated_texts = [item for sublist in all_texts for item in sublist]  # And flatten
+                        texts_from_source_element[index] = translated_version.pop(0)
+                index_in_translated_texts += 1
+        flattened_all_texts = [item for sublist in all_texts for item in sublist]  # And flatten
 
         # Plaats vertaalde teksten in nieuwe <target> elementen met behoud van structuur
         counter = [0]
         for segment in root.xpath(f'.//ns:{segment_name}', namespaces=namespaces):
             source = segment.xpath('.//ns:source', namespaces=namespaces)[0]
             target = etree.SubElement(segment, f'{{urn:oasis:names:tc:xliff:document:{self.version}}}target')
-            copy_structure_with_texts(source, target, translated_texts, counter)
+            copy_structure_with_texts(source, target, flattened_all_texts, counter)
 
         updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
         return updated_xml
@@ -164,10 +167,9 @@ class Translator(Agent):
                         start_spaces = (len(source_part) - len(source_part.lstrip(' '))) * ' '
                         end_spaces = (len(source_part) - len(source_part.rstrip(' '))) * ' '
                         translation_parts[i] = start_spaces + translation_part.strip() + end_spaces
-                log.info('do_translate - translation_parts', source_parts)
+                log.info('do_translate - translation_parts', translation_parts)
                 translation = '||'.join(translation_parts)
 
-                log.info('', f'{count}. [{source}] -> [{translation}]')
                 count += 1
                 ratio = len(source) / len(translation)
                 if ratio >= 1.5 or ratio <= 0.7:
