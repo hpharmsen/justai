@@ -72,14 +72,14 @@ class Translator(Agent):
         log.info('translate - translatable_texts', translatable)
 
         # Vertaal de lijst van met || samengevoegde strings
-        flattened_all_texts = self.do_translate(translatable, language, string_cached=string_cached)
+        translated = self.do_translate(translatable, language, string_cached=string_cached)
 
         # Zet nu de vertaalde delen terug in all_texts
-        index_in_translated_texts = 0
+        index_in_translated = 0
         for texts_from_source_element in all_texts:
             translatable_from_source_element = [text for text in texts_from_source_element if is_translatable(text)]
             if translatable_from_source_element:
-                translated_version = flattened_all_texts[index_in_translated_texts].split("||")
+                translated_version = translated[index_in_translated].split("||")
 
                 # Check
                 sc = len(translatable_from_source_element)
@@ -89,12 +89,12 @@ class Translator(Agent):
                               f'Source texts ({sc}) does not match number of translated texts ({tc})')
                     log.info('translate - translatable_from_source_element:', translatable_from_source_element)
                     log.info('translate - translated_version:', translated_version)
-                assert sc==tc, 'Mismatch see log'
+                assert sc == tc, 'Mismatch see log'
 
                 for index, text in enumerate(texts_from_source_element):
                     if is_translatable(text):
                         texts_from_source_element[index] = translated_version.pop(0)
-                index_in_translated_texts += 1
+                index_in_translated += 1
         flattened_all_texts = [item for sublist in all_texts for item in sublist]  # And flatten
 
         # Plaats vertaalde teksten in nieuwe <target> elementen met behoud van structuur
@@ -111,9 +111,8 @@ class Translator(Agent):
         log = self.logger
 
         assert all(is_translatable(text) for text in texts), "Not all translatable"  # !! Tijdelijk
-        source_list = list(set(texts))
         cache = StringCache(language) if string_cached else {}
-        source_list = [text for text in source_list if text not in cache]
+        source_list = [text for text in texts if text not in cache]
 
         if source_list:
             variables = []
@@ -131,11 +130,9 @@ class Translator(Agent):
             log.info('do_translate - target_str', target_str)
 
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
-            translation_dict = dict(zip(source_list, target_list))
-            log.info('do_translate - translation_dict', translation_dict)
 
             count = 1
-            for source, translation in translation_dict.items():
+            for source, translation in zip(source_list, target_list):
 
                 source_parts = source.split('||')
                 translation_parts = translation.split('||')
@@ -147,13 +144,16 @@ class Translator(Agent):
                 if tc != sc:
                     log.warning('do_translate',
                                 f'Number of translated texts ({tc}) does not match number of source texts ({sc}). Correcting.')
-                    if tc < sc:
-                        translation_parts += [' '] * (sc - tc)
-                    else:
-                        # Dit is een hack! Het model geeft kennelijk meer ||'s terug in dan in het origineel.
-                        # Dat breekt de code verderop. Daarom voegen we de laatste onderdelen samen.
-                        # Maar dat levert wel een onjuiste vertaling op.
-                        translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
+                    # Model krijgt het niet voor elkaar om een zin met evenveel delen terug te geven
+                    # We vertalen de stukjes los van elkaar.
+                    translation_parts = self.do_translate(source_parts, language, string_cached)
+                    # if tc < sc:
+                    #     translation_parts += [' '] * (sc - tc)
+                    # else:
+                    #     # Dit is een hack! Het model geeft kennelijk meer ||'s terug in dan in het origineel.
+                    #     # Dat breekt de code verderop. Daarom voegen we de laatste onderdelen samen.
+                    #     # Maar dat levert wel een onjuiste vertaling op.
+                    #     translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
                     sc = len(source_parts)
                     tc = len(translation_parts)
                     if tc != sc:
@@ -168,18 +168,24 @@ class Translator(Agent):
                         end_spaces = (len(source_part) - len(source_part.rstrip(' '))) * ' '
                         translation_parts[i] = start_spaces + translation_part.strip() + end_spaces
                 log.info('do_translate - translation_parts', translation_parts)
-                translation = '||'.join(translation_parts)
+
+                target_list[count - 1] = '||'.join(translation_parts)
 
                 count += 1
                 ratio = len(source) / len(translation)
                 if ratio >= 1.5 or ratio <= 0.7:
                     log.warning('', f'Vertaling van {source} naar {translation} is onverwacht lang of kort')
 
+            translation_dict = dict(zip(source_list, target_list))
             cache.update(translation_dict)
             if string_cached:
                 cache.save()
 
         translations = [cache.get(text, text) for text in texts]
+        for s, t in zip(translations, texts):
+            sparts, tparts = s.split('||'), t.split('||')
+            if len(sparts) != len(tparts):
+                assert False, f'Number of parts in source ({len(sparts)}) does not match number of parts in translation ({len(tparts)})'
 
         return translations
 
