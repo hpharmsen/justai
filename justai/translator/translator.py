@@ -4,11 +4,21 @@ import pickle
 import re
 from pathlib import Path
 from lxml import etree
+from enum import Enum
 
 from justai.agent.agent import Agent
 from justai.tools.log import Log
 from justai.tools.prompts import get_prompt, set_prompt_file
 from justai.translator.languages import LANGUAGES
+
+
+# Translation options
+class Opt(Enum):
+    REPLACE_VARIABLES = 'replace_variables'  # Vervang %variabelen% voor vertaling en zet ze daarna terug
+    LOG = 'log'
+    STRING_CACHED = 'string_cached'
+    CONCATENATED = 'concatenated'  # Of strings zijn samengevoegd met || om ze samen te vertalen
+    PROMPT = 'prompt'  # Om een eigen prompt mee te geven.
 
 
 class Translator(Agent):
@@ -72,7 +82,8 @@ class Translator(Agent):
         log.info('translate - translatable_texts', translatable)
 
         # Vertaal de lijst van met || samengevoegde strings
-        translated = self.do_translate(translatable, language, string_cached=string_cached)
+        options = {Opt.STRING_CACHED: string_cached, Opt.LOG: True, Opt.CONCATENATED: True, Opt.REPLACE_VARIABLES: True}
+        translated = self.do_translate(translatable, language, options)
 
         # Zet nu de vertaalde delen terug in all_texts
         index_in_translated = 0
@@ -107,59 +118,78 @@ class Translator(Agent):
         updated_xml = etree.tostring(root, pretty_print=True, xml_declaration=True, encoding='UTF-8').decode('utf-8')
         return updated_xml
 
-    def do_translate(self, texts, language: str, string_cached=False):
-        log = self.logger
+    def do_translate(self, texts, language: str, options: dict = {}):
+        # Options can be:
+        # REPLACE_VARIABLES: True | False
+        # LOG: True | False
+        # STRING_CACHED: True | False
+        # CONCATENATED: True | False
 
-        assert all(is_translatable(text) for text in texts), "Not all translatable"  # !! Tijdelijk
-        cache = StringCache(language) if string_cached else {}
+        # assert all(is_translatable(text) for text in texts), "Not all translatable"  # !! Tijdelijk
+        cache = StringCache(language) if options.get(Opt.STRING_CACHED) else {}
         source_list = [text for text in texts if text not in cache]
 
         if source_list:
             variables = []
             source_str_no_vars = ''
             for index, text in enumerate(source_list):
-                text_no_vars, v = replace_variables_with_hash(text)
-                variables.extend(v)
+                if options.get(Opt.REPLACE_VARIABLES):
+                    text_no_vars, v = replace_variables_with_hash(text)
+                    variables.extend(v)
+                else:
+                    text_no_vars = text
                 source_str_no_vars += f'{index + 1} [[{text_no_vars}]]\n'
-            prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str_no_vars,
-                                count=len(source_list))
-            log.prompt('prompt', prompt)
-            target_str_no_vars = self.chat(prompt, return_json=False)
-            log.response('target_str_no_vars', target_str_no_vars)
-            target_str = replace_hash_with_variables(target_str_no_vars, variables)
-            log.info('do_translate - target_str', target_str)
+            given_prompt = options.get(Opt.PROMPT)
+            if given_prompt:
+                prompt = given_prompt.format(language=language, translate_str=source_str_no_vars,
+                                             count=len(source_list))
+            else:
+                prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str_no_vars,
+                                    count=len(source_list))
+            target_str_no_vars = self.chat(prompt, return_json=False, cached=False)
+            if options.get(Opt.REPLACE_VARIABLES):
+                target_str = replace_hash_with_variables(target_str_no_vars, variables)
+            else:
+                target_str = target_str_no_vars
+            if options.get(Opt.LOG):
+                log = self.logger
+                log.response('target_str_no_vars', target_str_no_vars)
+                log.prompt('prompt', prompt)
+                log.info('do_translate - target_str', target_str)
 
             target_list = [t.split(']]')[0] for t in target_str.split('[[')[1:]]
 
             count = 1
             for source, translation in zip(source_list, target_list):
 
-                source_parts = source.split('||')
-                translation_parts = translation.split('||')
-                log.info('do_translate - source_parts', source_parts)
-
-                # Check op het aantal onderdelen tussen ||. Dit moet gelijk zijn in de bron en de vertaling
-                sc = len(source_parts)
-                tc = len(translation_parts)
-                if tc != sc:
-                    log.warning('do_translate',
-                                f'Number of translated texts ({tc}) does not match number of source texts ({sc}). Correcting.')
-                    # Model krijgt het niet voor elkaar om een zin met evenveel delen terug te geven
-                    # We vertalen de stukjes los van elkaar.
-                    translation_parts = self.do_translate(source_parts, language, string_cached)
-                    # if tc < sc:
-                    #     translation_parts += [' '] * (sc - tc)
-                    # else:
-                    #     # Dit is een hack! Het model geeft kennelijk meer ||'s terug in dan in het origineel.
-                    #     # Dat breekt de code verderop. Daarom voegen we de laatste onderdelen samen.
-                    #     # Maar dat levert wel een onjuiste vertaling op.
-                    #     translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
+                if options.get(Opt.CONCATENATED):
+                    source_parts = source.split('||')
+                    translation_parts = translation.split('||')
+                    # Check op het aantal onderdelen tussen ||. Dit moet gelijk zijn in de bron en de vertaling
                     sc = len(source_parts)
                     tc = len(translation_parts)
                     if tc != sc:
-                        log.error('do_translate',
-                                  f'Number of translated texts ({tc}) still does not match number of source texts ({sc}). Correcting.')
-                    assert (tc == sc), 'Mismatch in number of parts, see log for info'
+                        log.warning('do_translate',
+                                    f'Number of translated texts ({tc}) does not match number of source texts ({sc}). Correcting.')
+                        # Model krijgt het niet voor elkaar om een zin met evenveel delen terug te geven
+                        # We vertalen de stukjes los van elkaar.
+                        translation_parts = self.do_translate(source_parts, language, options)
+                        # if tc < sc:
+                        #     translation_parts += [' '] * (sc - tc)
+                        # else:
+                        #     # Dit is een hack! Het model geeft kennelijk meer ||'s terug in dan in het origineel.
+                        #     # Dat breekt de code verderop. Daarom voegen we de laatste onderdelen samen.
+                        #     # Maar dat levert wel een onjuiste vertaling op.
+                        #     translation_parts = translation_parts[:sc - 1] + [' '.join(translation_parts[sc - 1:])]
+                        sc = len(source_parts)
+                        tc = len(translation_parts)
+                        if tc != sc:
+                            log.error('do_translate',
+                                      f'Number of translated texts ({tc}) still does not match number of source texts ({sc}). Correcting.')
+                        assert (tc == sc), 'Mismatch in number of parts, see log for info'
+                else:
+                    source_parts = [source]
+                    translation_parts = [translation]
 
                 # Zorg dat de vertaling dezelfde whitespace aan het begin en eind heeft als de bron
                 for i, (source_part, translation_part) in enumerate(zip(source_parts, translation_parts)):
@@ -167,27 +197,34 @@ class Translator(Agent):
                         start_spaces = (len(source_part) - len(source_part.lstrip(' '))) * ' '
                         end_spaces = (len(source_part) - len(source_part.rstrip(' '))) * ' '
                         translation_parts[i] = start_spaces + translation_part.strip() + end_spaces
-                log.info('do_translate - translation_parts', translation_parts)
 
                 target_list[count - 1] = '||'.join(translation_parts)
 
                 count += 1
-                ratio = len(source) / len(translation)
-                if ratio >= 1.5 or ratio <= 0.7:
-                    log.warning('', f'Vertaling van {source} naar {translation} is onverwacht lang of kort')
+
+                if options.get(Opt.LOG):
+                    ratio = len(source) / len(translation)
+                    if ratio >= 1.5 or ratio <= 0.7:
+                        log.warning('', f'Vertaling van {source} naar {translation} is onverwacht lang of kort')
 
             translation_dict = dict(zip(source_list, target_list))
             cache.update(translation_dict)
-            if string_cached:
+            if options.get(Opt.STRING_CACHED):
                 cache.save()
 
         translations = [cache.get(text, text) for text in texts]
-        for s, t in zip(translations, texts):
-            sparts, tparts = s.split('||'), t.split('||')
-            if len(sparts) != len(tparts):
-                assert False, f'Number of parts in source ({len(sparts)}) does not match number of parts in translation ({len(tparts)})'
+
+        if options.get(Opt.CONCATENATED):
+            for s, t in zip(translations, texts):
+                sparts, tparts = s.split('||'), t.split('||')
+                if len(sparts) != len(tparts):
+                    assert False, f'Number of parts in source ({len(sparts)}) does not match number of parts in translation ({len(tparts)})'
 
         return translations
+
+    def translate_dict(self, text_dict, language: str, options):
+        return {k: v for k, v in zip(text_dict.keys(),
+                                     self.do_translate(list(text_dict.values()), language, options))}
 
 
 def replace_variables_with_hash(text):

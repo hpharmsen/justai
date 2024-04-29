@@ -44,8 +44,14 @@ class Log:
                                     title TEXT,
                                     value TEXT,
                                     logtype VARCHAR(10))''')
-        self.cursor.execute("DELETE FROM log WHERE timestamp < datetime('now', ? || ' hours')", (-log_retention_hours,))
-        self.conn.commit()
+        try:
+            self.cursor.execute("DELETE FROM log WHERE timestamp < datetime('now', ? || ' hours')", (-log_retention_hours,))
+        except sqlite3.OperationalError:
+            pass
+        try:
+            self.conn.commit()
+        except:
+            pass # Ignore errors when the log is closed
 
     def write(self, title, text, logtype='default'):
         if not isinstance(text, str):
@@ -54,7 +60,10 @@ class Log:
             except Exception:
                 text = str(text)
         self.conn.execute('INSERT INTO log (title, value, logtype) VALUES (?, ?, ?)', (title, text, logtype))
-        self.conn.commit()
+        try:
+            self.conn.commit()
+        except:
+            pass # Ignore errors when the log is closed
         print('\n' + title)
         color_print(text, COLORS[logtype])
 
