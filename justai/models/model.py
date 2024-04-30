@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
 
 
+class OverloadedException(Exception):
+    pass
+
+
 class Model(ABC):
 
     @abstractmethod

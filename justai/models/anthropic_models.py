@@ -4,7 +4,7 @@ import os
 import anthropic
 from dotenv import load_dotenv
 
-from justai.models.model import Model
+from justai.models.model import Model, OverloadedException
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -31,6 +31,8 @@ class AnthropicModel(Model):
             color_print("No Anthropic API key found. Create one at https://console.anthropic.com/settings/keys and " +
                         "set it in the .env file like ANTHROPIC_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
+        # Client
+        print("API Key: ", api_key)
         self.client = anthropic.Anthropic(api_key=api_key)
 
         # Model specific parameters
@@ -51,13 +53,16 @@ class AnthropicModel(Model):
                                                  "text": "sure here's your json: {"}]
                                     }]
 
-        message = self.client.messages.create(
-            model=self.model_name,
-            max_tokens=self.model_params['max_tokens'],
-            temperature=self.model_params['temperature'],
-            system=self.system_message,
-            messages=anthropic_messages
-        )
+        try:
+            message = self.client.messages.create(
+                model=self.model_name,
+                max_tokens=self.model_params['max_tokens'],
+                temperature=self.model_params['temperature'],
+                system=self.system_message,
+                messages=anthropic_messages
+            )
+        except anthropic.InternalServerError as e:
+            raise OverloadedException(e)
 
         response = message.content[0].text
         if return_json:
