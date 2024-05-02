@@ -1,4 +1,8 @@
-from llama_cpp import Llama
+try:
+    from llama_cpp import Llama
+except ImportError:
+    raise ImportError("If you want to use Llama models with justai run `pip install justai[llama]`")
+
 
 from justai.models.model import Model
 

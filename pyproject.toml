@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "3.2.12"
+version = "3.3.0"
 description = "Makes working with OpenAI's GPT API and other LLM's super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
@@ -14,6 +14,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["ChatGPT", "GPT4", "GPT3.5", "api", "Claude", "Anthropic", "Lllama"]
+requires-python = ">=3.10"
+
+
 dependencies = [
     "openai",
     "tenacity",
@@ -23,13 +26,12 @@ dependencies = [
     "requests",
     "tiktoken",
     "lxml",
-    "llama-cpp-python",
     "anthropic"
 ]
-requires-python = ">=3.10"
 
 [project.optional-dependencies]
 dev = ["black", "pytest", "build", "twine", "nox"]
+llama = ["llama-cpp-python"]
 
 [project.urls]
 Homepage = "https://github.com/hpharmsen/justai"
