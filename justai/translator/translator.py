@@ -124,6 +124,7 @@ class Translator(Agent):
         # LOG: True | False
         # STRING_CACHED: True | False
         # CONCATENATED: True | False
+        # PROMPT = 'prompt'  # Om een eigen prompt mee te geven.
 
         # assert all(is_translatable(text) for text in texts), "Not all translatable"  # !! Tijdelijk
         cache = StringCache(language) if options.get(Opt.STRING_CACHED) else {}
