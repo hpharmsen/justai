@@ -25,5 +25,9 @@ class Model(ABC):
         pass
 
     @abstractmethod
+    def chat_async(self, messages: list[dict]) -> str:
+        pass
+
+    @abstractmethod
     def token_count(self, text: str) -> int:
         pass

@@ -84,6 +84,12 @@ class Agent:
         self.messages.append(Message('assistant', text))
         self.last_response_time = time.time() - start_time
         return text
+    
+    async def chat_async(self, prompt):
+        self.messages.append(Message('user', prompt))
+        for answer_text in self.model.chat_async(messages=self.get_messages()): 
+            if answer_text:
+                yield answer_text
 
     def after_response(self):
         # content is in messages[-1]['completion']['choices'][0]['message']['content']

@@ -18,7 +18,7 @@ class OpenAIModel(Model):
 
         # Authentication
         if "OPENAI_API_KEY" in params:
-            api_key = params["OPENAI_API_KEY"]
+            openai.api_key = params["OPENAI_API_KEY"]
         else:
             if not os.getenv("OPENAI_API_KEY"):
                 load_dotenv()  # Load the .env file into the environment
@@ -82,18 +82,7 @@ class OpenAIModel(Model):
         last_error = None
         for _ in range(max_retries):
             try:
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=self.model_params['temperature'],
-                    max_tokens=self.model_params['max_tokens'],
-                    n=self.model_params['n'],
-                    top_p=self.model_params['top_p'],
-                    frequency_penalty=self.model_params['frequency_penalty'],
-                    presence_penalty=self.model_params['presence_penalty'],
-                    stop=self.model_params['stop'],
-                    response_format={"type": "json_object"} if return_json else NOT_GIVEN,
-                )
+                completion = self.completion(messages, return_json)
                 message_text = completion.choices[0].message.content
                 input_token_count = completion.usage.prompt_tokens
                 output_token_count = completion.usage.completion_tokens
@@ -118,6 +107,26 @@ class OpenAIModel(Model):
 
         text = json.loads(message_text) if return_json else message_text
         return text, input_token_count, output_token_count
+    
+    def chat_async(self, messages: list[dict]):
+        for item in self.completion(messages, stream=True):
+            if hasattr(item.choices[0].delta, "content"):
+                yield item.choices[0].delta.content
+               
+    def completion(self, messages: list[dict], return_json: bool = False, stream: bool=False):
+        return self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=self.model_params['temperature'],
+            max_tokens=self.model_params['max_tokens'],
+            n=self.model_params['n'],
+            top_p=self.model_params['top_p'],
+            frequency_penalty=self.model_params['frequency_penalty'],
+            presence_penalty=self.model_params['presence_penalty'],
+            stop=self.model_params['stop'],
+            response_format={"type": "json_object"} if return_json else NOT_GIVEN,
+            stream = stream
+        )
 
     def token_count(self, text: str) -> int:
         encoding = tiktoken.encoding_for_model(self.model_name)
