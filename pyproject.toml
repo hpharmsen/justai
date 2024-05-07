@@ -18,6 +18,7 @@ requires-python = ">=3.10"
 
 
 dependencies = [
+    "justdays",
     "openai",
     "tenacity",
     "python-dateutil",
