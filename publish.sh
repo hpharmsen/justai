@@ -1,3 +1,4 @@
+start_time=$(date +%s)
 pip install --upgrade pip
 pip install twine build
 /bin/rm -f dist/*
@@ -7,6 +8,9 @@ twine upload dist/*
 git commit -v -a -m "publish `date`"
 git tag -a $VERSION -m "version $VERSION"
 git push origin $VERSION
+duration=$(($(date +%s) - start_time))
+echo "${GREEN}Published in $duration secs${NC}"
+echo ""
 echo "run:"
 echo "pip install git+https://github.com/hpharmsen/justai@$VERSION"
 echo "of:"
