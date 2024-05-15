@@ -308,6 +308,9 @@ class StringCache:
         key = self.get_key(source)
         return key in self.cache
 
+    def __len__(self):
+        return len(self.cache)
+
     def update(self, translation_dict):
         for source, translation in translation_dict.items():
             self.set(source, translation)
