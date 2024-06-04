@@ -64,9 +64,12 @@ class CachDB:
         if not valid_until:
             valid_until = str(Day().plus_months(1))
         value, tokens_in, tokens_out = llm_response
-        self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
-                                VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
-        self.conn.commit()
+        try:
+            self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
+                                    VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
+            self.conn.commit()
+        except sqlite3.ProgrammingError:
+            pass # Something went wrong. Whatever, just don't add to the cache but never crash
 
     def read(self, key):
         self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
@@ -75,8 +78,11 @@ class CachDB:
             return result[1], result[2], result[3]
 
     def clear(self):
-        self.cursor.execute('DELETE FROM cache')
-        self.conn.commit()
+        try:
+            self.cursor.execute('DELETE FROM cache')
+            self.conn.commit()
+        except sqlite3.ProgrammingError:
+            pass # Something went wrong. Whatever, just don't delete the cache but never crash
 
     def close(self):
         self.conn.close()
