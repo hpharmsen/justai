@@ -33,7 +33,7 @@ class Log:
         return cls._instance
 
     def __init__(self):
-        global log_dir, log_file, log_retention_hours
+        global log_dir, log_file
 
         dir_ = os.getenv('LOG_DIR', log_dir) or Path(__file__).resolve().parent
         self.log_path = os.path.join(dir_, log_file)
@@ -44,14 +44,26 @@ class Log:
                                     title TEXT,
                                     value TEXT,
                                     logtype VARCHAR(10))''')
+        self.conn.commit()
+        self.cleanup_logs()
+
+    def cleanup_logs(self):
+        global log_retention_hours
+
+        sql = "DELETE FROM log WHERE timestamp < datetime('now', ? || ' hours')"
+        parameters = (f'-{log_retention_hours}',)
         try:
-            self.cursor.execute("DELETE FROM log WHERE timestamp < datetime('now', ? || ' hours')", (-log_retention_hours,))
-        except sqlite3.OperationalError:
-            pass
-        try:
-            self.conn.commit()
-        except:
-            pass # Ignore errors when the log is closed
+            # Create a new cursor for the delete operation
+            with self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute(sql, parameters)
+                self.conn.commit()
+        except sqlite3.OperationalError as e:
+            print(f"OperationalError: {e}")
+        except sqlite3.ProgrammingError as e:
+            print(f"ProgrammingError: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
     def write(self, title, text, logtype='default'):
         if not isinstance(text, str):
