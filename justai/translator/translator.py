@@ -19,7 +19,7 @@ class Opt(Enum):
     STRING_CACHED = 'string_cached'
     CONCATENATED = 'concatenated'  # Of strings zijn samengevoegd met || om ze samen te vertalen
     PROMPT = 'prompt'  # Om een eigen prompt mee te geven.
-
+    GLOSSARY = 'glossary'  # Om een glossary mee te geven.
 
 class Translator(Agent):
 
@@ -57,8 +57,9 @@ class Translator(Agent):
         if self.version not in ['1.2', '2.0']:
             raise ValueError(f'Unsupported XLIFF version: {self.version}')
 
-    def translate(self, language: str, string_cached: bool = False) -> str:
+    def translate(self, language: str, glossary: [str|None] = None, string_cached: bool = False) -> str:
         log = self.logger
+
         parser = etree.XMLParser(ns_clean=True)
         root = etree.fromstring(self.xml.encode('utf-8'), parser=parser)
         namespaces = {'ns': f'urn:oasis:names:tc:xliff:document:{self.version}'}
@@ -82,7 +83,8 @@ class Translator(Agent):
         log.info('translate - translatable_texts', translatable)
 
         # Vertaal de lijst van met || samengevoegde strings
-        options = {Opt.STRING_CACHED: string_cached, Opt.LOG: True, Opt.CONCATENATED: True, Opt.REPLACE_VARIABLES: True}
+        options = {Opt.STRING_CACHED: string_cached, Opt.LOG: True, Opt.CONCATENATED: True, Opt.REPLACE_VARIABLES: True,
+                   Opt.GLOSSARY: glossary}
         translated = self.do_translate(translatable, language, options)
 
         # Zet nu de vertaalde delen terug in all_texts
@@ -147,6 +149,11 @@ class Translator(Agent):
             else:
                 prompt = get_prompt('TRANSLATE_MULTIPLE', language=language, translate_str=source_str_no_vars,
                                     count=len(source_list))
+            glossary = options.get(Opt.GLOSSARY)
+            if glossary:
+                prompt += '\n\n**Woordenboek:**\nBinnen de context van deze tekst, gelden de volgende vertalingen:\n' + \
+                          str(glossary) + '\n\nHou hier rekening mee in je vertalingen.'
+
             target_str_no_vars = self.chat(prompt, return_json=False, cached=False)
             if options.get(Opt.REPLACE_VARIABLES):
                 target_str = replace_hash_with_variables(target_str_no_vars, variables)
@@ -155,6 +162,7 @@ class Translator(Agent):
             if options.get(Opt.LOG):
                 log = self.logger
                 log.response('target_str_no_vars', target_str_no_vars)
+                log.prompt('system', self.system_message)
                 log.prompt('prompt', prompt)
                 log.info('do_translate - target_str', target_str)
 
