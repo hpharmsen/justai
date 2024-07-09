@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from justai.agent.message import Message
+
 
 class OverloadedException(Exception):
     pass
@@ -21,11 +23,11 @@ class Model(ABC):
         setattr(self, key, value)
 
     @abstractmethod
-    def chat(self, messages: list[dict], return_json: bool, max_retries: int = 3) -> tuple[[str | object], int, int]:
+    def chat(self, messages: list[Message], return_json: bool, max_retries: int = 3) -> tuple[[str | object], int, int]:
         pass
 
     @abstractmethod
-    def chat_async(self, messages: list[dict]) -> str:
+    def chat_async(self, messages: list[Message]) -> str:
         pass
 
     @abstractmethod

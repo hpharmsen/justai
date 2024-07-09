@@ -24,7 +24,7 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 from justai import Agent
 
 if __name__ == "__main__":
-    agent = Agent('gpt-3.5-turbo')
+    agent = Agent('gpt-4o')
     agent.system = "You are a movie critic. I feed you with movie titles and you give me a review in 50 words."
 
     message = agent.chat("Forrest Gump")
@@ -41,8 +41,8 @@ movie that still resonates with audiences today.
 ## Other models
 Justai can use different types of models:
 
-**OpenAI** models like GPT-3.5, GPT-4-turbo-preview\
-**Anthropic** models like claude-3-opus-20240229 and claude-3-sonnet-20240229\
+**OpenAI** models like GPT-3.5, GPT-4-turbo and GPT-4o\
+**Anthropic** models like the Claude-3 models\
 **Open source** models like Llama2-7b or Mixtral-8x7b-instruct as long as they are in the GGUF format.
 
 The provider is chosen depending on the model name. E.g. if a model name starts with gpt, OpenAI is chosen as the provider.
@@ -92,7 +92,6 @@ In the interactive mode you can use these special commands which each start with
 | :max_tokens _800_                 | The maximum number of tokens to generate in the completion          |
 | :temperature _0.9_                | What sampling temperature to use, between 0 and 2                   |
 | :n _1_                            | Specifies the number answers given                                  |
-| :stop _["\n", " Human:", " AI:"]_ | Up to 4 sequences where the API will stop generating further tokens |
 | :bye                              | quits but saves the conversation first                              |
 | :exit or :quit                    | quits the program                                                   |
 

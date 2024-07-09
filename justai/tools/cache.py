@@ -6,8 +6,10 @@ from pathlib import Path
 
 from justdays import Day
 
+from justai.agent.message import Message
 
-def cached_llm_response(model, messages, return_json, use_cache=True, max_retries=None) \
+
+def cached_llm_response(model, messages: list[Message], return_json: bool, use_cache=True, max_retries=None) \
         -> tuple[[str | object], int, int]:
     if not use_cache:
         return model.chat(messages, return_json, max_retries)

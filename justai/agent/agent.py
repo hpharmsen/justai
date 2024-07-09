@@ -66,27 +66,28 @@ class Agent:
     def reset(self):
         self.messages = []
 
-    def get_messages(self) -> list[dict]:
-        result = [{'role': 'system', 'content': self.system}]
-        for m in self.messages[-self.message_memory:]:
-            message = {'role': m.role, 'content': m.content}
-            result.append(message)
-        return result
+    def get_messages(self) -> list[Message]:
+        return [Message('system', self.system)] + self.messages[-self.message_memory:]
+        # result = [{'role': 'system', 'content': self.system}]
+        # for m in self.messages[-self.message_memory:]:
+        #     message = {'role': m.role, 'content': m.content}
+        #     result.append(message)
+        # return result
 
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def chat(self, prompt, return_json=False, cached=True):
+    def chat(self, prompt, image: [str|bytes|None] = None, return_json=False, cached=True):
         start_time = time.time()
-        self.messages.append(Message('user', prompt))
+        self.messages.append(Message('user', prompt, image))
         model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, use_cache=cached)
         text, self.input_token_count, self.output_token_count = model_response
         self.messages.append(Message('assistant', text))
         self.last_response_time = time.time() - start_time
         return text
     
-    async def chat_async(self, prompt):
-        self.messages.append(Message('user', prompt))
+    async def chat_async(self, prompt, image: [str|bytes|None] = None):
+        self.messages.append(Message('user', prompt, image))
         for answer_text in self.model.chat_async(messages=self.get_messages()): 
             if answer_text:
                 yield answer_text

@@ -1,12 +1,15 @@
+import base64
 import json
 import os
 
+import httpx
 import openai
 import tiktoken
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, RateLimitError, OpenAI
 from openai._types import NOT_GIVEN
 
+from justai.agent.message import Message
 from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR1, DEBUG_COLOR2, SYSTEM_COLOR
 from justai.models.model import Model
 
@@ -50,13 +53,8 @@ class OpenAIModel(Model):
 
         # How many completions to generate for each prompt.
         # Because this parameter generates many completions, it can quickly consume your token quota.
-        # Use carefully and ensure that you have reasonable settings for max_tokens and stop.
+        # Use carefully and ensure that you have reasonable settings for max_tokens.
         self.model_params['n'] = params.get('n', 1)
-
-        # Up to 4 sequences where the API will stop generating further tokens.
-        # The returned text will not contain the stop sequence.
-        # Example: [" Human:", " AI:"]
-        self.model_params['stop'] = params.get('stop')
 
         # Number between -2.0 and 2.0.
         # Positive values penalize new tokens based on whether they appear in the text so far,
@@ -70,7 +68,7 @@ class OpenAIModel(Model):
         # Defaults to 0
         self.model_params['frequency_penalty'] = params.get('frequency_penalty', 0)
 
-    def chat(self, messages: list[dict], return_json: bool, use_cache: bool = False, max_retries=None):
+    def chat(self, messages: list[Message], return_json: bool, use_cache: bool = False, max_retries=None):
         if max_retries is None:
             max_retries = 3
 
@@ -108,26 +106,47 @@ class OpenAIModel(Model):
         text = json.loads(message_text) if return_json else message_text
         return text, input_token_count, output_token_count
     
-    def chat_async(self, messages: list[dict]):
+    def chat_async(self, messages: list[Message]):
         for item in self.completion(messages, stream=True):
             if hasattr(item.choices[0].delta, "content"):
                 yield item.choices[0].delta.content
                
-    def completion(self, messages: list[dict], return_json: bool = False, stream: bool=False):
+    def completion(self, messages: list[Message], return_json: bool = False, stream: bool=False):
+        transformed_messages = self.transform_messages(messages)
         return self.client.chat.completions.create(
             model=self.model_name,
-            messages=messages,
+            messages=transformed_messages,
             temperature=self.model_params['temperature'],
             max_tokens=self.model_params['max_tokens'],
             n=self.model_params['n'],
             top_p=self.model_params['top_p'],
             frequency_penalty=self.model_params['frequency_penalty'],
             presence_penalty=self.model_params['presence_penalty'],
-            stop=self.model_params['stop'],
             response_format={"type": "json_object"} if return_json else NOT_GIVEN,
             stream = stream
         )
+    
+    def transform_messages(self, messages: list[Message]) -> list[dict]:
+        result = [create_openai_message(msg) for msg in messages]
+        return result
 
     def token_count(self, text: str) -> int:
         encoding = tiktoken.encoding_for_model(self.model_name)
         return len(encoding.encode(text))
+
+
+def create_openai_message(message):
+    content = [{"type": "text", "text": message.content}]
+    if message.image:
+        if message.type == 'image_url':
+            img = httpx.get(message.image).content
+        else:
+            img = message.image
+        img_base64 = base64.b64encode(img).decode("utf-8")
+        content = [
+            {
+                "type": "image_url",
+                "image_url": {'url':f"data:image/jpeg;base64,{img_base64}"}
+            }
+        ] + content
+    return {"role": message.role, "content": content}
