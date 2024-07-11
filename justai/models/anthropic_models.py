@@ -70,7 +70,7 @@ class AnthropicModel(Model):
 
         response = message.content[0].text
         if return_json:
-            response = json.loads('{' + response)
+            response = json.loads('{' + response, strict=False)
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
         return response, input_tokens, output_tokens
@@ -98,13 +98,14 @@ class AnthropicModel(Model):
     def token_count(self, text: str) -> int:
         return -1  # Not implemented
 
-
     def transform_messages(self, messages: list[Message], return_json: bool) -> list[dict]:
         # Anthropic does not allow messages to start with an assistant message
-        msgs = messages[1:] if messages and messages[0].role == 'assistant' else messages[:]
-        if return_json:
+        msgs = [msg for msg in messages if msg.role != 'system']
+        if msgs and msgs[0].role == 'assistant':
+            msgs = msgs[1:]
+        if msgs and return_json:
             msgs += [Message('assistant', 'sure here\'s your json: {')]
-        result = [create_anthropic_message(msg) for msg in msgs if msg.role != 'system']
+        result = [create_anthropic_message(msg) for msg in msgs]
         return result
 
 
@@ -117,14 +118,13 @@ def create_anthropic_message(message: Message):
             img = message.image
         img_base64 = base64.b64encode(img).decode("utf-8")
         content = [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": img_base64,
-                }
-            }
-        ] + content
+                      {
+                          "type": "image",
+                          "source": {
+                              "type": "base64",
+                              "media_type": "image/jpeg",
+                              "data": img_base64,
+                          }
+                      }
+                  ] + content
     return {"role": message.role, "content": content}
-        
