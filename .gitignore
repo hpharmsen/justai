@@ -19,3 +19,5 @@ justai/saves
 /justai/tools/justai_log.db
 /upsettle.sh
 /upelectude.sh
+/qodana.yaml
+/examples/structured_output.py

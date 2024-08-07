@@ -77,14 +77,15 @@ class Agent:
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def chat(self, prompt, image: [str|bytes|None] = None, return_json=False, cached=True):
+    def chat(self, prompt, *, image: [str|bytes|None] = None, return_json=False, response_format=None, cached=True):
         start_time = time.time()
         self.messages.append(Message('user', prompt, image))
-        model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, use_cache=cached)
-        text, self.input_token_count, self.output_token_count = model_response
-        self.messages.append(Message('assistant', text))
+        model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, 
+                                             response_format=response_format, use_cache=cached)
+        result, self.input_token_count, self.output_token_count = model_response
+        self.messages.append(Message('assistant', str(result)))
         self.last_response_time = time.time() - start_time
-        return text
+        return result
     
     async def chat_async(self, prompt, image: [str|bytes|None] = None):
         self.messages.append(Message('user', prompt, image))

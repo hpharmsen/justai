@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "3.5.2"
-description = "Makes working with OpenAI's GPT API and other LLM's super easy"
+version = "3.6.0"
+description = "Makes working with LLM like OpenAI, Anthropic and Open source models super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
 license = { file = "LICENSE" }
@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["ChatGPT", "GPT4", "GPT3.5", "api", "Claude", "Anthropic", "Lllama"]
+keywords = ["ChatGPT", "GPT4o", "GPT4", "api", "Claude", "Anthropic", "Lllama"]
 requires-python = ">=3.10"
 
 

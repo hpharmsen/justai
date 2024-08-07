@@ -23,7 +23,8 @@ class Model(ABC):
         setattr(self, key, value)
 
     @abstractmethod
-    def chat(self, messages: list[Message], return_json: bool, max_retries: int = 3) -> tuple[[str | object], int, int]:
+    def chat(self, messages: list[Message], return_json: bool, response_format, max_retries: int = 3) \
+            -> tuple[[str | object], int, int]:
         pass
 
     @abstractmethod

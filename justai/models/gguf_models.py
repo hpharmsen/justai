@@ -26,7 +26,10 @@ class GuffModel(Model):
         self.model_params['temperature'] = params.get('temperature', 0.8)
         self.model_params['n_batch'] = params.get('n_batch', 512)
 
-    def chat(self, messages: list[dict], return_json: bool, use_cache: bool = False, max_retries = None) -> tuple[[str | object], int, int]:
+    def chat(self, messages: list[dict], return_json: bool, response_format, use_cache: bool = False, max_retries = None) -> tuple[[str | object], int, int]:
+        if response_format:
+            raise NotImplementedError("GUFF models do not support response_format")
+
         system = messages[0]['content']
         message = f"<s>[INST] <<SYS>>{system}<</SYS>>{messages[-1]['content']}[/INST]"
         output = self.client(message, echo=True, stream=False)

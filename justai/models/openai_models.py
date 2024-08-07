@@ -8,6 +8,7 @@ import tiktoken
 from dotenv import load_dotenv
 from openai import APIConnectionError, APIError, RateLimitError, OpenAI
 from openai._types import NOT_GIVEN
+from pydantic import BaseModel
 
 from justai.agent.message import Message
 from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR1, DEBUG_COLOR2, SYSTEM_COLOR
@@ -68,7 +69,7 @@ class OpenAIModel(Model):
         # Defaults to 0
         self.model_params['frequency_penalty'] = params.get('frequency_penalty', 0)
 
-    def chat(self, messages: list[Message], return_json: bool, use_cache: bool = False, max_retries=None):
+    def chat(self, messages: list[Message], return_json: bool, response_format, use_cache: bool = False, max_retries=None):
         if max_retries is None:
             max_retries = 3
 
@@ -80,7 +81,7 @@ class OpenAIModel(Model):
         last_error = None
         for _ in range(max_retries):
             try:
-                completion = self.completion(messages, return_json)
+                completion = self.completion(messages, return_json, response_format)
                 message_text = completion.choices[0].message.content
                 input_token_count = completion.usage.prompt_tokens
                 output_token_count = completion.usage.completion_tokens
@@ -103,28 +104,48 @@ class OpenAIModel(Model):
         if self.debug:
             color_print(f"{message_text}", color=DEBUG_COLOR2)
 
-        text = json.loads(message_text) if return_json else message_text
-        return text, input_token_count, output_token_count
+        if response_format and completion.choices[0].message.parsed:
+            result = completion.choices[0].message.parsed
+        else:
+            result = json.loads(message_text) if return_json else message_text
+        return result, input_token_count, output_token_count
     
     def chat_async(self, messages: list[Message]):
         for item in self.completion(messages, stream=True):
             if hasattr(item.choices[0].delta, "content"):
                 yield item.choices[0].delta.content
                
-    def completion(self, messages: list[Message], return_json: bool = False, stream: bool=False):
+    def completion(self, messages: list[Message], return_json: bool=False, response_format: BaseModel=None, 
+                   stream: bool=False):
         transformed_messages = self.transform_messages(messages)
-        return self.client.chat.completions.create(
-            model=self.model_name,
-            messages=transformed_messages,
-            temperature=self.model_params['temperature'],
-            max_tokens=self.model_params['max_tokens'],
-            n=self.model_params['n'],
-            top_p=self.model_params['top_p'],
-            frequency_penalty=self.model_params['frequency_penalty'],
-            presence_penalty=self.model_params['presence_penalty'],
-            response_format={"type": "json_object"} if return_json else NOT_GIVEN,
-            stream = stream
-        )
+        
+        if response_format:
+            if stream:
+                raise NotImplementedError("streaming is not supported with response_format")
+            return self.client.beta.chat.completions.parse(
+                model=self.model_name,
+                messages=transformed_messages,
+                temperature=self.model_params['temperature'],
+                max_tokens=self.model_params['max_tokens'],
+                n=self.model_params['n'],
+                top_p=self.model_params['top_p'],
+                frequency_penalty=self.model_params['frequency_penalty'],
+                presence_penalty=self.model_params['presence_penalty'],
+                response_format=response_format
+            )
+        else:
+            return self.client.chat.completions.create(
+                model=self.model_name,
+                messages=transformed_messages,
+                temperature=self.model_params['temperature'],
+                max_tokens=self.model_params['max_tokens'],
+                n=self.model_params['n'],
+                top_p=self.model_params['top_p'],
+                frequency_penalty=self.model_params['frequency_penalty'],
+                presence_penalty=self.model_params['presence_penalty'],
+                response_format={"type": "json_object"} if return_json else NOT_GIVEN,
+                stream=stream
+            )
     
     def transform_messages(self, messages: list[Message]) -> list[dict]:
         result = [create_openai_message(msg) for msg in messages]

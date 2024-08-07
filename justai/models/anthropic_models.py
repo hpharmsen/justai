@@ -52,8 +52,10 @@ class AnthropicModel(Model):
         self.model_params['max_tokens'] = params.get('max_tokens', 800)
         self.model_params['temperature'] = params.get('temperature', 0.8)
 
-    def chat(self, messages: list[Message], return_json: bool, max_retries=None, log=None) \
-            -> tuple[[str | object], int, int]:
+    def chat(self, messages: list[Message], return_json: bool, response_format, max_retries=None, log=None) \
+             -> tuple[[str | object], int, int]:
+        if response_format:
+            raise NotImplementedError("Anthropic does not support response_format")
 
         antr_messages = self.transform_messages(messages, return_json)
         try:
