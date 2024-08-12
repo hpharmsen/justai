@@ -85,7 +85,7 @@ python examples/vision.py
 ```
 Pass images to the model. An image can either be:
 * An url to an image
-* The raw jpeg data
+* The raw image data
 * A PIL image
 
 ### Asynchronous use

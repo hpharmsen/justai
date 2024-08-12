@@ -27,7 +27,7 @@ import anthropic
 from dotenv import dotenv_values
 
 from justai.agent.message import Message
-from justai.models.model import Model, OverloadedException
+from justai.models.model import Model, OverloadedException, identify_image_format_from_base64
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -120,14 +120,18 @@ def transform_messages(messages: list[Message], return_json: bool) -> list[dict]
 def create_anthropic_message(message: Message):
     content = [{"type": "text", "text": message.content}]
     if message.image:
+        base64img = message.to_base64_image()
+        mime_type= identify_image_format_from_base64(base64img)
         content = [
             {
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": message.to_base64_image(),
+                    "media_type": mime_type,
+                    "data": base64img,
                 },
             }
         ] + content
     return {"role": message.role, "content": content}
+
+

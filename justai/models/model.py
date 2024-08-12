@@ -1,3 +1,4 @@
+import base64
 from abc import ABC, abstractmethod
 
 from justai.agent.message import Message
@@ -34,3 +35,28 @@ class Model(ABC):
     @abstractmethod
     def token_count(self, text: str) -> int:
         pass
+
+
+def identify_image_format_from_base64(encoded_data: str) -> str:
+    raw_data = base64.b64decode(encoded_data)[:8]
+
+    # Magic numbers and corresponding mime types for each image format
+    formats = {
+        b'\xff\xd8\xff': 'image/jpeg',  # JPEG files
+        b'\x89PNG\r\n\x1a\n': 'image/png',  # PNG files
+        b'GIF87a': 'image/gif',  # GIF files (version 87a)
+        b'GIF89a': 'image/gif',  # GIF files (version 89a)
+        b'BM': 'image/bmp',  # BMP files
+        b'II*\x00': 'image/tiff',  # TIFF files (little endian)
+        b'MM\x00*': 'image/tiff',  # TIFF files (big endian)
+        b'RIFF': 'image/webp',  # WebP files (part of RIFF)
+        b'<svg': 'image/svg+xml',  # SVG files (this is a rough check; SVG is a text-based format)
+        b'<!DOCT': 'image/svg+xml',  # SVG files with DOCTYPE declaration
+    }
+
+    # Check the raw data against known magic numbers
+    for magic, mime_type in formats.items():
+        if raw_data.startswith(magic):
+            return mime_type
+
+    return 'unknown/unknown'
