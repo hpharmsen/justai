@@ -10,13 +10,14 @@ Current version: 3.6.0
 ~~~~bash
 python -m pip install justai
 ~~~~
-2. Create an OpenAI acccount (for GPT3.5 / 4) [here](https://platform.openai.com/) or an Anthropic account [here](https://console.anthropic.com/)
-3. Create an OpenAI api key (for Claude) [here](https://platform.openai.com/account/api-keys) or an Anthropic api key [here](https://console.anthropic.com/settings/keys)
+2. Create an OpenAI acccount (for GPT3.5 / 4) [here](https://platform.openai.com/) or an Anthropic account [here](https://console.anthropic.com/) or a Google account
+3. Create an OpenAI api key (for Claude) [here](https://platform.openai.com/account/api-keys) or an Anthropic api key [here](https://console.anthropic.com/settings/keys) or a Google api key [here](https://aistudio.google.com/app/apikey)
 4. Create a .env file with the following content:
 ```bash
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_ORGANIZATION=your-openai-organization-id
 ANTHROPIC_API_KEY=your-anthropic-api-key
+GOOGLE_API_KEY=your-google-api-key
 ```
 ## Usage
 
@@ -43,6 +44,7 @@ Justai can use different types of models:
 
 **OpenAI** models like GPT-3.5, GPT-4-turbo and GPT-4o\
 **Anthropic** models like the Claude-3 models\
+**Google** models like the Gemini models\
 **Open source** models like Llama2-7b or Mixtral-8x7b-instruct as long as they are in the GGUF format.
 
 The provider is chosen depending on the model name. E.g. if a model name starts with gpt, OpenAI is chosen as the provider.
@@ -60,18 +62,37 @@ python -m pip install -r requirements.txt
 ```bash
 python examples/basic.py
 ```
-Starts an interactive session. In the session you dan chat with GPT-4 or another model.
+Shows basic use of Justai
 
-### Returning json
+### Returning json or other types
 ```bash
 python examples/return_types.py
 ```
 You can specify a specific return type (like a list of dicts) for the completion. 
 This is useful when you want to extract structured data from the completion.
 
-To define a return type, just pass return_json=True to agent.chat().
+To return json, just pass return_json=True to agent.chat() and tell the model in the 
+prompt how you want your json to be structured.
 
+To define a specific return type you can use the return_type parameter.
+Currently this works with the Google models (pass a Python type definition, returns Json)
+and with OpenAI (pass a Pydatic type definition, returns a Pydantic model).\
 See the example code for more details.
+
+### Images
+```bash
+python examples/vision.py
+```
+Pass images to the model. An image can either be:
+* An url to an image
+* The raw jpeg data
+* A PIL image
+
+### Asynchronous use
+```bash
+python examples/async.py
+```
+Shows how to use Justai asynchronously.
 
 ### Interactive
 ```bash
@@ -79,7 +100,7 @@ python examples/interactive.py
 ```
 Starts an interactive session. In the session you dan chat with GPT-4 or another model.
 
-#### Special commands
+#### Special commands in interactive mode
 In the interactive mode you can use these special commands which each start with a colon:
 
 | Syntax                            | Description                                                         |

@@ -67,17 +67,12 @@ class Agent:
         self.messages = []
 
     def get_messages(self) -> list[Message]:
-        return [Message('system', self.system)] + self.messages[-self.message_memory:]
-        # result = [{'role': 'system', 'content': self.system}]
-        # for m in self.messages[-self.message_memory:]:
-        #     message = {'role': m.role, 'content': m.content}
-        #     result.append(message)
-        # return result
+        return self.messages[-self.message_memory:]
 
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def chat(self, prompt, *, image: [str|bytes|None] = None, return_json=False, response_format=None, cached=True):
+    def chat(self, prompt, *, image: [str | bytes | None] = None, return_json=False, response_format=None, cached=True):
         start_time = time.time()
         self.messages.append(Message('user', prompt, image))
         model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, 
@@ -87,7 +82,7 @@ class Agent:
         self.last_response_time = time.time() - start_time
         return result
     
-    async def chat_async(self, prompt, image: [str|bytes|None] = None):
+    async def chat_async(self, prompt, image: [str | bytes | None] = None):
         self.messages.append(Message('user', prompt, image))
         for answer_text in self.model.chat_async(messages=self.get_messages()): 
             if answer_text:
@@ -138,7 +133,7 @@ class Agent:
                     message.content += '\n' + line
             if message:
                 save_message(message)
-        print_message(Message('system', self.system()), 'system')
+        print_message(Message('system', self.system), 'system')
         for message in self.messages:
             print_message(message.text, message.role)
 

@@ -5,11 +5,8 @@ from dotenv import load_dotenv
 
 from justai import Agent
 
-MODEL = "gpt-3.5-turbo"
-
-
 async def chat(prompt):
-    agent = Agent(MODEL)
+    agent = Agent("gpt-3.5-turbo")
     async for item in agent.chat_async(prompt):
         yield item
             

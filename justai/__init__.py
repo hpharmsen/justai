@@ -13,7 +13,7 @@ if __name__ == '__main__':
     c = CommandHandler
     g = get_prompt
     s = set_prompt_file
-    a = add_prompt_file
-    l = Log
-    s = set_log_dir
+    apf = add_prompt_file
+    lg = Log
+    sld = set_log_dir
     

@@ -1,15 +1,14 @@
-python-dateutil
+anthropic
+google-generativeai  # Gemini
+httpx
+justdays
+llama-cpp-python  # For guff_models
+lxml==5.1.1  # for translator, vanaf 5.2.0 moet lxml_clean apart geïnstalleerd worden
 openai>=1.40.0
+packaging
+pillow
+pydantic
+python-dateutil
 python-dotenv
 rich
-tenacity
-setuptools
-packaging
-pip
-pytest
 tiktoken
-lxml==5.1.1 # for translator, vanaf 5.2.0 moet lxml_clean apart geïnstalleerd worden
-llama-cpp-python  # For guff_models
-anthropic
-justdays
-httpx

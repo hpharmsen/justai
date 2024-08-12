@@ -1,10 +1,16 @@
+import base64
+import io
 import json
 import re
+
+import httpx
+from PIL import Image
 
 
 class Message:
     """ Handles the completion as returned by GPT """
-    def __init__(self, role=None, content=None, image:[bytes|str]=None):
+
+    def __init__(self, role=None, content=None, image: [bytes | str] = None):
         self.role = role
         if isinstance(content, str):
             self.content = content
@@ -22,10 +28,12 @@ class Message:
             if isinstance(image, str) and is_image_url(image):
                 self.type = 'image_url'
             elif isinstance(image, bytes):
-                self.type = 'image'
+                self.type = 'image_data'
+            elif isinstance(image, Image.Image):
+                self.type = 'pil_image'
             else:
                 raise ValueError("Unknown content type in message. Must be image url or jpeg image.")
-   
+
     @classmethod
     def from_dict(cls, data: dict):
         message = cls()
@@ -49,7 +57,32 @@ class Message:
             if value is not None:
                 dictionary[key] = value
         return dictionary
-    
+
+    def to_base64_image(self):
+        match self.type:
+            case 'image_url':
+                img = httpx.get(self.image).content
+            case 'image_data':
+                img = self.image
+            case 'pil_image':
+                buffered = io.BytesIO()
+                self.image.save(buffered, format="jpeg")
+                img = buffered.getvalue()
+            case _:
+                raise ValueError(f"Unknown image type: {self.type}")
+        return base64.b64encode(img).decode("utf-8")
+
+    def to_pil_image(self):
+        match self.type:
+            case 'image_url':
+                return Image.open(io.BytesIO(httpx.get(self.image).content))
+            case 'image_data':
+                return Image.open(io.BytesIO(self.image))
+            case 'pil_image':
+                return self.image
+            case _:
+                raise ValueError(f"Unknown image type: {self.type}")
+
 
 def is_image_url(url):
     image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg')

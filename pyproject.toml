@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "3.6.0"
-description = "Makes working with LLM like OpenAI, Anthropic and Open source models super easy"
+version = "3.7.-1"
+description = "Makes working with LLMs like OpenAI GPT, Anthropic Claude, Google Gemini and Open source models super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
 license = { file = "LICENSE" }
@@ -18,16 +18,18 @@ requires-python = ">=3.10"
 
 
 dependencies = [
+    "anthropic",
+    "google-generativeai",
+    "httpx",
     "justdays",
+    "lxml",
     "openai",
-    "tenacity",
+    "pillow",
+    "pydantic",
     "python-dateutil",
     "python-dotenv",
     "rich",
-    "httpx",
-    "tiktoken",
-    "lxml",
-    "anthropic"
+    "tiktoken"
 ]
 
 [project.optional-dependencies]

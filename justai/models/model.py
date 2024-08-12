@@ -13,7 +13,7 @@ class Model(ABC):
     def __init__(self, model_name: str, params: dict, system_message: str):
         """ Model implemention should create attributes for all supported parameters """
         self.model_name = model_name
-        self.model_params = params # Specific parameters for specific models like temperature
+        self.model_params = params  # Specific parameters for specific models like temperature
         self.system_message = system_message
         self.debug = params.get('debug', False)
 

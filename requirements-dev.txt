@@ -1,0 +1,8 @@
+black
+build
+nox
+pip
+pytest
+setuptools
+twine
+wheel

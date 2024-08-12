@@ -13,5 +13,8 @@ class ModelFactory:
         elif model_name.startswith("claude"):
             from justai.models.anthropic_models import AnthropicModel
             return AnthropicModel(model_name, params=kwargs)
+        elif model_name.startswith("gemini"):
+            from justai.models.google_models import GoogleModel
+            return GoogleModel(model_name, params=kwargs)
         else:
             raise ValueError(f"Model {model_name} not supported")

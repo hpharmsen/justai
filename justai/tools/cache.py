@@ -71,7 +71,7 @@ class CachDB:
                                     VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
             self.conn.commit()
         except sqlite3.ProgrammingError:
-            pass # Something went wrong. Whatever, just don't add to the cache but never crash
+            pass  # Something went wrong. Whatever, just don't add to the cache but never crash
 
     def read(self, key):
         self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
@@ -84,7 +84,7 @@ class CachDB:
             self.cursor.execute('DELETE FROM cache')
             self.conn.commit()
         except sqlite3.ProgrammingError:
-            pass # Something went wrong. Whatever, just don't delete the cache but never crash
+            pass  # Something went wrong. Whatever, just don't delete the cache but never crash
 
     def close(self):
         self.conn.close()

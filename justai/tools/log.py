@@ -69,14 +69,15 @@ class Log:
         if not isinstance(text, str):
             try:
                 text = json.dumps(text, indent=4)
-            except Exception:
+            except:
                 text = str(text)
         self.conn.execute('INSERT INTO log (title, value, logtype) VALUES (?, ?, ?)', (title, text, logtype))
         try:
             self.conn.commit()
-        except:
-            pass # Ignore errors when the log is closed
-        print('\n' + title)
+        except (sqlite3.OperationalError, sqlite3.ProgrammingError):
+            pass  # Ignore errors when the log is closed
+        except Exception:
+            pass  # Ignore errors when the log is closed
         color_print(text, COLORS[logtype])
 
     def error(self, title, text):
@@ -124,3 +125,4 @@ if __name__ == "__main__":
     log.error('Oops', 'There was an error')
     log.info('Info', 'This is some information')
     print(log.as_html())
+    

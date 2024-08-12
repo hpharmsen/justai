@@ -5,7 +5,7 @@ sys.path.append('.')
 from justai import Agent, CommandHandler, Repl
 
 if __name__ == "__main__":
-    agent = Agent('gpt-3.5-turbo')
+    agent = Agent('gemini-1.5-flash')
     if len(sys.argv) > 1:  # You can specify the name of a previous conversation to load
         agent.load(sys.argv[1])
 

@@ -7,7 +7,7 @@ def get_xliff_version(input_string):
     try:
         xlif_version = input_string.split('xliff:document:')[1].split('"')[0].split("'")[0]
     except IndexError:
-        raise ValueError(f'No XLIFF version found in input')
+        raise ValueError('No XLIFF version found in input')
     if xlif_version not in ['1.2', '2.0']:
         raise ValueError(f'Unsupported XLIFF version: {xlif_version}')
     return 'xliff ' + xlif_version
@@ -16,10 +16,10 @@ def get_xliff_version(input_string):
 def translate_xliff_1_2(source_xml: str, translate_function, language: str):
     texts_to_translate = xliff_12_to_string_list(source_xml)
     translated_texts, rest = translate_function(texts_to_translate, language)
-    return xliff_12_add_translations(source_xml, translated_texts, language)
+    return xliff_12_add_translations(source_xml, translated_texts)
 
 
-def xliff_12_to_string_list(source_xml:str) -> list[str]:
+def xliff_12_to_string_list(source_xml: str) -> list[str]:
     parser = etree.XMLParser(ns_clean=True)
     root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
     namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:1.2'}
@@ -34,7 +34,7 @@ def xliff_12_to_string_list(source_xml:str) -> list[str]:
     return texts_to_translate
 
 
-def xliff_12_add_translations(source_xml:str, translated_texts:list[str], language:str) -> str:
+def xliff_12_add_translations(source_xml: str, translated_texts: list[str]) -> str:
     parser = etree.XMLParser(ns_clean=True)
     root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
     namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:1.2'}
@@ -52,13 +52,13 @@ def xliff_12_add_translations(source_xml:str, translated_texts:list[str], langua
     return updated_xml
 
 
-def translate_xliff_2_0(source_xml:str, translate_function, language:str) -> str:
+def translate_xliff_2_0(source_xml: str, translate_function, language: str) -> str:
     texts_to_translate = xliff_20_to_string_list(source_xml)
     translated_texts, rest = translate_function(texts_to_translate, language)
     return xliff_20_add_translations(source_xml, translated_texts, language)
 
 
-def xliff_20_to_string_list(source_xml:str) -> list[str]:
+def xliff_20_to_string_list(source_xml: str) -> list[str]:
     parser = etree.XMLParser(ns_clean=True)
     root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
     namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}
@@ -72,7 +72,7 @@ def xliff_20_to_string_list(source_xml:str) -> list[str]:
     return texts_to_translate
 
 
-def xliff_20_add_translations(source_xml:str, translated_texts:list[str], language:str) -> str:
+def xliff_20_add_translations(source_xml: str, translated_texts: list[str], language: str) -> str:
     parser = etree.XMLParser(ns_clean=True)
     root = etree.fromstring(source_xml.encode('utf-8'), parser=parser)
     namespaces = {'ns': 'urn:oasis:names:tc:xliff:document:2.0'}

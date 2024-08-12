@@ -4,13 +4,13 @@ from pathlib import Path
 _prompts = {}
 
 
-def set_prompt_file(path: str|Path):
+def set_prompt_file(path: str | Path):
     global _prompts
     _prompts = {}
     add_prompt_file(path)
 
 
-def add_prompt_file(path: str|Path):
+def add_prompt_file(path: str | Path):
     global _prompts
     with open(path, 'rb') as f:
         _prompts.update(tomllib.load(f))

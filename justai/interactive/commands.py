@@ -14,7 +14,8 @@ class CommandHandler:
         self.add_command('debug', self.handle_debug, ":debug - set to True displays all prompts and model replies")
         self.add_command('input', self.handle_input, ":input filename - loads an input from the specified file")
         self.add_command('model', self.handle_gpt_attribute, ":model gpt-4 - Sets the AI model")
-        self.add_command('system', self.handle_system, ":system system_message - Sets the system message for the model.")
+        self.add_command('system', self.handle_system, ":system system_message - ' + \
+                                  'Sets the system message for the model.")
         self.add_command('max_tokens', self.handle_gpt_attribute,
                          ":max_tokens 800 - The maximum number of tokens to generate in the completion")
         self.add_command('temperature', self.handle_gpt_attribute, ":temperature 0.9 - What sampling temperature to " +
@@ -31,42 +32,41 @@ class CommandHandler:
     def add_command(self, command, handler, description):
         self.commands[command] = (handler, description)
 
-    def handle_quit(self):
+    @staticmethod
+    def handle_quit():
         return False
 
     def handle_load(self, filename):
         if filename:
             self.gpt.load(filename)
         else:
-            color_print(f"Pass a filename\n", color=ERROR_COLOR)
+            color_print("Pass a filename\n", color=ERROR_COLOR)
         return True
 
     def handle_input(self, filename):
         if filename:
             self.gpt.file_input(filename)
         else:
-            color_print(f"Pass a filename\n", color=ERROR_COLOR)
+            color_print("Pass a filename\n", color=ERROR_COLOR)
         return True
 
-    def handle_save(self, filename=None):
-        if not filename:
-            filename = self.gpt.name
+    def handle_save(self, filename):
         self.gpt.save(filename)
         color_print(f"Saved to {(self.gpt.save_dir / filename).with_suffix('.txt')}\n", color=SYSTEM_COLOR)
         return True
 
     def handle_system(self, system_message):
         if not system_message:
-            color_print(f"Pass a system message\n", color=ERROR_COLOR)
+            color_print("Pass a system message\n", color=ERROR_COLOR)
             return True
         self.gpt.system_message = system_message
-        color_print(f"System message set to ", color=SYSTEM_COLOR)
+        color_print("System message set to ", color=SYSTEM_COLOR)
         color_print(f"{system_message}\n", color=ASSISTANT_COLOR)
         return True
 
     def handle_reset(self):
         self.gpt.reset()
-        color_print(f"Conversation reset\n", color=SYSTEM_COLOR)
+        color_print("Conversation reset\n", color=SYSTEM_COLOR)
         return True
 
     def handle_debug(self, debug: str = None):

@@ -11,6 +11,6 @@ def run_prompt(model_name):
 
 
 if __name__ == "__main__":
-    for model in ["claude-3-sonnet-20240229", "gpt-3.5-turbo", "gpt-4-turbo-preview", "claude-3-opus-20240229"]:
+    for model in ["claude-3-5-sonnet-20240620", "gpt-4o", "gemini-1.5-pro"]:
         print(f"\n******** Running prompt for {model} *************")
         run_prompt(model)
