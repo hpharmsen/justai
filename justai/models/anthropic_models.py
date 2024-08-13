@@ -118,11 +118,11 @@ def transform_messages(messages: list[Message], return_json: bool) -> list[dict]
 
 
 def create_anthropic_message(message: Message):
-    content = [{"type": "text", "text": message.content}]
-    if message.image:
-        base64img = message.to_base64_image()
+    content = []
+    for img in message.images:
+        base64img = Message.to_base64_image(img)
         mime_type= identify_image_format_from_base64(base64img)
-        content = [
+        content += [
             {
                 "type": "image",
                 "source": {
@@ -131,7 +131,6 @@ def create_anthropic_message(message: Message):
                     "data": base64img,
                 },
             }
-        ] + content
+        ]
+    content += [{"type": "text", "text": message.content}]
     return {"role": message.role, "content": content}
-
-

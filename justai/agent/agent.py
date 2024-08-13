@@ -4,6 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
+from PIL.Image import Image
 
 from justai.tools.cache import cached_llm_response
 from justai.tools.display import print_message, color_print, SYSTEM_COLOR
@@ -66,15 +67,29 @@ class Agent:
     def reset(self):
         self.messages = []
 
+    def append_messages(self, prompt: str,
+                        images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None):
+        if images:
+            if not isinstance(images, list):
+                images = [images]
+        else:
+            images = []
+        self.messages.append(Message('user', prompt, images))
+        return self.messages
+
     def get_messages(self) -> list[Message]:
         return self.messages[-self.message_memory:]
 
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def chat(self, prompt, *, image: [str | bytes | None] = None, return_json=False, response_format=None, cached=True):
+    def chat(self, prompt, *, images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None,
+             return_json=False, response_format=None, cached=True):
         start_time = time.time()
-        self.messages.append(Message('user', prompt, image))
+        if images and not isinstance(images, list):
+            images = [images]
+        self.append_messages(prompt, images)
+
         model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, 
                                              response_format=response_format, use_cache=cached)
         result, self.input_token_count, self.output_token_count = model_response
@@ -82,8 +97,11 @@ class Agent:
         self.last_response_time = time.time() - start_time
         return result
     
-    async def chat_async(self, prompt, image: [str | bytes | None] = None):
-        self.messages.append(Message('user', prompt, image))
+    async def chat_async(self, prompt, *,
+                         images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None):
+        if images and not isinstance(images, list):
+            images = [images]
+        self.append_messages(prompt, images)
         for answer_text in self.model.chat_async(messages=self.get_messages()): 
             if answer_text:
                 yield answer_text

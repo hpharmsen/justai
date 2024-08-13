@@ -10,29 +10,16 @@ from PIL import Image
 class Message:
     """ Handles the completion as returned by GPT """
 
-    def __init__(self, role=None, content=None, image: [bytes | str] = None):
+    def __init__(self, role=None, content=None, images: list=[]):
         self.role = role
         if isinstance(content, str):
             self.content = content
-            self.type = 'text'
         else:
             try:
                 self.content = json.dumps(content)
-                self.type = 'json'
             except (TypeError, OverflowError, ValueError, RecursionError):
-                raise ValueError(
-                    "Invalid content type in message. Must be str, bytes (jpeg), or json serializable data.")
-        self.image = None
-        if image:
-            self.image = image
-            if isinstance(image, str) and is_image_url(image):
-                self.type = 'image_url'
-            elif isinstance(image, bytes):
-                self.type = 'image_data'
-            elif isinstance(image, Image.Image):
-                self.type = 'pil_image'
-            else:
-                raise ValueError("Unknown content type in message. Must be image url or jpeg image.")
+                raise ValueError("Invalid content type in message. Must be str or json serializable data.")
+        self.images = images
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -41,14 +28,25 @@ class Message:
             setattr(message, key, value)
         return message
 
+    @staticmethod
+    def get_image_type(image):
+        if isinstance(image, str) and is_image_url(image):
+            return 'image_url'
+        elif isinstance(image, bytes):
+            return 'image_data'
+        elif isinstance(image, Image.Image):
+            return 'pil_image'
+        else:
+            raise ValueError("Unknown content type in message. Must be image url or PIL image or image data.")
+
     def __bool__(self):
         return bool(self.content)
 
     def __str__(self):
         res = f'role: {self.role}'
         res += f' content: {self.content}'
-        if self.image:
-            res += ' [image]'
+        if self.images:
+            res += f' [{len(self.images)} images]'
         return res
 
     def to_dict(self):
@@ -58,30 +56,34 @@ class Message:
                 dictionary[key] = value
         return dictionary
 
-    def to_base64_image(self):
-        match self.type:
+    @staticmethod
+    def to_base64_image(image):
+        image_type = Message.get_image_type(image)
+        match image_type:
             case 'image_url':
-                img = httpx.get(self.image).content
+                img = httpx.get(image).content
             case 'image_data':
-                img = self.image
+                img = image
             case 'pil_image':
                 buffered = io.BytesIO()
-                self.image.save(buffered, format="jpeg")
+                image.save(buffered, format="jpeg")
                 img = buffered.getvalue()
             case _:
-                raise ValueError(f"Unknown image type: {self.type}")
+                raise ValueError(f"Unknown image type: {image_type}")
         return base64.b64encode(img).decode("utf-8")
 
-    def to_pil_image(self):
-        match self.type:
+    @staticmethod
+    def to_pil_image(image):
+        image_type = Message.get_image_type(image)
+        match image_type:
             case 'image_url':
-                return Image.open(io.BytesIO(httpx.get(self.image).content))
+                return Image.open(io.BytesIO(httpx.get(image).content))
             case 'image_data':
-                return Image.open(io.BytesIO(self.image))
+                return Image.open(io.BytesIO(image))
             case 'pil_image':
-                return self.image
+                return image
             case _:
-                raise ValueError(f"Unknown image type: {self.type}")
+                raise ValueError(f"Unknown image type: {image_type}")
 
 
 def is_image_url(url):

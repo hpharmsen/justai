@@ -147,11 +147,11 @@ class OpenAIModel(Model):
     def transform_messages(messages: list[Message]) -> list[dict]:
         def create_openai_message(message):
             content = [{"type": "text", "text": message.content}]
-            if message.image:
-                content = [{
+            for image in message.images:
+                content += [{
                                 "type": "image_url",
-                                "image_url": {'url': f"data:image/jpeg;base64,{message.to_base64_image()}"}
-                           }] + content
+                                "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
+                           }]
             return {"role": message.role, "content": content}
 
         result = [create_openai_message(msg) for msg in messages]

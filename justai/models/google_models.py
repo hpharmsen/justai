@@ -111,5 +111,5 @@ def transform_messages(messages: list[Message], return_json: bool) -> list[dict]
 def google_message(msg: Message, return_json) -> dict:
     return {
         'role': 'model' if msg.role == 'assistant' else 'user',
-        'parts': [msg.to_pil_image(), msg.content] if msg.image else [msg.content] 
+        'parts': [Message.to_pil_image(img) for img in msg.images] + [msg.content]
     }
