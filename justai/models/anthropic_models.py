@@ -37,9 +37,11 @@ class AnthropicModel(Model):
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        api_key = (
-            params.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or dotenv_values()["ANTHROPIC_API_KEY"]
-        )
+        if "ANTHROPIC_API_KEY" in params:
+            api_key = params["ANTHROPIC_API_KEY"]
+            del params["ANTHROPIC_API_KEY"]
+        else:
+            api_key = os.getenv("ANTHROPIC_API_KEY") or dotenv_values()["ANTHROPIC_API_KEY"]
         if not api_key:
             color_print(
                 "No Anthropic API key found. Create one at https://console.anthropic.com/settings/keys and "
