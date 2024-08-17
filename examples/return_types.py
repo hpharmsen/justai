@@ -10,7 +10,7 @@ def get_story():
     """ Read story.txt from the path of the current file """
     path = pathlib.Path(__file__).parent / 'story.txt'
     with open(path) as f:
-        return f.read()
+        return '<story>\n' + f.read() + '\n</story>\n'
 
 
 def json_example():

@@ -1,4 +1,4 @@
-anthropic
+anthropic>=0.34.0
 google-generativeai  # Gemini
 httpx
 justdays

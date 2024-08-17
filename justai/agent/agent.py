@@ -64,6 +64,31 @@ class Agent:
     def system(self, value):
         self.model.system_message = value
 
+    @property
+    def cached_prompt(self): 
+        if hasattr(self.model, 'cached_prompt'):
+            return self.model.cached_prompt
+        raise AttributeError("Model does not support cached_prompt")
+
+    @cached_prompt.setter
+    def cached_prompt(self, value):
+        if hasattr(self.model, 'cached_prompt'):
+            self.model.cached_prompt = value
+        else:
+            raise AttributeError("Model does not support cached_prompt")
+
+    @property
+    def cache_creation_input_tokens(self):
+        if hasattr(self.model, 'cache_creation_input_tokens'):
+            return self.model.cache_creation_input_tokens
+        raise AttributeError("Model does not support cache_creation_input_tokens")
+    
+    @property
+    def cache_read_input_tokens(self):
+        if hasattr(self.model, 'cache_read_input_tokens'):
+            return self.model.cache_read_input_tokens
+        raise AttributeError("Model does not support cache_read_input_tokens")
+        
     def reset(self):
         self.messages = []
 

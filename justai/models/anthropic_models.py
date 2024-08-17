@@ -35,6 +35,7 @@ class AnthropicModel(Model):
     def __init__(self, model_name: str, params: dict):
         system_message = f"You are {model_name}, a large language model trained by Anthropic."
         super().__init__(model_name, params, system_message)
+        self.cached_prompt = None
 
         # Authentication
         if "ANTHROPIC_API_KEY" in params:
@@ -66,9 +67,15 @@ class AnthropicModel(Model):
             raise NotImplementedError("Anthropic does not support response_format")
 
         antr_messages = transform_messages(messages, return_json)
+        if self.cached_prompt:
+            system_message = self.cached_system_message()
+            client = self.client.beta.prompt_caching
+        else:
+            system_message = self.system_message
+            client = self.client
         try:
-            message = self.client.messages.create(
-                model=self.model_name, system=self.system_message, messages=antr_messages, **self.model_params
+            message = client.messages.create(
+                model=self.model_name, system=system_message, messages=antr_messages, **self.model_params
             )
         except anthropic.InternalServerError as e:
             raise OverloadedException(e)
@@ -85,6 +92,11 @@ class AnthropicModel(Model):
             response = response_str
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
+        if self.cached_prompt:
+            self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens
+            self.cache_read_input_tokens = message.usage.cache_read_input_tokens
+        else:
+            self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
         return response, input_tokens, output_tokens
 
     def chat_async(self, messages: list[Message]) -> str:
@@ -104,14 +116,28 @@ class AnthropicModel(Model):
             if hasattr(event, "delta") and hasattr(event.delta, "text"):
                 yield event.delta.text
 
+    def cached_system_message(self) -> list[dict]:
+        return [
+                  {
+                    "type": "text", 
+                    "text": self.system_message,
+                  },
+                  {
+                    "type": "text", 
+                    "text": self.cached_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                  }
+                ]
+    
     def token_count(self, text: str) -> int:
         tokenizer = self.client.get_tokenizer()
         encoded_text = tokenizer.encode(text)
         return len(encoded_text.ids)
 
+
 def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
     # Anthropic does not allow messages to start with an assistant message
-    msgs = messages[next(i for i, message in enumerate(messages) if message.role != "system") :]
+    msgs = messages[next(i for i, message in enumerate(messages) if message.role != "system"):]
 
     if msgs and return_json:
         msgs += [Message("assistant", "<json>")]
@@ -123,7 +149,7 @@ def create_anthropic_message(message: Message):
     content = []
     for img in message.images:
         base64img = Message.to_base64_image(img)
-        mime_type= identify_image_format_from_base64(base64img)
+        mime_type = identify_image_format_from_base64(base64img)
         content += [
             {
                 "type": "image",

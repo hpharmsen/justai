@@ -94,6 +94,12 @@ python examples/async.py
 ```
 Shows how to use Justai asynchronously.
 
+### Prompt caching
+```bash
+python examples/prompt_caching.py
+```
+Shows how to use Prompt caching in Anthropic models.
+
 ### Interactive
 ```bash
 python examples/interactive.py
