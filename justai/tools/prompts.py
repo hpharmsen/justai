@@ -22,11 +22,3 @@ def get_prompt(key, **variables):
         return _prompts[key].format(**variables)
     else:
         return _prompts[key]
-
-
-def get_prompt2(key, **variables):
-    global _prompts
-    if variables:
-        return _prompts[key].format(**variables)
-    else:
-        return _prompts[key]
