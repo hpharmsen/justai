@@ -136,8 +136,8 @@ class AnthropicModel(Model):
 
 
 def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
-    # Anthropic does not allow messages to start with an assistant message
-    msgs = messages[next(i for i, message in enumerate(messages) if message.role != "system"):]
+    # Anthropic requires the first message to be a user message
+    msgs = messages[next(i for i, message in enumerate(messages) if message.role == "user"):]
 
     if msgs and return_json:
         msgs += [Message("assistant", "<json>")]
