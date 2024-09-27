@@ -32,7 +32,7 @@ import google
 import google.generativeai as genai
 
 from justai.agent.message import Message
-from justai.models.model import Model
+from justai.models.model import Model, GeneralException
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -57,11 +57,14 @@ class GoogleModel(Model):
             -> tuple[[str | object], int, int]:
 
         google_messages = transform_messages(messages, return_json)
-        chat = self.client.start_chat(history=google_messages[:-1])
-
-        response = chat.send_message(
-            content=google_messages[-1]['parts'], generation_config=self.generation_config(return_json, response_format)
-        )
+        try:
+            chat = self.client.start_chat(history=google_messages[:-1])
+            response = chat.send_message(
+                content=google_messages[-1]['parts'], generation_config=self.generation_config(return_json, response_format)
+            )
+        except Exception as e:
+            # TODO: Add more specific exceptions
+            raise GeneralException(e)
 
         input_tokens = response.usage_metadata.prompt_token_count
         output_tokens = response.usage_metadata.total_token_count - input_tokens
@@ -78,7 +81,6 @@ class GoogleModel(Model):
             # Initialize the streaming response
             response = self.client.generate_content(google_messages, stream=True,
                                                     generation_config=self.generation_config(False))
-
             # Collect the streamed parts
             full_response = ''
             for chunk in response:

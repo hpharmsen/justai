@@ -23,11 +23,13 @@ temperature: float (default 0.8)
 import json
 import os
 
-import anthropic
+from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
+    APITimeoutError, RateLimitError, BadRequestError
 from dotenv import dotenv_values
 
 from justai.agent.message import Message
-from justai.models.model import Model, OverloadedException, identify_image_format_from_base64
+from justai.models.model import Model, identify_image_format_from_base64, ConnectionException, AuthorizationException, \
+    ModelOverloadException, RatelimitException, BadRequestException, GeneralException
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -52,17 +54,16 @@ class AnthropicModel(Model):
 
         # Client
         if params.get("async"):
-            self.client = anthropic.AsyncAnthropic(api_key=api_key)
+            self.client = AsyncAnthropic(api_key=api_key)
         else:
-            self.client = anthropic.Anthropic(api_key=api_key)
+            self.client = Anthropic(api_key=api_key)
 
         # Required model parameters
         if "max_tokens" not in params:
             params["max_tokens"] = 800
 
     def chat(
-        self, messages: list[Message], return_json: bool, response_format, max_retries=None, log=None
-    ) -> tuple[[str | object], int, int]:
+        self, messages: list[Message], return_json: bool, response_format, log=None) -> tuple[[str | object], int, int]:
         if response_format:
             raise NotImplementedError("Anthropic does not support response_format")
 
@@ -77,8 +78,18 @@ class AnthropicModel(Model):
             message = client.messages.create(
                 model=self.model_name, system=system_message, messages=antr_messages, **self.model_params
             )
-        except anthropic.InternalServerError as e:
-            raise OverloadedException(e)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except APITimeoutError as e:
+            raise ModelOverloadException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
 
         response_str = message.content[0].text
         if return_json:
@@ -109,8 +120,18 @@ class AnthropicModel(Model):
                 messages=transform_messages(messages, return_json=False),
                 stream=True,
             )
-        except anthropic.InternalServerError as e:
-            raise OverloadedException(e)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except APITimeoutError as e:
+            raise ModelOverloadException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
 
         for event in stream:
             if hasattr(event, "delta") and hasattr(event.delta, "text"):

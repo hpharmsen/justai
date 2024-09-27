@@ -4,7 +4,25 @@ from abc import ABC, abstractmethod
 from justai.agent.message import Message
 
 
-class OverloadedException(Exception):
+class ConnectionException(Exception):
+    pass
+
+class AuthorizationException(Exception):
+    pass
+
+class ModelOverloadException(Exception):
+    pass
+
+class RatelimitException(Exception):
+    pass
+
+class BadRequestException(Exception):
+    pass
+
+class TimeoutException(Exception):
+    pass
+
+class GeneralException(Exception):
     pass
 
 
@@ -24,7 +42,7 @@ class Model(ABC):
         setattr(self, key, value)
 
     @abstractmethod
-    def chat(self, messages: list[Message], return_json: bool, response_format, max_retries: int = 3) \
+    def chat(self, messages: list[Message], return_json: bool, response_format) \
             -> tuple[[str | object], int, int]:
         pass
 

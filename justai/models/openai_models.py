@@ -51,12 +51,14 @@ import os
 
 import tiktoken
 from dotenv import dotenv_values
-from openai import OpenAI, APIConnectionError, APIError, RateLimitError, NOT_GIVEN
+from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
+    RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
 from pydantic import BaseModel
 
 from justai.agent.message import Message
-from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR1, DEBUG_COLOR2, SYSTEM_COLOR
-from justai.models.model import Model
+from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR1, DEBUG_COLOR2
+from justai.models.model import Model, ConnectionException, AuthorizationException, \
+    ModelOverloadException, RatelimitException, BadRequestException, GeneralException
 
 
 class OpenAIModel(Model):
@@ -71,11 +73,7 @@ class OpenAIModel(Model):
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
         self.client = OpenAI(api_key=api_key)
 
-    def chat(self, messages: list[Message], return_json: bool, response_format, use_cache: bool = False, 
-             max_retries=None):
-        if max_retries is None:
-            max_retries = 3
-
+    def chat(self, messages: list[Message], return_json: bool, response_format, use_cache: bool = False):
         # OpenAI models like to have  the system message as part of the conversation
         messages = [Message('system', self.system_message)] + messages
 
@@ -84,28 +82,26 @@ class OpenAIModel(Model):
             [color_print(m, color=DEBUG_COLOR1) for m in messages if hasattr(m, 'text')]
             print()
 
-        last_error = None
-        for _ in range(max_retries):
-            try:
-                completion = self.completion(messages, return_json, response_format)
-                message_text = completion.choices[0].message.content
-                input_token_count = completion.usage.prompt_tokens
-                output_token_count = completion.usage.completion_tokens
-                break
-            except APIConnectionError as e:
-                color_print("Connection error.", color=SYSTEM_COLOR)
-                last_error = e
-            except APIError as e:
-                color_print("API error", color=SYSTEM_COLOR)
-                last_error = e
-            except RateLimitError as e:
-                color_print(f"{self.model_name} is overloaded", color=SYSTEM_COLOR)
-                last_error = e
-        else:
-            print('Too many errors. Aborting.')
-            raise last_error
+        try:
+            completion = self.completion(messages, return_json, response_format)
+            message_text = completion.choices[0].message.content
+            input_token_count = completion.usage.prompt_tokens
+            output_token_count = completion.usage.completion_tokens
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except APITimeoutError as e:
+            raise ModelOverloadException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
 
         if message_text.startswith('```json'):
+            print('Unexpected JSON response found in OpenAI completion')
             message_text = message_text[7:-3]
         if self.debug:
             color_print(f"{message_text}", color=DEBUG_COLOR2)
@@ -117,7 +113,22 @@ class OpenAIModel(Model):
         return result, input_token_count, output_token_count
     
     def chat_async(self, messages: list[Message]):
-        for item in self.completion(messages, stream=True):
+        try:
+            completion = self.completion(messages, stream=True)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except APITimeoutError as e:
+            raise ModelOverloadException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
+
+        for item in completion:
             if hasattr(item.choices[0].delta, "content"):
                 yield item.choices[0].delta.content
                
