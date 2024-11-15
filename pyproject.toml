@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "3.10.0"
+version = "3.10.1"
 description = "Makes working with LLMs like OpenAI GPT, Anthropic Claude, Google Gemini and Open source models super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
