@@ -1,3 +1,7 @@
+import os
+
+from dotenv import load_dotenv
+
 from justai import Agent
 
 
@@ -11,6 +15,9 @@ def run_prompt(model_name):
 
 
 if __name__ == "__main__":
-    for model in ["claude-3-5-sonnet-20240620", "gpt-4o", "gemini-1.5-pro"]:
+    # cd to the parent directory
+    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    load_dotenv()
+    for model in ["grok-beta", "claude-3-5-sonnet-20240620", "gpt-4o", "gemini-1.5-pro"]:
         print(f"\n******** Running prompt for {model} *************")
         run_prompt(model)

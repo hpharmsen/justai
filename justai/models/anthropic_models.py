@@ -26,6 +26,7 @@ import os
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
     APITimeoutError, RateLimitError, BadRequestError
 from dotenv import dotenv_values
+from google.api_core.exceptions import InternalServerError
 
 from justai.agent.message import Message
 from justai.models.model import Model, identify_image_format_from_base64, ConnectionException, AuthorizationException, \
@@ -82,7 +83,7 @@ class AnthropicModel(Model):
             raise ConnectionException(e)
         except (AuthenticationError, PermissionDeniedError) as e:
             raise AuthorizationException(e)
-        except APITimeoutError as e:
+        except InternalServerError as e:
             raise ModelOverloadException(e)
         except RateLimitError as e:
             raise RatelimitException(e)
