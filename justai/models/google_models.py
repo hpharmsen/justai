@@ -26,13 +26,16 @@ topK: int (default: None)
 """
 import json
 import os
+import absl.logging
+from contextlib import contextmanager
+import time
 
 from dotenv import dotenv_values
 import google
 import google.generativeai as genai
 
 from justai.agent.message import Message
-from justai.models.model import Model, GeneralException
+from justai.models.model import Model
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -51,24 +54,28 @@ class GoogleModel(Model):
                         "set it in the .env file like GOOGLE_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
         # Client
-        self.client = genai.GenerativeModel('models/' + model_name, system_instruction=system_message)
+        self.client = genai.GenerativeModel(model_name, system_instruction=system_message)
 
     def chat(self, messages: list[Message], return_json: bool, response_format, max_retries=None, log=None) \
             -> tuple[[str | object], int, int]:
 
         google_messages = transform_messages(messages, return_json)
-        try:
-            chat = self.client.start_chat(history=google_messages[:-1])
-            response = chat.send_message(
-                content=google_messages[-1]['parts'], generation_config=self.generation_config(return_json, response_format)
-            )
-        except Exception as e:
-            # TODO: Add more specific exceptions
-            raise GeneralException(e)
+        chat = self.client.start_chat(history=google_messages[:-1])
+
+        with temporary_verbosity(absl.logging.WARNING):
+            while True:
+                try:
+                    response = chat.send_message(
+                        content=google_messages[-1]['parts'], generation_config=self.generation_config(return_json, response_format)
+                    )
+                    break
+                except google.api_core.exceptions.ResourceExhausted:
+                    print('Gemini exhausted, retrying...')
+                    time.sleep(1)
 
         input_tokens = response.usage_metadata.prompt_token_count
         output_tokens = response.usage_metadata.total_token_count - input_tokens
-        if return_json or response_format: 
+        if return_json or response_format:
             response = json.loads(response.text)
         else:
             response = response.text
@@ -81,6 +88,7 @@ class GoogleModel(Model):
             # Initialize the streaming response
             response = self.client.generate_content(google_messages, stream=True,
                                                     generation_config=self.generation_config(False))
+
             # Collect the streamed parts
             full_response = ''
             for chunk in response:
@@ -115,3 +123,16 @@ def google_message(msg: Message, return_json) -> dict:
         'role': 'model' if msg.role == 'assistant' else 'user',
         'parts': [Message.to_pil_image(img) for img in msg.images] + [msg.content]
     }
+
+
+@contextmanager
+def temporary_verbosity(level):
+    # Sla het huidige logniveau op
+    original_level = absl.logging.get_verbosity()
+    try:
+        # Wijzig naar het nieuwe logniveau
+        absl.logging.set_verbosity(level)
+        yield
+    finally:
+        # Herstel het oorspronkelijke logniveau
+        absl.logging.set_verbosity(original_level)

@@ -1,4 +1,5 @@
 anthropic>=0.34.0
+absl-py  # To suppress warnings in Gemini code
 google-generativeai  # Gemini
 httpx
 justdays
