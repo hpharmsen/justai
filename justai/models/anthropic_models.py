@@ -152,9 +152,8 @@ class AnthropicModel(Model):
                 ]
     
     def token_count(self, text: str) -> int:
-        tokenizer = self.client.get_tokenizer()
-        encoded_text = tokenizer.encode(text)
-        return len(encoded_text.ids)
+        messages = self.transform_messages([Message("user", text)], return_json=False)
+        return self.client.beta.messages.count_tokens(model=self.model_name, messages=messages)
 
 
 def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
