@@ -69,14 +69,9 @@ class AnthropicModel(Model):
             raise NotImplementedError("Anthropic does not support response_format")
 
         antr_messages = transform_messages(messages, return_json)
-        if self.cached_prompt:
-            system_message = self.cached_system_message()
-            client = self.client.beta.prompt_caching
-        else:
-            system_message = self.system_message
-            client = self.client
+        system_message = self.cached_system_message() if self.cached_prompt else self.system_message
         try:
-            message = client.messages.create(
+            message = self.client.messages.create(
                 model=self.model_name, system=system_message, messages=antr_messages, **self.model_params
             )
         except APIConnectionError as e:
