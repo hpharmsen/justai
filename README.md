@@ -1,6 +1,7 @@
 # JustAI
 
 Package to make working with Large Language models in Python super easy.
+Supports OpenAI, Anthropic Claude, Google Geminy, X Grok, DeepSeek and open source .guff models.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
 Current version: 3.11.3
@@ -12,12 +13,14 @@ python -m pip install justai
 ~~~~
 2. Create an OpenAI acccount (for GPT3.5 / 4) [here](https://platform.openai.com/) or an Anthropic account [here](https://console.anthropic.com/) or a Google account
 3. Create an OpenAI api key (for Claude) [here](https://platform.openai.com/account/api-keys) or an Anthropic api key [here](https://console.anthropic.com/settings/keys) or a Google api key [here](https://aistudio.google.com/app/apikey)
-4. Create a .env file with the following content:
+4. Create a .env file with the following content, depending on the model you intend to use:
 ```bash
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_ORGANIZATION=your-openai-organization-id
 ANTHROPIC_API_KEY=your-anthropic-api-key
 GOOGLE_API_KEY=your-google-api-key
+X_API_KEY=your-x-ai-api-key
+DEEPSKEEK_API_KEY=your-deepseek-api-key
 ```
 ## Usage
 
@@ -45,6 +48,8 @@ Justai can use different types of models:
 **OpenAI** models like GPT-3.5, GPT-4-turbo and GPT-4o\
 **Anthropic** models like the Claude-3 models\
 **Google** models like the Gemini models\
+**X AI** models like the Grok models\
+**DeekSeek** models\
 **Open source** models like Llama2-7b or Mixtral-8x7b-instruct as long as they are in the GGUF format.
 
 The provider is chosen depending on the model name. E.g. if a model name starts with gpt, OpenAI is chosen as the provider.

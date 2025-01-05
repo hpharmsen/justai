@@ -19,5 +19,8 @@ class ModelFactory:
         elif model_name.startswith("grok"):
             from justai.models.xai_models import XAIModel
             return XAIModel(model_name, params=kwargs)
+        elif model_name.startswith("deepseek"):
+            from justai.models.deepseek_models import DeepSeekModel
+            return DeepSeekModel(model_name, params=kwargs)
         else:
             raise ValueError(f"Model {model_name} not supported")
