@@ -4,7 +4,7 @@ Package to make working with Large Language models in Python super easy.
 Supports OpenAI, Anthropic Claude, Google Geminy, X Grok, DeepSeek and open source .guff models.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
-Current version: 3.11.3
+Current version: 3.11.4
 
 ## Installation
 1. Install the package:
