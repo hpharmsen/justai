@@ -127,9 +127,9 @@ class Agent:
         if images and not isinstance(images, list):
             images = [images]
         self.append_messages(prompt, images)
-        for answer_text in self.model.chat_async(messages=self.get_messages()): 
-            if answer_text:
-                yield answer_text
+        for word, reasoning_content in self.model.chat_async(messages=self.get_messages()):
+            if word or reasoning_content:
+                yield word, reasoning_content
 
     def after_response(self):
         # content is in messages[-1]['completion']['choices'][0]['message']['content']

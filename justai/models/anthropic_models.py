@@ -106,15 +106,22 @@ class AnthropicModel(Model):
             self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
         return response, input_tokens, output_tokens
 
-    def chat_async(self, messages: list[Message]) -> str:
+    def chat_async(self, messages: list[Message]) -> [str, str]:
         try:
+            # stream = self.client.messages.create(
+            #     model=self.model_name,
+            #     max_tokens=self.model_params["max_tokens"],
+            #     temperature=self.model_params.get('temperature', 0.8),
+            #     system=self.system_message,
+            #     messages=transform_messages(messages, return_json=False),
+            #     stream=True,
+            # )
             stream = self.client.messages.create(
                 model=self.model_name,
-                max_tokens=self.model_params["max_tokens"],
-                temperature=self.model_params["temperature"],
                 system=self.system_message,
                 messages=transform_messages(messages, return_json=False),
                 stream=True,
+                **self.model_params
             )
         except APIConnectionError as e:
             raise ConnectionException(e)
@@ -131,7 +138,7 @@ class AnthropicModel(Model):
 
         for event in stream:
             if hasattr(event, "delta") and hasattr(event.delta, "text"):
-                yield event.delta.text
+                yield event.delta.text, None   # 2nd parameter is reasoning_content. Not available yet for Anthropic
 
     def cached_system_message(self) -> list[dict]:
         return [

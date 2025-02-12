@@ -81,9 +81,9 @@ class GoogleModel(Model):
             response = response.text
         return response, input_tokens, output_tokens
 
-    def chat_async(self, messages: list[Message]) -> str:
+    def chat_async(self, messages: list[Message]) -> [str, str]:
 
-        google_messages = transform_messages(messages[:-1], False)
+        google_messages = transform_messages(messages, False) # Was: messages[:-1]
         try:
             # Initialize the streaming response
             response = self.client.generate_content(google_messages, stream=True,
@@ -93,7 +93,7 @@ class GoogleModel(Model):
             full_response = ''
             for chunk in response:
                 full_response += chunk.text
-                yield chunk.text
+                yield chunk.text, None   # 2nd parameter is reasoning_content. Not available yet for Gemini yet
 
             # Ensure the iteration completes
             response.resolve()

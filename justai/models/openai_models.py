@@ -129,8 +129,10 @@ class OpenAIModel(Model):
             raise GeneralException(e)
 
         for item in completion:
-            if hasattr(item.choices[0].delta, "content"):
-                yield item.choices[0].delta.content
+            content = item.choices[0].delta.content if hasattr(item.choices[0].delta, "content") else None
+            reasoning = item.choices[0].delta.reasoning_content if hasattr(item.choices[0].delta, "reasoning_content") else None
+            if content or reasoning:
+                yield content, reasoning
                
     def completion(self, messages: list[Message], return_json: bool = False, response_format: BaseModel = None, 
                    stream: bool = False):
