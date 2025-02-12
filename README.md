@@ -1,7 +1,7 @@
 # JustAI
 
 Package to make working with Large Language models in Python super easy.
-Supports OpenAI, Anthropic Claude, Google Geminy, X Grok, DeepSeek and open source .guff models.
+Supports OpenAI, Anthropic Claude, Google Gemini, X Grok, DeepSeek and open source .guff models.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
 Current version: 3.11.4
@@ -49,7 +49,7 @@ Justai can use different types of models:
 **Anthropic** models like the Claude-3 models\
 **Google** models like the Gemini models\
 **X AI** models like the Grok models\
-**DeekSeek** models\
+**DeekSeek** models like Deepseek V-3 (deepseek-chat) and reasoning model Deepseek-R1 (deepseek-reasoning)\
 **Open source** models like Llama2-7b or Mixtral-8x7b-instruct as long as they are in the GGUF format.
 
 The provider is chosen depending on the model name. E.g. if a model name starts with gpt, OpenAI is chosen as the provider.
