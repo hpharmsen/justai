@@ -127,6 +127,17 @@ class Agent:
         if images and not isinstance(images, list):
             images = [images]
         self.append_messages(prompt, images)
+        for word, _ in self.model.chat_async(messages=self.get_messages()):
+            if word:
+                yield word
+
+    async def chat_async_reasoning(self, prompt, *,
+                         images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None):
+        """ Same as chat_async but returns the reasoning content as well
+        """
+        if images and not isinstance(images, list):
+            images = [images]
+        self.append_messages(prompt, images)
         for word, reasoning_content in self.model.chat_async(messages=self.get_messages()):
             if word or reasoning_content:
                 yield word, reasoning_content

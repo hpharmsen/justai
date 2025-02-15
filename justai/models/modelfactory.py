@@ -22,5 +22,8 @@ class ModelFactory:
         elif model_name.startswith("deepseek"):
             from justai.models.deepseek_models import DeepSeekModel
             return DeepSeekModel(model_name, params=kwargs)
+        elif model_name.startswith("sonar"):
+            from justai.models.perplexity_models import PerplexityModel
+            return PerplexityModel(model_name, params=kwargs)
         else:
             raise ValueError(f"Model {model_name} not supported")
