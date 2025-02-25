@@ -3,6 +3,7 @@ import os
 from dotenv import dotenv_values
 from openai import OpenAI
 
+from justai.agent.message import Message
 from justai.models.model import Model
 from justai.models.openai_models import OpenAIModel
 from justai.tools.display import color_print, ERROR_COLOR
@@ -20,3 +21,18 @@ class PerplexityModel(OpenAIModel):
             color_print(f"No {keyname} found. Create one at https://www.perplexity.ai/settings/api and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
         self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+
+    def chat_async(self, messages: list[Message]):
+        """ Perplexity does not separately return thinking content
+        but returns it's thinking between <think> and </think> tags."""
+        thinking = False
+        for content, _ in super().chat_async(messages):
+            if content == '<think>':
+                thinking = True
+            elif content == '</think>':
+                thinking = False
+            elif thinking:
+                yield None, content
+            else:
+                yield content, None
+
