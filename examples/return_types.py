@@ -3,7 +3,7 @@ import pathlib
 import json
 
 
-from justai import Agent
+from justai import Model
 
 
 def get_story():
@@ -14,13 +14,13 @@ def get_story():
 
 
 def json_example():
-    agent = Agent('gemini-1.5-flash')
+    model = Model('gemini-1.5-flash')
     prompt = "Read the following story and give me a list of the persons involved. " + \
              "Return json with keys name, profession and house number\n\n" + get_story()
 
-    data = agent.chat(prompt, return_json=True)
+    data = model.chat(prompt, return_json=True)
     print(json.dumps(data, indent=4))
-    print(agent.last_token_count())  # (input_token_count, output_token_count, total_token_count)
+    print(model.last_token_count())  # (input_token_count, output_token_count, total_token_count)
 
 
 def structured_output_with_type_annotations():
@@ -33,9 +33,9 @@ def structured_output_with_type_annotations():
         profession: str        
     persons = list[Person]
 
-    agent = Agent('gemini-1.5-pro')
+    model = Model('gemini-1.5-pro')
     prompt = "Read the following story and give me a list of the persons involved.\n\n" + get_story()
-    data = agent.chat(prompt, response_format=persons, cached=False)
+    data = model.chat(prompt, response_format=persons, cached=False)
     for person in data:
         print(person)
 
@@ -52,10 +52,10 @@ def structured_output_with_pydantic():
     class Persons(BaseModel):
         persons: list[Person]
    
-    agent = Agent('gpt-4o-2024-08-06')
+    model = Model('gpt-4o-2024-08-06')
     prompt = "Read the following story and give me a list of the persons involved.\n\n" + get_story()
     
-    data = agent.chat(prompt, response_format=Persons, cached=False)
+    data = model.chat(prompt, response_format=Persons, cached=False)
     for person in data.persons:
         print(person)
 

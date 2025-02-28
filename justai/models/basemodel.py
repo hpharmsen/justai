@@ -1,7 +1,7 @@
 import base64
 from abc import ABC, abstractmethod
 
-from justai.agent.message import Message
+from justai.model.message import Message
 
 
 class ConnectionException(Exception):
@@ -26,7 +26,7 @@ class GeneralException(Exception):
     pass
 
 
-class Model(ABC):
+class BaseModel(ABC):
 
     @abstractmethod
     def __init__(self, model_name: str, params: dict, system_message: str):

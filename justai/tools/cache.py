@@ -6,7 +6,7 @@ from pathlib import Path
 
 from justdays import Day
 
-from justai.agent.message import Message
+from justai.model.message import Message
 
 
 def cached_llm_response(model, messages: list[Message], return_json: bool, response_format=None, use_cache=True, 

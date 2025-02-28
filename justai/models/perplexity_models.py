@@ -3,8 +3,8 @@ import os
 from dotenv import dotenv_values
 from openai import OpenAI
 
-from justai.agent.message import Message
-from justai.models.model import Model
+from justai.model.message import Message
+from justai.models.basemodel import BaseModel
 from justai.models.openai_models import OpenAIModel
 from justai.tools.display import color_print, ERROR_COLOR
 
@@ -12,7 +12,7 @@ from justai.tools.display import color_print, ERROR_COLOR
 class PerplexityModel(OpenAIModel):
     def __init__(self, model_name: str, params: dict = None):
         system_message = f"You are {model_name}, a large language model trained by Perplexity."
-        Model.__init__(self, model_name, params, system_message)
+        BaseModel.__init__(self, model_name, params, system_message)
 
         # Authentication
         keyname = "PERPLEXITY_API_KEY"
@@ -35,4 +35,3 @@ class PerplexityModel(OpenAIModel):
                 yield None, content
             else:
                 yield content, None
-

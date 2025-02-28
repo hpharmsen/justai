@@ -28,13 +28,13 @@ from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, Authenticat
 from dotenv import dotenv_values
 from google.api_core.exceptions import InternalServerError
 
-from justai.agent.message import Message
-from justai.models.model import Model, identify_image_format_from_base64, ConnectionException, AuthorizationException, \
+from justai.model.message import Message
+from justai.models.basemodel import BaseModel, identify_image_format_from_base64, ConnectionException, AuthorizationException, \
     ModelOverloadException, RatelimitException, BadRequestException, GeneralException
 from justai.tools.display import ERROR_COLOR, color_print
 
 
-class AnthropicModel(Model):
+class AnthropicModel(BaseModel):
     def __init__(self, model_name: str, params: dict):
         system_message = f"You are {model_name}, a large language model trained by Anthropic."
         super().__init__(model_name, params, system_message)

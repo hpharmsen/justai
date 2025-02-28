@@ -34,12 +34,12 @@ from dotenv import dotenv_values
 import google
 import google.generativeai as genai
 
-from justai.agent.message import Message
-from justai.models.model import Model
+from justai.model.message import Message
+from justai.models.basemodel import BaseModel
 from justai.tools.display import ERROR_COLOR, color_print
 
 
-class GoogleModel(Model):
+class GoogleModel(BaseModel):
 
     def __init__(self, model_name: str, params: dict):
         system_message = f"You are {model_name}, a large language model trained by Google."
@@ -103,7 +103,6 @@ class GoogleModel(Model):
 
     def token_count(self, text: str) -> int:
         return self.client.count_tokens(text).total_tokens
-
 
     def generation_config(self, return_json=False, response_format=None) -> genai.types.GenerationConfig:
         return genai.types.GenerationConfig(

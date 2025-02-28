@@ -1,9 +1,9 @@
-from justai.models.model import Model
+from justai.models.basemodel import BaseModel
 
 
 class ModelFactory:
     @staticmethod
-    def create(model_name: str, **kwargs) -> Model:
+    def create(model_name: str, **kwargs) -> BaseModel:
         if model_name.startswith("gpt") or model_name.startswith("o1") or model_name.startswith("o3"):
             from justai.models.openai_models import OpenAIModel
             return OpenAIModel(model_name, params=kwargs)

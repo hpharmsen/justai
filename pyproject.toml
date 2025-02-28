@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "3.11.7"
+version = "4.0.-1"
 description = "Makes working with LLMs like OpenAI GPT, Anthropic Claude, Google Gemini and Open source models super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["ChatGPT", "GPT4o", "GPT4", "api", "Claude", "Anthropic", "Lllama", "Gemini"]
+keywords = ["ChatGPT", "GPT4o", "GPT4", "api", "Claude", "Anthropic", "Lllama", "Gemini", "Grok", "Perplexity", "Sonar"]
 requires-python = ">=3.11"
 
 

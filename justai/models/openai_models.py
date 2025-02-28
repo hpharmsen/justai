@@ -53,15 +53,14 @@ import tiktoken
 from dotenv import dotenv_values
 from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
     RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
-from pydantic import BaseModel
 
-from justai.agent.message import Message
+from justai.model.message import Message
 from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR1, DEBUG_COLOR2
-from justai.models.model import Model, ConnectionException, AuthorizationException, \
+from justai.models.basemodel import BaseModel, ConnectionException, AuthorizationException, \
     ModelOverloadException, RatelimitException, BadRequestException, GeneralException
 
 
-class OpenAIModel(Model):
+class OpenAIModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         system_message = f"You are {model_name}, a large language model trained by OpenAI."
         super().__init__(model_name, params, system_message)

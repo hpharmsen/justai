@@ -1,6 +1,6 @@
 from typing import Any
 
-from justai.agent.message import Message
+from justai.model.message import Message
 
 try:
     from llama_cpp import Llama
@@ -8,10 +8,10 @@ except ImportError:
     raise ImportError("If you want to use Llama models with justai run `pip install justai[llama]`")
 
 
-from justai.models.model import Model
+from justai.models.basemodel import BaseModel
 
 
-class GuffModel(Model):
+class GuffModel(BaseModel):
     def __init__(self, model_name: str, params: dict):
         """Model implemention should create attributes for all supported parameters"""
         system_message = f"You are {model_name.split('/')[-1]}, a large open source language model."
