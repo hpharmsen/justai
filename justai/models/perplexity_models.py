@@ -29,7 +29,7 @@ class PerplexityModel(OpenAIModel):
         for content, _ in super().chat_async(messages):
             if content == '<think>':
                 thinking = True
-            elif content == '</think>':
+            elif '</think>' in content:
                 thinking = False
             elif thinking:
                 yield None, content

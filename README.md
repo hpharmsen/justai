@@ -6,7 +6,7 @@ Supports OpenAI, Anthropic Claude, Google Gemini, X Grok, DeepSeek and open sour
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
 Current version: 4.0.0
 
-Version 4.x is not compatibe with the 3.x series.
+Version 4.x is not compatible with the 3.x series.
 
 ## Installation
 1. Install the package:
