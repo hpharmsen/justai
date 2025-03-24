@@ -13,3 +13,4 @@ python-dateutil
 python-dotenv
 rich
 tiktoken
+tomli; python_version < "3.11"
