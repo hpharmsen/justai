@@ -16,7 +16,7 @@ classifiers = [
 keywords = ["ChatGPT", "GPT4o", "GPT4", "api", "Claude", "Anthropic", "Lllama", "Gemini", "Grok", "Perplexity", "Sonar"]
 requires-python = ">=3.10"
 
-
+[project]
 dependencies = [
     "absl-py",
     "anthropic",
@@ -30,7 +30,8 @@ dependencies = [
     "python-dateutil",
     "python-dotenv",
     "rich",
-    "tiktoken"
+    "tiktoken",
+    "tomli; python_version < '3.11'"
 ]
 
 [project.optional-dependencies]
