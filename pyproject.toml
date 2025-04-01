@@ -15,8 +15,6 @@ classifiers = [
 ]
 keywords = ["ChatGPT", "GPT4o", "GPT4", "api", "Claude", "Anthropic", "Lllama", "Gemini", "Grok", "Perplexity", "Sonar"]
 requires-python = ">=3.10"
-
-[project]
 dependencies = [
     "absl-py",
     "anthropic",
