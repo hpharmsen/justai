@@ -21,7 +21,7 @@ candidate_count: int (default: None)
 topP: float (default: None)
 topK: int (default: None)
 
-(1) In contrast to Agent.chat, Agent.chat_async cannot return json and does not return input and output token counts
+(1) In contrast to Model.chat, Model.chat_async cannot return json and does not return input and output token counts
 
 """
 import json
