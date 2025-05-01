@@ -24,7 +24,7 @@ import json
 import os
 
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
-    APITimeoutError, RateLimitError, BadRequestError
+    APITimeoutError, RateLimitError, BadRequestError, Timeout
 from dotenv import dotenv_values
 from google.api_core.exceptions import InternalServerError
 
@@ -54,10 +54,8 @@ class AnthropicModel(BaseModel):
             )
 
         # Client
-        if params.get("async"):
-            self.client = AsyncAnthropic(api_key=api_key)
-        else:
-            self.client = Anthropic(api_key=api_key)
+        factory = AsyncAnthropic if params.get("async") else Anthropic
+        self.client = factory(api_key=api_key, timeout=Timeout(10.0))
 
         # Required model parameters
         if "max_tokens" not in params:
