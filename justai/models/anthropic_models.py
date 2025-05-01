@@ -23,6 +23,7 @@ temperature: float (default 0.8)
 
 import json
 import os
+import time
 from typing import Any
 
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
@@ -71,21 +72,36 @@ class AnthropicModel(BaseModel):
         antr_messages = transform_messages(messages, return_json)
         antr_tools = transform_tools(tools)
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message
+
+        print("LLM call starting", time.time())
         try:
-            message = self.client.messages.create(model=self.model_name, system=system_message, messages=antr_messages,
-                                                  tools=antr_tools, **self.model_params)
+            message = self.client.messages.create(
+                model=self.model_name,
+                system=system_message,
+                messages=antr_messages,
+                tools=antr_tools,
+                **self.model_params,
+            )
         except APIConnectionError as e:
+            print("LLM call failed (APIConnectionError):", repr(e))
             raise ConnectionException(e)
         except (AuthenticationError, PermissionDeniedError) as e:
+            print("LLM call failed (Auth):", repr(e))
             raise AuthorizationException(e)
         except InternalServerError as e:
+            print("LLM call failed (500):", repr(e))
             raise ModelOverloadException(e)
         except RateLimitError as e:
+            print("LLM call failed (RateLimit):", repr(e))
             raise RatelimitException(e)
         except BadRequestError as e:
+            print("LLM call failed (BadRequest):", repr(e))
             raise BadRequestException(e)
         except Exception as e:
+            print("LLM call failed (Unexpected):", repr(e))
             raise GeneralException(e)
+        else:
+            print("LLM response received", time.time())
 
         # Text content
         response_str = message.content[0].text
