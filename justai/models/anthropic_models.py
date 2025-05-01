@@ -57,7 +57,7 @@ class AnthropicModel(BaseModel):
 
         # Client
         factory = AsyncAnthropic if params.get("async") else Anthropic
-        self.client = factory(api_key=api_key, timeout=Timeout(10.0))
+        self.client = factory(api_key=api_key, timeout=Timeout(connect=5, read=5, write=5, pool=5))
 
         # Required model parameters
         if "max_tokens" not in params:
