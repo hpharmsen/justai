@@ -1,5 +1,6 @@
 """ Handles the GPT API and the conversation state. """
 import json
+import re
 import time
 from pathlib import Path
 from PIL.Image import Image
@@ -19,6 +20,8 @@ class Model:
         self.save_dir = Path(__file__).resolve().parent / 'saves'
         self.message_memory = 20  # Number of messages to remember. Limits token usage.
         self.messages = []  # List of Message objects
+        self.tools = []  # List of tools to use / functions to call
+        self.functions = {}  # The actual functions to call with key the name of the function and as value the function
 
         self.input_token_count = 0
         self.output_token_count = 0
@@ -97,6 +100,33 @@ class Model:
         self.messages.append(Message('user', prompt, images))
         return self.messages
 
+    def add_function(self, func: callable, description: str, parameters: dict, required_parameters=None):
+        """ Adds a function to the model.
+        name: name of the function
+        description: description of the function
+        parameters: dictionary with parameter description as key and parameter type as value """
+        tool = {
+            "type": "function",
+            "function": {
+                "name": func.__name__,
+                "description": description,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        re.sub(r"\W+", "", description).lower(): {
+                            "type": _type.__name__ if isinstance(_type, type) else str(_type),
+                            "description": description,
+                        }
+                        for description, _type in parameters.items()
+                    },
+                    "required": required_parameters or [],
+                    "additionalProperties": False
+                }
+            }
+        }
+        self.tools.append(tool)
+        self.functions[func.__name__] = func
+
     def get_messages(self) -> list[Message]:
         return self.messages[-self.message_memory:]
 
@@ -110,9 +140,33 @@ class Model:
             images = [images]
         self.append_messages(prompt, images)
 
-        model_response = cached_llm_response(self.model, self.get_messages(), return_json=return_json, 
+        model_response = cached_llm_response(self.model, self.get_messages(), self.tools, return_json=return_json,
                                              response_format=response_format, use_cache=cached)
-        result, self.input_token_count, self.output_token_count = model_response
+        result, self.input_token_count, self.output_token_count, tool_use = model_response
+        calls = 0  # Safety to prevent infinite loop
+        while tool_use and calls < 3:
+            calls += 1
+            function = self.functions.get(tool_use["function_to_call"])
+            if not function:
+                raise ValueError(f"Function {tool_use["function_to_call"]} not found")
+
+            # Run the tool/function
+            tool_use['function_result'] = function(*tool_use['function_parameters'].values())
+
+            # Add a model specific message with the tool use result to the conversation
+            self.messages.append(self.model.tool_use_message(tool_use))
+
+            model_response = cached_llm_response(
+                self.model,
+                self.get_messages(),
+                self.tools,
+                return_json=return_json,
+                response_format=response_format,
+                use_cache=cached,
+            )
+            result, self.input_token_count, self.output_token_count, tool_use = model_response
+
+        # Add the result to the messages
         self.messages.append(Message('assistant', str(result)))
         self.last_response_time = time.time() - start_time
         return result

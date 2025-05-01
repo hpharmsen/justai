@@ -9,21 +9,21 @@ from justdays import Day
 from justai.model.message import Message
 
 
-def cached_llm_response(model, messages: list[Message], return_json: bool, response_format=None, use_cache=True, 
-                        max_retries=None) -> tuple[[str | object], int, int]:
+def cached_llm_response(model, messages: list[Message], tools: list, return_json: bool, response_format=None,
+                        use_cache=True, max_retries=None) -> tuple[[str | object], int, int, dict]:
     if not use_cache:
-        return model.chat(messages, return_json, response_format, max_retries)
+        return model.chat(messages, tools, return_json, response_format, max_retries)
 
     hashcode = recursive_hash((model, messages, return_json))
     cachedb = CachDB()
     result = cachedb.read(hashcode)
     if result:
         if return_json:
-            return json.loads(result[0]), result[1], result[2]
+            return json.loads(result[0]), result[1], result[2], result[3]
         return result
-    result = model.chat(messages, return_json, response_format, max_retries)
+    result = model.chat(messages, tools, return_json, response_format, max_retries)
     if return_json:
-        cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2]))
+        cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2], result[3]))
     else:
         cachedb.write(hashcode, result)
     return result

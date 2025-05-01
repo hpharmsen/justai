@@ -4,7 +4,7 @@ Package to make working with Large Language models in Python super easy.
 Supports OpenAI, Anthropic Claude, Google Gemini, X Grok, DeepSeek and open source .guff models.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
-Current version: 4.0.7
+Current version: 4.0.8
 
 Version 4.x is not compatible with the 3.x series.
 
@@ -14,7 +14,7 @@ Version 4.x is not compatible with the 3.x series.
 python -m pip install justai
 ~~~~
 2. Create an OpenAI acccount (for OpenAI models) [here](https://platform.openai.com/) or an Anthropic account [here](https://console.anthropic.com/) or a Google account
-3. Create an OpenAI api key (for Anthropic) [here](https://platform.openai.com/account/api-keys) or an Anthropic api key [here](https://console.anthropic.com/settings/keys) or a Google api key [here](https://aistudio.google.com/app/apikey)
+3. Create an OpenAI api key [here](https://platform.openai.com/account/api-keys) or an Anthropic api key [here](https://console.anthropic.com/settings/keys) or a Google api key [here](https://aistudio.google.com/app/apikey)
 4. Create a .env file with the following content, depending on the model you intend to use:
 ```bash
 OPENAI_API_KEY=your-openai-api-key
@@ -29,12 +29,12 @@ DEEPSKEEK_API_KEY=your-deepseek-api-key
 ```Python
 from justai import Model
 
-if __name__ == "__main__":
-    model = Model('gpt-4o-mini')
-    model.system = "You are a movie critic. I feed you with movie titles and you give me a review in 50 words."
+model = Model('gpt-4o-mini')
+model.system = """You are a movie critic. I feed you with movie
+                  titles and you give me a review in 50 words."""
 
-    message = model.chat("Forrest Gump")
-    print(message)
+message = model.chat("Forrest Gump")
+print(message)
 ```
 output
 ```

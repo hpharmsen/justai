@@ -42,7 +42,7 @@ class BaseModel(ABC):
         setattr(self, key, value)
 
     @abstractmethod
-    def chat(self, messages: list[Message], return_json: bool, response_format) \
+    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format) \
             -> tuple[[str | object], int, int]:
         pass
 

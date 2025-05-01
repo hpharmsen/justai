@@ -10,7 +10,7 @@ from PIL import Image
 class Message:
     """ Handles the completion as returned by GPT """
 
-    def __init__(self, role=None, content=None, images: list=[]):
+    def __init__(self, role=None, content=None, images: list=[], tool_use:dict={}):
         self.role = role
         if isinstance(content, str):
             self.content = content
@@ -20,6 +20,7 @@ class Message:
             except (TypeError, OverflowError, ValueError, RecursionError):
                 raise ValueError("Invalid content type in message. Must be str or json serializable data.")
         self.images = images
+        self.tool_use = tool_use
 
     @classmethod
     def from_dict(cls, data: dict):

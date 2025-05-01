@@ -56,8 +56,10 @@ class GoogleModel(BaseModel):
         # Client
         self.client = genai.GenerativeModel(model_name, system_instruction=system_message)
 
-    def chat(self, messages: list[Message], return_json: bool, response_format, max_retries=None, log=None) \
+    def chat(self, messages: list[Message], tools, return_json: bool, response_format, max_retries=None, log=None) \
             -> tuple[[str | object], int, int]:
+        if tools:
+            raise NotImplementedError("tools are not supported (yet)")
 
         google_messages = transform_messages(messages, return_json)
         chat = self.client.start_chat(history=google_messages[:-1])
