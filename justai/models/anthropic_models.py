@@ -5,7 +5,8 @@ Feature table:
     - Return JSON:      YES
     - Structured types: NO
     - Token count:      YES
-    - Image support:    YES 
+    - Image support:    YES
+    - Tool use:         not yet
     
 Models:
 Claude 3 Opus:	 claude-3-opus-20240229
@@ -16,12 +17,13 @@ Supported parameters:
 max_tokens: int (default 800)
 temperature: float (default 0.8)
 
-(1) In contrast to Agent.chat, Agent.chat_async cannot return json and does not return input and output token counts
+(1) In contrast to Model.chat, Model.chat_async cannot return json and does not return input and output token counts
 
 """
 
 import json
 import os
+from typing import Any
 
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
     APITimeoutError, RateLimitError, BadRequestError, Timeout
@@ -61,17 +63,17 @@ class AnthropicModel(BaseModel):
         if "max_tokens" not in params:
             params["max_tokens"] = 800
 
-    def chat(
-        self, messages: list[Message], return_json: bool, response_format, log=None) -> tuple[[str | object], int, int]:
+    def chat(self, messages: list[Message], tools, return_json: bool, response_format, log=None) \
+            -> tuple[str | Any, int, int, dict[str, object | str] | dict[str, Any]]:
         if response_format:
             raise NotImplementedError("Anthropic does not support response_format")
 
         antr_messages = transform_messages(messages, return_json)
+        antr_tools = transform_tools(tools)
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message
         try:
-            message = self.client.messages.create(
-                model=self.model_name, system=system_message, messages=antr_messages, **self.model_params
-            )
+            message = self.client.messages.create(model=self.model_name, system=system_message, messages=antr_messages,
+                                                  tools=antr_tools, **self.model_params)
         except APIConnectionError as e:
             raise ConnectionException(e)
         except (AuthenticationError, PermissionDeniedError) as e:
@@ -85,6 +87,7 @@ class AnthropicModel(BaseModel):
         except Exception as e:
             raise GeneralException(e)
 
+        # Text content
         response_str = message.content[0].text
         if return_json:
             response_str = response_str.split("</json>")[0]  # !!
@@ -95,6 +98,20 @@ class AnthropicModel(BaseModel):
                 response = response_str
         else:
             response = response_str
+
+        # Tool use
+        # if message.stop_reason == "tool_use":
+        #     for c in message.content:
+        #         if isinstance(c, ToolUseBlock):
+        #             tool_use = {'function_to_call': c.name,
+        #                         'function_parameters': c.input,
+        #                         'call_id': c.id}
+        #             break  # For now, only one function call is supported
+        # else:
+        #     tool_use = {}
+        tool_use = {}
+
+        # Token count
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
         if self.cached_prompt:
@@ -102,7 +119,8 @@ class AnthropicModel(BaseModel):
             self.cache_read_input_tokens = message.usage.cache_read_input_tokens
         else:
             self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
-        return response, input_tokens, output_tokens
+
+        return response, input_tokens, output_tokens, tool_use
 
     def chat_async(self, messages: list[Message]) -> [str, str]:
         try:
@@ -141,16 +159,20 @@ class AnthropicModel(BaseModel):
     def cached_system_message(self) -> list[dict]:
         return [
                   {
-                    "type": "text", 
+                    "type": "text",
                     "text": self.system_message,
                   },
                   {
-                    "type": "text", 
+                    "type": "text",
                     "text": self.cached_prompt,
                     "cache_control": {"type": "ephemeral"}
                   }
                 ]
-    
+
+    @staticmethod  # !! Veranderen als deze niet anders wordt dan die van OpenAI
+    def tool_use_message(tool_use) -> Message:
+        return Message(role='user', content='', tool_use=tool_use)
+
     def token_count(self, text: str) -> int:
         messages = transform_messages([Message("user", text)], return_json=False)
         return self.client.beta.messages.count_tokens(model=self.model_name, messages=messages)
@@ -166,8 +188,46 @@ def transform_messages(messages: list[Message], return_json: bool) -> list[dict]
     return result
 
 
+def transform_tools(tools: list[dict]) -> list[dict]:
+    """
+    At Anthropic tools work like this:
+    tools=[
+        {
+            "name": "get_weather",
+            "description": "Get the current weather in a given location",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA",
+                    }
+                },
+                "required": ["location"],
+            },
+        }
+    ],
+    """
+    def transform_tool(tool:dict) -> dict:
+        if "function" in tool:
+            tool["name"] = tool["function"]["name"]
+            tool["description"] = tool["function"]["description"]
+            tool["input_schema"] = tool["function"]["parameters"]
+            del tool["function"]
+        if "type" in tool:
+            del tool["type"]
+        if "function" in tool:
+            del tool["function"]
+        return tool
+
+    return [transform_tool(tool) for tool in tools]
+
+
 def create_anthropic_message(message: Message):
+
     content = []
+    role = message.role
+
     for img in message.images:
         base64img = Message.to_base64_image(img)
         mime_type = identify_image_format_from_base64(base64img)
@@ -181,5 +241,20 @@ def create_anthropic_message(message: Message):
                 },
             }
         ]
-    content += [{"type": "text", "text": message.content}]
-    return {"role": message.role, "content": content}
+
+    if message.content:
+        content += [{"type": "text", "text": message.content}]
+
+    if message.tool_use:
+        _input = message.tool_use["function_result"]
+        if not isinstance(input, dict): # Anthropic requires input to be a dict
+            _input = {'data': _input}
+        content += [{
+            "type": "tool_use",
+            "id": message.tool_use["call_id"],
+            "name": message.tool_use["function_to_call"],
+            "input": _input,
+        }]
+        role = 'assistant' # Anthropic requires the role to be assistant when using tools
+
+    return {"role": role, "content": content}

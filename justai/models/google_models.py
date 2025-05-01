@@ -7,7 +7,7 @@ Feature table:
     - Structured types: YES, via Python type definition
     - Token counter:    YES
     - Image support:    YES 
-
+    - Tool use:         NO (not yet)
 
 Models:
 gemini-1.5-flash -> gemini-1.5-flash-001

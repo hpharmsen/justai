@@ -6,7 +6,8 @@ Feature table:
     - Structured types: YES, via Pydantic  TODO: Add support for native Python types
     - Token count:      YES
     - Image support:    YES
-   
+    - Tool use:         not yet
+
 Supported parameters:    
     `# The maximum number of tokens to generate in the completion.
     # Defaults to 16
@@ -100,15 +101,16 @@ class OpenAIModel(BaseModel):
         message_text = message.content
 
         # Tool use
-        if completion.choices[0].finish_reason == 'tool_calls':
-            f = completion.choices[0].message.tool_calls[0].function
-            tool_use = {
-                "function_to_call": f.name,
-                "function_parameters": json.loads(f.arguments),
-                "call_id": completion.id,
-            }
-        else:
-            tool_use = {}
+        # if completion.choices[0].finish_reason == 'tool_calls':
+        #     f = completion.choices[0].message.tool_calls[0].function
+        #     tool_use = {
+        #         "function_to_call": f.name,
+        #         "function_parameters": json.loads(f.arguments),
+        #         "call_id": completion.id,
+        #     }
+        # else:
+        #     tool_use = {}
+        tool_use = {}
 
         # Token counts
         input_token_count = completion.usage.prompt_tokens
@@ -167,7 +169,7 @@ class OpenAIModel(BaseModel):
             return self.client.chat.completions.create(
                 model=self.model_name,
                 messages=transformed_messages,
-                tools=tools,
+                #tools=tools,
                 response_format={"type": "json_object"} if return_json else NOT_GIVEN,
                 stream=stream,
                 **self.model_params
@@ -176,20 +178,26 @@ class OpenAIModel(BaseModel):
     @staticmethod
     def transform_messages(messages: list[Message]) -> list[dict]:
         def create_openai_message(message):
-            content = [{"type": "text", "text": message.content}]
-            for image in message.images:
-                content += [{
-                                "type": "image_url",
-                                "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
-                           }]
-            return {"role": message.role, "content": content}
+            msg = {"role": message.role}
+            if message.tool_use:
+                msg['name'] = message.tool_use['function_to_call']
+                msg['content'] = message.tool_use['function_result']
+            else:
+                content = [{"type": "text", "text": message.content}]
+                for image in message.images:
+                    content += [{
+                                    "type": "image_url",
+                                    "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
+                               }]
+                msg["content"] = content
+            return msg
 
         result = [create_openai_message(msg) for msg in messages]
         return result
 
     @staticmethod
     def tool_use_message(tool_use) -> Message:
-        return Message(role='user', content='', tool_use=tool_use)
+        return Message(role='function', content='', tool_use=tool_use)
 
     def token_count(self, text: str) -> int:
         encoding = tiktoken.encoding_for_model(self.model_name)
