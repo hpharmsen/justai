@@ -65,7 +65,7 @@ class CachDB:
     def write(self, key: str, llm_response: tuple[str, int, int], valid_until: str = ''):
         if not valid_until:
             valid_until = str(Day().plus_months(1))
-        value, tokens_in, tokens_out = llm_response
+        value, tokens_in, tokens_out, _ = llm_response  # Ignore tool use
         try:
             self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
                                     VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
@@ -77,7 +77,7 @@ class CachDB:
         self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
         result = self.cursor.fetchone()
         if result:
-            return result[1], result[2], result[3]
+            return result[1], result[2], result[3], {}  # Ignore tool use
 
     def clear(self):
         try:
