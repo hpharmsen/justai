@@ -4,7 +4,12 @@ from justai.models.basemodel import BaseModel
 class ModelFactory:
     @staticmethod
     def create(model_name: str, **kwargs) -> BaseModel:
-        if model_name.startswith("gpt") or model_name.startswith("o1") or model_name.startswith("o3"):
+        if model_name.startswith("openrouter/"):
+            from justai.models.openrouter_models import OpenRouterModel
+            model_name = model_name.split("/", 1)[1]
+            assert '/' in model_name, "Model name should be in the format 'openrouter/provider/modelname'"
+            return OpenRouterModel(model_name, params=kwargs)
+        elif model_name.startswith("gpt") or model_name.startswith("o1") or model_name.startswith("o3"):
             from justai.models.openai_models import OpenAIModel
             return OpenAIModel(model_name, params=kwargs)
         elif model_name.endswith(".gguf"):

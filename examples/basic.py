@@ -18,7 +18,7 @@ if __name__ == "__main__":
     # cd to the parent directory
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     load_dotenv()
-    for model in ["gpt-4o-mini", "claude-3-5-haiku-20241022", "sonar", "gemini-1.5-flash", "deepseek-chat"]:
+    for model in ["openrouter/google/gemini-flash-1.5", "gpt-4o-mini", "claude-3-5-haiku-20241022", "sonar", "deepseek-chat"]:
         print(f"\n******** Running prompt for {model} *************")
         run_prompt(model)
         pass

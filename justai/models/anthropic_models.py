@@ -23,7 +23,6 @@ temperature: float (default 0.8)
 
 import json
 import os
-import time
 from typing import Any
 
 import httpx
@@ -79,7 +78,6 @@ class AnthropicModel(BaseModel):
         antr_tools = transform_tools(tools)
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message
 
-        print("LLM call starting", time.time())
         try:
             message = self.client.messages.create(
                 model=self.model_name,
@@ -106,8 +104,6 @@ class AnthropicModel(BaseModel):
         except Exception as e:
             print("LLM call failed (Unexpected):", repr(e))
             raise GeneralException(e)
-        else:
-            print("LLM response received", time.time())
 
         # Text content
         response_str = message.content[0].text
