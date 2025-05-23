@@ -148,7 +148,7 @@ class Model:
             calls += 1
             function = self.functions.get(tool_use["function_to_call"])
             if not function:
-                raise ValueError(f"Function {tool_use["function_to_call"]} not found")
+                raise ValueError(f"Function {tool_use['function_to_call']} not found")
 
             # Run the tool/function
             tool_use['function_result'] = function(*tool_use['function_parameters'].values())
