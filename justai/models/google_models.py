@@ -81,7 +81,9 @@ class GoogleModel(BaseModel):
             response = json.loads(response.text)
         else:
             response = response.text
-        return response, input_tokens, output_tokens
+        tool_use = {}  # Tool use is not supported yet
+        return response, input_tokens, output_tokens, tool_use
+
 
     def chat_async(self, messages: list[Message]) -> [str, str]:
 
