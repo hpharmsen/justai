@@ -22,10 +22,13 @@ def cached_llm_response(model, messages: list[Message], tools: list, return_json
             return json.loads(result[0]), result[1], result[2], result[3]
         return result
     result = model.chat(messages, tools, return_json, response_format, max_retries)
-    if return_json:
-        cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2], result[3]))
-    else:
-        cachedb.write(hashcode, result)
+    try:
+        if return_json:
+            cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2], result[3]))
+        else:
+            cachedb.write(hashcode, result)
+    except Exception:
+        print('cached_llm_response could not write to cache, result is', result)
     return result
 
 
