@@ -91,7 +91,8 @@ class GoogleModel(BaseModel):
         try:
             # Initialize the streaming response
             response = self.client.generate_content(google_messages, stream=True,
-                                                    generation_config=self.generation_config(False))
+                                                    generation_config=self.generation_config(False),
+                                                    max_tokens=self.model_params.get('max_tokens', None))
 
             # Collect the streamed parts
             full_response = ''
@@ -108,14 +109,24 @@ class GoogleModel(BaseModel):
     def token_count(self, text: str) -> int:
         return self.client.count_tokens(text).total_tokens
 
-    def generation_config(self, return_json=False, response_format=None) -> genai.types.GenerationConfig:
+        # Max tokens is in Gemini een aparte parameter en kan geen onderdeel van model_params zijn.
+        model_params = {key: val for key, val in self.model_params.items() if key != 'max_tokens'}
         return genai.types.GenerationConfig(
             response_schema=response_format,
             # specifies format of the JSON requested if response_mime_type is `application/json`
             response_mime_type='application/json' if return_json or response_format else 'text/plain',
-            **self.model_params
+            **model_params
         )
 
+    def generation_config(self, return_json=False, response_format=None) -> genai.types.GenerationConfig:
+        # Max tokens is in Gemini een aparte parameter en kan geen onderdeel van model_params zijn.
+        model_params = {key: val for key, val in self.model_params.items() if key != 'max_tokens'}
+        return genai.types.GenerationConfig(
+            response_schema=response_format,
+            # specifies format of the JSON requested if response_mime_type is `application/json`
+            response_mime_type='application/json' if return_json or response_format else 'text/plain',
+            **model_params
+        )
 
 def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
     return [google_message(msg, return_json) for msg in messages]
