@@ -1,15 +1,19 @@
 from pathlib import Path
+from importlib.metadata import version, PackageNotFoundError
 
 from justai.model.model import Model
 from justai.tools.prompts import get_prompt, set_prompt_file, add_prompt_file
 
 
 def _get_version():
-    with open(Path(__file__).parent.parent / "pyproject.toml", "r") as f:
-        for line in f:
-            if line.startswith("version ="):
-                return line.split('"')[1]
-        raise RuntimeError("Unable to find version string in pyproject.toml")
+    try:
+        __version__ = version(__name__)
+    except PackageNotFoundError:
+        with open(Path(__file__).parent / "pyproject.toml", "r") as f:
+            for line in f:
+                if line.startswith("version ="):
+                    return line.split('"')[1]
+            raise RuntimeError("Unable to find version")
 
 
 __version__ = _get_version()
@@ -24,4 +28,3 @@ if __name__ == '__main__':
     g = get_prompt
     s = set_prompt_file
     apf = add_prompt_file
-
