@@ -127,11 +127,17 @@ class Model:
         self.tools.append(tool)
         self.functions[func.__name__] = func
 
+
     def get_messages(self) -> list[Message]:
         return self.messages[-self.message_memory:]
 
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
+
+    def prompt(self, prompt, *, images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None,
+               return_json=False, response_format=None, cached=True):
+        self.reset()
+        return self.chat(prompt, images=images, return_json=return_json, response_format=response_format, cached=cached)
 
     def chat(self, prompt, *, images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None,
              return_json=False, response_format=None, cached=True):
