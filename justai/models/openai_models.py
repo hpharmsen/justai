@@ -130,7 +130,14 @@ class OpenAIModel(BaseModel):
     
     def chat_async(self, messages: list[Message]):
         try:
-            completion = self.completion(messages, stream=True)
+            # Pass required parameters to completion method
+            completion = self.completion(
+                messages=messages,
+                tools=None,  # No tools for async streaming
+                return_json=False,  # Default to False for streaming
+                response_format=None,  # No response format for streaming
+                stream=True
+            )
         except APIConnectionError as e:
             raise ConnectionException(e)
         except (AuthenticationError, PermissionDeniedError) as e:

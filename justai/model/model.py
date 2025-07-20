@@ -3,12 +3,22 @@ import json
 import re
 import time
 from pathlib import Path
+from typing import Optional, Union, List
+
 from PIL.Image import Image
 
 from justai.tools.cache import cached_llm_response
 from justai.model.message import Message
 from justai.models.modelfactory import ModelFactory
 
+ImageInput = Optional[Union[
+    List[str],
+    List[bytes],
+    List[Image],
+    str,
+    bytes,
+    Image
+]]
 
 class Model:
     def __init__(self, model_name: str, **kwargs):
@@ -90,8 +100,7 @@ class Model:
     def reset(self):
         self.messages = []
 
-    def append_messages(self, prompt: str,
-                        images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None):
+    def append_messages(self, prompt: str, images: ImageInput = None):
         if images:
             if not isinstance(images, list):
                 images = [images]
@@ -139,8 +148,7 @@ class Model:
         self.reset()
         return self.chat(prompt, images=images, return_json=return_json, response_format=response_format, cached=cached)
 
-    def chat(self, prompt, *, images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None,
-             return_json=False, response_format=None, cached=True):
+    def chat(self, prompt, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
         start_time = time.time()
         if images and not isinstance(images, list):
             images = [images]
@@ -177,8 +185,13 @@ class Model:
         self.last_response_time = time.time() - start_time
         return result
     
-    async def chat_async(self, prompt, *,
-                         images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None):
+    async def prompt_async(self, prompt, *, images: ImageInput = None):
+        self.reset()
+        # Use 'async for' to properly yield from the chat_async generator
+        async for word in self.chat_async(prompt=prompt, images=images):
+            yield word
+
+    async def chat_async(self, prompt, *, images: ImageInput = None):
         if images and not isinstance(images, list):
             images = [images]
         self.append_messages(prompt, images)
@@ -186,8 +199,13 @@ class Model:
             if word:
                 yield word
 
-    async def chat_async_reasoning(self, prompt, *,
-                         images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None):
+    async def prompt_async_reasoning(self, prompt, *, images: ImageInput = None):
+        self.reset()
+        # Use 'async for' to properly yield from the chat_async_reasoning generator
+        async for word, reasoning_content in self.chat_async_reasoning(prompt=prompt, images=images):
+            yield word, reasoning_content
+
+    async def chat_async_reasoning(self, prompt, *, images: ImageInput = None):
         """ Same as chat_async but returns the reasoning content as well
         """
         if images and not isinstance(images, list):

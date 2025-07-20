@@ -5,7 +5,7 @@ from justai.tools.prompts import get_prompt, set_prompt_file, add_prompt_file
 
 
 def _get_version():
-    with open(Path(__file__).parent / "pyproject.toml", "r") as f:
+    with open(Path(__file__).parent.parent / "pyproject.toml", "r") as f:
         for line in f:
             if line.startswith("version ="):
                 return line.split('"')[1]

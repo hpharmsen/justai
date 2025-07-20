@@ -8,13 +8,13 @@ from justai import Model
 
 async def print_words(model_name, prompt):
     model = Model(model_name)
-    async for word in model.chat_async(prompt):
+    async for word in model.prompt_async(prompt):
         print(word, end='')
 
 
 async def print_words_reasoning(model_name, prompt):
     model = Model(model_name)
-    async for word, reasoning_content in model.chat_async_reasoning(prompt):
+    async for word, reasoning_content in model.prompt_async_reasoning(prompt):
         if reasoning_content:
             print(reasoning_content, end='-') # Using a dash here to show what is reasoning content
         if word:
