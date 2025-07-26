@@ -6,10 +6,10 @@ Feature table:
     - Structured types: YES, via Pydantic  TODO: Add support for native Python types
     - Token count:      YES
     - Image support:    YES
-    - Tool use:         not yet
+    - Tool use:         YES
 
 Supported parameters:    
-    `# The maximum number of tokens to generate in the completion.
+    # The maximum number of tokens to generate in the completion.
     # Defaults to 16
     # The token count of your prompt plus max_tokens cannot exceed the model's context length.
     # Most models have a context length of 2048 tokens (except for the newest models, which support 4096).
@@ -50,6 +50,7 @@ Supported parameters:
 import json
 import os
 
+import instructor
 import tiktoken
 from dotenv import dotenv_values
 from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
@@ -71,7 +72,7 @@ class OpenAIModel(BaseModel):
         if not api_key:
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
-        self.client = OpenAI(api_key=api_key)
+        self.client = instructor.patch(OpenAI(api_key=api_key))
 
     def chat(self, messages: list[Message], tools: list, return_json: bool, response_format, use_cache: bool = False) -> tuple[str, int, int, dict|None]:
         # OpenAI models like to have  the system message as part of the conversation
@@ -83,7 +84,7 @@ class OpenAIModel(BaseModel):
             print()
 
         try:
-            completion = self.completion(messages, tools, return_json, response_format)
+            completion = self.completion(messages, tools, return_json, response_model=response_format)
         except APIConnectionError as e:
             raise ConnectionException(e)
         except APITimeoutError as e:
@@ -97,23 +98,30 @@ class OpenAIModel(BaseModel):
         except Exception as e:
             raise GeneralException(e)
 
-        message = completion.choices[0].message
-        message_text = message.content
+        if response_format:
+            raw_response = completion._raw_response
+            message = raw_response.choices[0].message
+            message_text = message.content
+            input_token_count = raw_response.usage.prompt_tokens
+            output_token_count = raw_response.usage.completion_tokens
+            result = completion
+        else:
+            message = completion.choices[0].message
+            message_text = message.content
+            input_token_count = completion.usage.prompt_tokens
+            output_token_count = completion.usage.completion_tokens
+            result = json.loads(message_text) if return_json else message_text
 
         # Tool use
-        if completion.choices[0].finish_reason == 'tool_calls':
-            f = completion.choices[0].message.tool_calls[0].function
+        if message.tool_calls and not response_format:
+            f = message.tool_calls[0].function
             tool_use = {
                 "function_to_call": f.name,
                 "function_parameters": json.loads(f.arguments),
-                "call_id": completion.id,
+                "call_id": completion.id if not response_format else raw_response.id,
             }
         else:
             tool_use = {}
-
-        # Token counts
-        input_token_count = completion.usage.prompt_tokens
-        output_token_count = completion.usage.completion_tokens
 
         if message_text and message_text.startswith('```json'):
             print('Unexpected JSON response found in OpenAI completion')
@@ -121,10 +129,6 @@ class OpenAIModel(BaseModel):
         if self.debug:
             color_print(f"{message_text}", color=DEBUG_COLOR2)
 
-        if response_format and completion.choices[0].message.parsed:
-            result = completion.choices[0].message.parsed
-        else:
-            result = json.loads(message_text) if return_json else message_text
         return result, input_token_count, output_token_count, tool_use
     
     def chat_async(self, messages: list[Message]):
@@ -134,7 +138,7 @@ class OpenAIModel(BaseModel):
                 messages=messages,
                 tools=None,  # No tools for async streaming
                 return_json=False,  # Default to False for streaming
-                response_format=None,  # No response format for streaming
+                response_model=None,  # No response format for streaming
                 stream=True
             )
         except APIConnectionError as e:
@@ -157,38 +161,38 @@ class OpenAIModel(BaseModel):
                 yield content, reasoning
                
     def completion(self, messages: list[Message], tools=NOT_GIVEN, return_json: bool = False,
-                   response_format: BaseModel = None, stream: bool = False):
+                   response_model: BaseModel = None, stream: bool = False):
         transformed_messages = self.transform_messages(messages)
-        
-        if response_format:
+
+        if response_model:
             if stream:
-                raise NotImplementedError("streaming is not supported with response_format")
-            # if tools:
-            #     raise NotImplementedError("tools is not supported with response_format")
-        #     return self.client.beta.chat.completions.parse(
-        #         model=self.model_name,
-        #         messages=transformed_messages,
-        #         response_format=response_format,
-        #         **self.model_params
-        #     )
-        # else:
+                raise NotImplementedError("streaming is not supported with response_model")
+            return self.client.chat.completions.create(
+                model=self.model_name,
+                messages=transformed_messages,
+                response_model=response_model,
+                **self.model_params
+            )
+
+        if return_json and not stream:
+            self.model_params['response_format'] = {"type": "json_object"}
+
         result = self.client.chat.completions.create(
             model=self.model_name,
             messages=transformed_messages,
             tools=tools,
-            response_format={"type": "json_object"} if return_json else NOT_GIVEN,
             stream=stream,
             **self.model_params
         )
         return result
-    
+
     @staticmethod
     def transform_messages(messages: list[Message]) -> list[dict]:
         transformed_messages = []
-        
+
         for message in messages:
             msg = {"role": message.role}
-            
+
             # Handle tool messages (function calls and their results)
             if message.tool_use:
                 if message.role == 'assistant' and 'function_to_call' in message.tool_use:
@@ -222,9 +226,9 @@ class OpenAIModel(BaseModel):
                     msg["content"] = content
                 else:
                     msg["content"] = message.content or ""
-            
+
             transformed_messages.append(msg)
-            
+
         return transformed_messages
 
     @staticmethod
