@@ -101,16 +101,15 @@ class OpenAIModel(BaseModel):
         message_text = message.content
 
         # Tool use
-        # if completion.choices[0].finish_reason == 'tool_calls':
-        #     f = completion.choices[0].message.tool_calls[0].function
-        #     tool_use = {
-        #         "function_to_call": f.name,
-        #         "function_parameters": json.loads(f.arguments),
-        #         "call_id": completion.id,
-        #     }
-        # else:
-        #     tool_use = {}
-        tool_use = {}
+        if completion.choices[0].finish_reason == 'tool_calls':
+            f = completion.choices[0].message.tool_calls[0].function
+            tool_use = {
+                "function_to_call": f.name,
+                "function_parameters": json.loads(f.arguments),
+                "call_id": completion.id,
+            }
+        else:
+            tool_use = {}
 
         # Token counts
         input_token_count = completion.usage.prompt_tokens
@@ -157,55 +156,83 @@ class OpenAIModel(BaseModel):
             if content or reasoning:
                 yield content, reasoning
                
-    def completion(self, messages: list[Message], tools, return_json: bool = False, response_format: BaseModel = None,
-                   stream: bool = False):
+    def completion(self, messages: list[Message], tools=NOT_GIVEN, return_json: bool = False,
+                   response_format: BaseModel = None, stream: bool = False):
         transformed_messages = self.transform_messages(messages)
         
         if response_format:
             if stream:
                 raise NotImplementedError("streaming is not supported with response_format")
-            if tools:
-                raise NotImplementedError("tools is not supported with response_format")
-            return self.client.beta.chat.completions.parse(
-                model=self.model_name,
-                messages=transformed_messages,
-                response_format=response_format,
-                **self.model_params
-            )
-        else:
-            return self.client.chat.completions.create(
-                model=self.model_name,
-                messages=transformed_messages,
-                #tools=tools,
-                response_format={"type": "json_object"} if return_json else NOT_GIVEN,
-                stream=stream,
-                **self.model_params
-            )
+            # if tools:
+            #     raise NotImplementedError("tools is not supported with response_format")
+        #     return self.client.beta.chat.completions.parse(
+        #         model=self.model_name,
+        #         messages=transformed_messages,
+        #         response_format=response_format,
+        #         **self.model_params
+        #     )
+        # else:
+        result = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=transformed_messages,
+            tools=tools,
+            response_format={"type": "json_object"} if return_json else NOT_GIVEN,
+            stream=stream,
+            **self.model_params
+        )
+        return result
     
     @staticmethod
     def transform_messages(messages: list[Message]) -> list[dict]:
-        def create_openai_message(message):
+        transformed_messages = []
+        
+        for message in messages:
             msg = {"role": message.role}
+            
+            # Handle tool messages (function calls and their results)
             if message.tool_use:
-                msg['name'] = message.tool_use['function_to_call']
-                msg['content'] = message.tool_use['function_result']
+                if message.role == 'assistant' and 'function_to_call' in message.tool_use:
+                    # This is a function call from the assistant
+                    msg["content"] = None
+                    msg["tool_calls"] = [{
+                        "id": message.tool_use.get('call_id', 'call_' + str(hash(str(message.tool_use)))),
+                        "type": "function",
+                        "function": {
+                            "name": message.tool_use['function_to_call'],
+                            "arguments": json.dumps(message.tool_use['function_parameters'])
+                        }
+                    }]
+                elif message.role == 'tool':
+                    # This is a function result
+                    function_result = message.tool_use.get('function_result', '')
+                    if not isinstance(function_result, str):
+                        function_result = json.dumps(function_result)
+                    msg["content"] = function_result
+                    msg["tool_call_id"] = message.tool_use.get('call_id', '')
+                    msg["name"] = message.tool_use.get('function_to_call', '')
+            # Handle regular messages
             else:
-                content = [{"type": "text", "text": message.content}]
-                for image in message.images:
-                    content += [{
-                                    "type": "image_url",
-                                    "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
-                               }]
-                msg["content"] = content
-            return msg
-
-        result = [create_openai_message(msg) for msg in messages]
-        return result
+                if message.images:
+                    content = [{"type": "text", "text": message.content or ""}]
+                    for image in message.images:
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
+                        })
+                    msg["content"] = content
+                else:
+                    msg["content"] = message.content or ""
+            
+            transformed_messages.append(msg)
+            
+        return transformed_messages
 
     @staticmethod
     def tool_use_message(tool_use) -> Message:
-        return Message(role='function', content='', tool_use=tool_use)
+        """ Creates a message with the result of a tool use. """
+        return Message('tool', tool_use=tool_use)
 
     def token_count(self, text: str) -> int:
+        """ Returns the number of tokens in a string. """
         encoding = tiktoken.encoding_for_model(self.model_name)
         return len(encoding.encode(text))

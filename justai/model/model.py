@@ -159,6 +159,10 @@ class Model:
         result, self.input_token_count, self.output_token_count, tool_use = model_response
         calls = 0  # Safety to prevent infinite loop
         while tool_use and calls < 3:
+            # Add the assistant's tool call message to the history
+            assistant_message = Message(role='assistant', tool_use=tool_use)
+            self.messages.append(assistant_message)
+
             calls += 1
             function = self.functions.get(tool_use["function_to_call"])
             if not function:

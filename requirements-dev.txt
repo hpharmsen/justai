@@ -6,3 +6,5 @@ pytest
 setuptools
 twine
 wheel
+pandas
+openmeteo_requests
