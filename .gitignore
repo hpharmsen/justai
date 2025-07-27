@@ -21,3 +21,5 @@ justai/saves
 /upelectude.sh
 /qodana.yaml
 /examples/structured_output.py
+/examples/.cache.sqlite
+/.cache.sqlite

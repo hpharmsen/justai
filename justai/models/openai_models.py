@@ -83,6 +83,9 @@ class OpenAIModel(BaseModel):
             [color_print(m, color=DEBUG_COLOR1) for m in messages if hasattr(m, 'text')]
             print()
 
+        if not tools: # Models like deepseek-chat don't like tools to be an empty list
+            tools = NOT_GIVEN
+
         try:
             completion = self.completion(messages, tools, return_json, response_model=response_format)
         except APIConnectionError as e:

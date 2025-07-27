@@ -91,8 +91,7 @@ class GoogleModel(BaseModel):
         try:
             # Initialize the streaming response
             response = self.client.generate_content(google_messages, stream=True,
-                                                    generation_config=self.generation_config(False),
-                                                    max_tokens=self.model_params.get('max_tokens', None))
+                                                    generation_config=self.generation_config(False))
 
             # Collect the streamed parts
             full_response = ''
