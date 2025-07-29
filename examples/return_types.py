@@ -17,10 +17,7 @@ def json_example(model_name: str):
     model = Model(model_name)
     prompt = "Read the following story and give me a list of the persons involved. " + \
              "Return json with keys name, profession and house number\n\n" + get_story()
-
-    data = model.chat(prompt, return_json=True)
-    print(json.dumps(data, indent=4))
-    print(model.last_token_count())  # (input_token_count, output_token_count, total_token_count)
+    return model.chat(prompt, return_json=True)
 
 
 def structured_output_with_type_annotations(model_name: str):
@@ -35,9 +32,7 @@ def structured_output_with_type_annotations(model_name: str):
 
     model = Model(model_name)
     prompt = "Read the following story and give me a list of the persons involved.\n\n" + get_story()
-    data = model.chat(prompt, response_format=persons, cached=False)
-    for person in data:
-        print(person)
+    return model.chat(prompt, response_format=persons, cached=False)
 
 
 def structured_output_with_pydantic(model_name: str):
@@ -55,13 +50,19 @@ def structured_output_with_pydantic(model_name: str):
     model = Model(model_name)
     prompt = "Read the following story and give me a list of the persons involved.\n\n" + get_story()
     
-    data = model.chat(prompt, response_format=Persons, cached=False)
-    for person in data.persons:
-        print(person)
+    return model.chat(prompt, response_format=Persons, cached=False)
+
 
 
 if __name__ == "__main__":
-    json_example('gemini-1.5-flash')
-    structured_output_with_type_annotations('gemini-1.5-pro')
-    structured_output_with_pydantic('gpt-4o-2024-08-06')
+    data = json_example('gemini-1.5-flash')
+    print(json.dumps(data, indent=4))
+
+    data = structured_output_with_type_annotations('gemini-1.5-pro')
+    for person in data:
+        print(person)
+
+    data = structured_output_with_pydantic('gpt-4o-2024-08-06')
+    for person in data.persons:
+        print(person)
     

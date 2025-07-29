@@ -49,6 +49,7 @@ Supported parameters:
 
 import json
 import os
+from typing import Any
 
 import instructor
 import tiktoken
@@ -72,10 +73,18 @@ class OpenAIModel(BaseModel):
         if not api_key:
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
+
+        # instructor.patch makes the OpenAI client compatible with structured output via response_model=”
+        # Works only for OpenAI models
         self.client = instructor.patch(OpenAI(api_key=api_key))
 
-    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format, use_cache: bool = False) -> tuple[str, int, int, dict|None]:
-        # OpenAI models like to have  the system message as part of the conversation
+    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format, use_cache: bool = False) \
+            -> tuple[Any, int|None, int|None, dict|None]:
+
+        if tools and response_format:
+            raise NotImplementedError("OpenAI API does not support both tools and response_format")
+
+        # OpenAI models like to have the system message as part of the conversation
         messages = [Message('system', self.system_message)] + messages
 
         if self.debug:
@@ -88,10 +97,10 @@ class OpenAIModel(BaseModel):
 
         try:
             completion = self.completion(messages, tools, return_json, response_model=response_format)
-        except APIConnectionError as e:
-            raise ConnectionException(e)
         except APITimeoutError as e:
             raise ModelOverloadException(e)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
         except (AuthenticationError, PermissionDeniedError) as e:
             raise AuthorizationException(e)
         except RateLimitError as e:
@@ -102,18 +111,17 @@ class OpenAIModel(BaseModel):
             raise GeneralException(e)
 
         if response_format:
-            raw_response = completion._raw_response
-            message = raw_response.choices[0].message
-            message_text = message.content
-            input_token_count = raw_response.usage.prompt_tokens
-            output_token_count = raw_response.usage.completion_tokens
-            result = completion
+            # Intended behavior bij OpenAI. When response_format is specified, the raw response is alreay
+            # deserialized into the requested format.
+            # Disadvantage: the raw response is not available so no token count or tool use
+            return completion, None, None, None
+
         else:
             message = completion.choices[0].message
             message_text = message.content
             input_token_count = completion.usage.prompt_tokens
             output_token_count = completion.usage.completion_tokens
-            result = json.loads(message_text) if return_json else message_text
+            result = json.loads(message_text) if return_json and self.supports_return_json else message_text
 
         # Tool use
         if message.tool_calls and not response_format:
@@ -168,6 +176,8 @@ class OpenAIModel(BaseModel):
         transformed_messages = self.transform_messages(messages)
 
         if response_model:
+            if not "openai.com" in str(self.client.base_url):
+                raise NotImplementedError("response_model is only supported with OpenAI models")
             if stream:
                 raise NotImplementedError("streaming is not supported with response_model")
             return self.client.chat.completions.create(
@@ -177,7 +187,7 @@ class OpenAIModel(BaseModel):
                 **self.model_params
             )
 
-        if return_json and not stream:
+        if return_json and not stream and self.supports_return_json:
             self.model_params['response_format'] = {"type": "json_object"}
 
         result = self.client.chat.completions.create(
@@ -187,6 +197,10 @@ class OpenAIModel(BaseModel):
             stream=stream,
             **self.model_params
         )
+
+        if 'response_format' in self.model_params:
+            del self.model_params['response_format']
+
         return result
 
     @staticmethod

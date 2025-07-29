@@ -35,6 +35,7 @@ class BaseModel(ABC):
         self.model_params = params  # Specific parameters for specific models like temperature
         self.system_message = system_message
         self.debug = params.get('debug', False)
+        self.supports_return_json = True  # Can (and will) be overridden by specific models that do not support it
 
     def set(self, key: str, value):
         if not hasattr(self, key):

@@ -149,6 +149,9 @@ class Model:
         return self.chat(prompt, images=images, return_json=return_json, response_format=response_format, cached=cached)
 
     def chat(self, prompt, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
+        if return_json and not self.model.supports_return_json:
+            raise NotImplementedError(f"{self.model.model_name} does not support return_json")
+
         start_time = time.time()
         if images and not isinstance(images, list):
             images = [images]
