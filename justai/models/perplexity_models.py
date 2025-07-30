@@ -21,6 +21,8 @@ class PerplexityModel(OpenAIModel):
             color_print(f"No {keyname} found. Create one at https://www.perplexity.ai/settings/api and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
         self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+
+        # Overwrite parent class defaults
         self.supports_return_json = False
 
     def chat_async(self, messages: list[Message]):

@@ -60,11 +60,23 @@ def run_pydantic(model_name):
     except Exception as e:
         print(e)
 
+def run_vision(model_name):
+    url = 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/1928_Model_A_Ford.jpg/520px-1928_Model_A_Ford.jpg'
+    model = Model(model_name)
+    try:
+        message = model.chat("What is in this image", images=url, cached=False)
+        print("Vison, ok.", message[:80])
+    except Exception as e:
+        print(e)
+
+def run_tool_use(model_name):
+    print('NOT YET IMPLEMENTED')
 
 if __name__ == "__main__":
     for provider, model_name in models.items():
-        print(f"===================== {provider} - {model_name} ", "=" * (50-len(provider) - len(model_name)))
-        run_async(model_name)
-        run_json(model_name)
-        run_type_annotates(model_name)
-        run_pydantic(model_name)
+        print(f"===================== {provider} - {model_name}", "=" * (50-len(provider) - len(model_name)))
+        # run_async(model_name)
+        # run_json(model_name)
+        # run_type_annotates(model_name)
+        # run_pydantic(model_name)
+        # run_vision(model_name)

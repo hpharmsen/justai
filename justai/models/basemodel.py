@@ -35,7 +35,12 @@ class BaseModel(ABC):
         self.model_params = params  # Specific parameters for specific models like temperature
         self.system_message = system_message
         self.debug = params.get('debug', False)
-        self.supports_return_json = True  # Can (and will) be overridden by specific models that do not support it
+
+        # Fields to indicate of certain capabilities are supported.
+        # Can (and will be) overridden by specific models that do not support it
+        self.supports_return_json = True
+        self.supports_image_inputs = True
+        self.supports_tool_use = True
 
     def set(self, key: str, value):
         if not hasattr(self, key):

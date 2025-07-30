@@ -1,8 +1,10 @@
 import os
+from typing import Any
 
 from dotenv import dotenv_values
 from openai import OpenAI
 
+from justai.model.message import Message
 from justai.models.basemodel import BaseModel
 from justai.models.openai_models import OpenAIModel
 from justai.tools.display import color_print, ERROR_COLOR
@@ -20,3 +22,6 @@ class DeepSeekModel(OpenAIModel):
             color_print("No DEEPSEEK API key found. Create one at https://platform.deepseek.com/api_keys and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
         self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+
+        # Overwrite parent class defaults
+        self.supports_image_input = False

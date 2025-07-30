@@ -116,12 +116,11 @@ class OpenAIModel(BaseModel):
             # Disadvantage: the raw response is not available so no token count or tool use
             return completion, None, None, None
 
-        else:
-            message = completion.choices[0].message
-            message_text = message.content
-            input_token_count = completion.usage.prompt_tokens
-            output_token_count = completion.usage.completion_tokens
-            result = json.loads(message_text) if return_json and self.supports_return_json else message_text
+        message = completion.choices[0].message
+        message_text = message.content
+        input_token_count = completion.usage.prompt_tokens
+        output_token_count = completion.usage.completion_tokens
+        result = json.loads(message_text) if return_json and self.supports_return_json else message_text
 
         # Tool use
         if message.tool_calls and not response_format:
