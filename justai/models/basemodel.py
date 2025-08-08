@@ -39,7 +39,7 @@ class BaseModel(ABC):
         # Fields to indicate of certain capabilities are supported.
         # Can (and will be) overridden by specific models that do not support it
         self.supports_return_json = True
-        self.supports_image_inputs = True
+        self.supports_image_input = True
         self.supports_tool_use = True
 
     def set(self, key: str, value):

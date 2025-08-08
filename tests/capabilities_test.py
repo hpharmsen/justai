@@ -17,7 +17,7 @@ from justai import Model
 from examples.return_types import json_example, structured_output_with_pydantic, structured_output_with_type_annotations
 
 models = {
-    "OpenAi": "gpt-4o",
+    "OpenAi": "gpt-5-nano",
     "Anthropic": "claude-sonnet-4-0",
     "Google": "gemini-2.5-pro",
     "X-AI": "grok-4",
@@ -75,8 +75,8 @@ def run_tool_use(model_name):
 if __name__ == "__main__":
     for provider, model_name in models.items():
         print(f"===================== {provider} - {model_name}", "=" * (50-len(provider) - len(model_name)))
-        # run_async(model_name)
-        # run_json(model_name)
-        # run_type_annotates(model_name)
-        # run_pydantic(model_name)
-        # run_vision(model_name)
+        run_async(model_name)
+        run_json(model_name)
+        run_type_annotates(model_name)
+        run_pydantic(model_name)
+        run_vision(model_name)

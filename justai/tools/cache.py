@@ -14,7 +14,16 @@ def cached_llm_response(model, messages: list[Message], tools: list, return_json
     if not use_cache:
         return model.chat(messages, tools, return_json, response_format, max_retries)
 
-    hashcode = recursive_hash((model, messages, return_json))
+    hashcode = recursive_hash(
+        (
+            model.model_name,
+            model.model_params,
+            model.system_message,
+            messages,
+            return_json,
+        )
+    )
+
     cachedb = CachDB()
     result = cachedb.read(hashcode)
     if result:

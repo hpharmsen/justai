@@ -1,6 +1,5 @@
 """ Handles the GPT API and the conversation state. """
 import json
-import re
 import time
 from pathlib import Path
 from typing import Optional, Union, List
@@ -113,7 +112,17 @@ class Model:
         """ Adds a function to the model.
         name: name of the function
         description: description of the function
-        parameters: dictionary with parameter description as key and parameter type as value """
+        parameters: dictionary with parameter name as key and parameter type as value """
+        # Basic mapping from Python types to JSON schema types
+        type_mapping = {
+            int: "integer",
+            str: "string",
+            float: "number",
+            bool: "boolean",
+            list: "array",
+            dict: "object"
+        }
+
         tool = {
             "type": "function",
             "function": {
@@ -122,11 +131,11 @@ class Model:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        re.sub(r"\W+", "", description).lower(): {
-                            "type": _type.__name__ if isinstance(_type, type) else str(_type),
-                            "description": description,
+                        param_name: {
+                            "type": type_mapping.get(_type, "string"),  # Default to string if type not in map
+                            "description": param_name,  # Or a more descriptive text if available
                         }
-                        for description, _type in parameters.items()
+                        for param_name, _type in parameters.items()
                     },
                     "required": required_parameters or [],
                     "additionalProperties": False
@@ -143,7 +152,7 @@ class Model:
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def prompt(self, prompt, *, images: [list[str] | list[bytes] | list[Image] | str | bytes | Image | None] = None,
+    def prompt(self, prompt, *, images: ImageInput = None,
                return_json=False, response_format=None, cached=True):
         self.reset()
         return self.chat(prompt, images=images, return_json=return_json, response_format=response_format, cached=cached)

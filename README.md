@@ -29,7 +29,7 @@ DEEPSKEEK_API_KEY=your-deepseek-api-key
 ```Python
 from justai import Model
 
-model = Model('gpt-4o-mini')
+model = Model('gpt-5-mini')
 model.system = """You are a movie critic. I feed you with movie
                   titles and you give me a review in 50 words."""
 
@@ -49,7 +49,7 @@ movie that still resonates with audiences today.
 ## Models
 Justai can use different types of models:
 
-**OpenAI** models like GPT-4 and O3
+**OpenAI** models like GPT-5 and O3
 
 **Anthropic** models like the Claude-3 models
 
@@ -106,7 +106,7 @@ Pass images to the model. An image can either be:
 #### Example with PIL image and GPT4o-mini
 ```python
     
-model = Model("gpt-4o-mini-2024-07-18")
+model = Model("gpt-5-nano")
 url = 'https://upload.wikimedia.org/wikipedia/commons/9/94/Common_dolphin.jpg'
 image = Image.open(io.BytesIO(httpx.get(url).content))
 message = model.chat("What is in this image", images=url, cached=False)

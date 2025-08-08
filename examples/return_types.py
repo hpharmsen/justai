@@ -62,7 +62,7 @@ if __name__ == "__main__":
     for person in data:
         print(person)
 
-    data = structured_output_with_pydantic('gpt-4o-2024-08-06')
+    data = structured_output_with_pydantic('gpt-5')
     for person in data.persons:
         print(person)
     

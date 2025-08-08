@@ -189,6 +189,9 @@ class OpenAIModel(BaseModel):
         if return_json and not stream and self.supports_return_json:
             self.model_params['response_format'] = {"type": "json_object"}
 
+        if self.model_name.startswith("gpt-5"):
+            self.model_params["temperature"] = 1  # Only the default of 1 is supported in GPT-5
+
         result = self.client.chat.completions.create(
             model=self.model_name,
             messages=transformed_messages,
