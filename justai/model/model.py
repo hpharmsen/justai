@@ -37,7 +37,18 @@ class Model:
         self.last_response_time = 0
         
         self.logger = None
-        
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def close(self):
+        """ Closes any open connections in the underlying model. """
+        if hasattr(self.model, 'close'):
+            self.model.close()
+
     def __setattr__(self, name, value):
         if name not in self.__dict__ and hasattr(self, 'model') and name in self.model.model_params:
             # Not an existing property model but a model_params property. Set it in model_params
