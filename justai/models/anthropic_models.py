@@ -23,7 +23,7 @@ temperature: float (default 0.8)
 
 import json
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
@@ -140,16 +140,15 @@ class AnthropicModel(BaseModel):
 
         return response, input_tokens, output_tokens, tool_use
 
-    def chat_async(self, messages: list[Message]) -> [str, str]:
+    async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
+        messages = [Message("user", prompt)]
+
+        async for content, reasoning in self.chat_async(messages):
+            if content or reasoning:
+                yield content, reasoning
+
+    async def chat_async(self, messages: list[Message]) -> AsyncGenerator[tuple[str, str], None]:
         try:
-            # stream = self.client.messages.create(
-            #     model=self.model_name,
-            #     max_tokens=self.model_params["max_tokens"],
-            #     temperature=self.model_params.get('temperature', 0.8),
-            #     system=self.system_message,
-            #     messages=transform_messages(messages, return_json=False),
-            #     stream=True,
-            # )
             stream = self.client.messages.create(
                 model=self.model_name,
                 system=self.system_message,
@@ -193,7 +192,8 @@ class AnthropicModel(BaseModel):
 
     def token_count(self, text: str) -> int:
         messages = transform_messages([Message("user", text)], return_json=False)
-        return self.client.beta.messages.count_tokens(model=self.model_name, messages=messages)
+        response = self.client.messages.count_tokens(model=self.model_name, messages=messages)
+        return response.input_tokens
 
 
 def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
@@ -263,7 +263,8 @@ def create_anthropic_message(message: Message):
     if message.content:
         content += [{"type": "text", "text": message.content}]
 
-    if message.tool_use:
+    # TODO: tool use is geen onderdeel meer van message maar staat in de Model class.
+    if False and message.tool_use:
         _input = message.tool_use["function_result"]
         if not isinstance(input, dict): # Anthropic requires input to be a dict
             _input = {'data': _input}

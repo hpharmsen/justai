@@ -9,28 +9,44 @@ from justdays import Day
 from justai.model.message import Message
 
 
-def cached_llm_response(model, messages: list[Message], tools: list, return_json: bool, response_format=None,
-                        use_cache=True, max_retries=None) -> tuple[[str | object], int, int, dict]:
+def cached_llm_response(model, prompt_or_messages: str|list[Message], tools: list, return_json: bool, response_format=None,
+                        use_cache=True, images=None) -> tuple[[str | object], int, int, dict]:
+    """ Double use function.
+    It can be called with
+    A: A list of Messages. This is used in chat(). images parameter is ignored.
+    B: A string. This is used in prompt(). It uses the images parameter to add images to the prompt
+    """
+
     if not use_cache:
-        return model.chat(messages, tools, return_json, response_format, max_retries)
+        if isinstance(prompt_or_messages, str):
+            return model.prompt(prompt_or_messages, images, tools, return_json, response_format)
+        else:
+            assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
+            return model.chat(prompt_or_messages, tools, return_json, response_format)
 
     hashcode = recursive_hash(
         (
             model.model_name,
             model.model_params,
             model.system_message,
-            messages,
+            prompt_or_messages,
             return_json,
         )
     )
 
-    cachedb = CachDB()
+    cachedb = CacheDB()
     result = cachedb.read(hashcode)
     if result:
         if return_json:
             return json.loads(result[0]), result[1], result[2], result[3]
         return result
-    result = model.chat(messages, tools, return_json, response_format, max_retries)
+
+    if isinstance(prompt_or_messages, str):
+        assert hasattr(model, 'prompt')
+        result = model.prompt(prompt_or_messages, images, tools, return_json, response_format)
+    else:
+        assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
+        result = model.chat(prompt_or_messages, tools, return_json, response_format)
     try:
         if return_json:
             cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2], result[3]))
@@ -50,12 +66,12 @@ def set_cache_dir(_dir):
     cache_dir = _dir
 
 
-class CachDB:
+class CacheDB:
     _instance = None
 
     def __new__(cls, *args, **kwargs):  # Make this class a singleton
         if cls._instance is None:
-            cls._instance = super(CachDB, cls).__new__(cls, *args, **kwargs)
+            cls._instance = super(CacheDB, cls).__new__(cls, *args, **kwargs)
         return cls._instance
 
     def __init__(self):

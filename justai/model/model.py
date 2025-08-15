@@ -24,6 +24,8 @@ class Model:
         
         # Model parameters
         self.model = ModelFactory.create(model_name, **kwargs)
+        self.model_name = model_name
+        self.model.encapsulating_model = self
 
         # Parameters to save the current conversation
         self.save_dir = Path(__file__).resolve().parent / 'saves'
@@ -156,23 +158,31 @@ class Model:
         self.tools.append(tool)
         self.functions[func.__name__] = func
 
-
     def get_messages(self) -> list[Message]:
         return self.messages[-self.message_memory:]
 
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
-    def prompt(self, prompt, *, images: ImageInput = None,
-               return_json=False, response_format=None, cached=True):
-        self.reset()
-        return self.chat(prompt, images=images, return_json=return_json, response_format=response_format, cached=cached)
+    def prompt(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
+        self.raise_for_unsupported()
 
-    def chat(self, prompt, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
-        if return_json and not self.model.supports_return_json:
-            raise NotImplementedError(f"{self.model.model_name} does not support return_json")
-        if images and not self.model.supports_image_input:
-            raise NotImplementedError(f"{self.model.model_name} does not support image input")
+        # Some models (like Gemini) have their own implementation of prompt which goes beyond the loop via chat
+        if not hasattr(self.model, 'prompt'):
+            self.reset()
+            return self.chat(prompt, images=images, return_json=return_json, response_format=response_format,
+                             cached=cached,)
+
+        start_time = time.time()
+        # Call cached_llm_response with a string prompt instead of a list of messages
+        model_response = cached_llm_response(self.model, prompt, self.tools, return_json=return_json,
+                                             response_format=response_format, use_cache=cached, images=images)
+        result, self.input_token_count, self.output_token_count, tool_use = model_response
+        self.last_response_time = time.time() - start_time
+        return result
+
+    def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
+        self.raise_for_unsupported()
 
         start_time = time.time()
         if images and not isinstance(images, list):
@@ -185,7 +195,7 @@ class Model:
         calls = 0  # Safety to prevent infinite loop
         while tool_use and calls < 3:
             # Add the assistant's tool call message to the history
-            assistant_message = Message(role='assistant', tool_use=tool_use)
+            assistant_message = Message(role='assistant')
             self.messages.append(assistant_message)
 
             calls += 1
@@ -215,10 +225,9 @@ class Model:
         return result
     
     async def prompt_async(self, prompt, *, images: ImageInput = None):
-        self.reset()
         # Use 'async for' to properly yield from the chat_async generator
-        async for word in self.chat_async(prompt=prompt, images=images):
-            yield word
+        async for content, reasoning  in self.model.prompt_async(prompt=prompt):
+            yield content, reasoning
 
     async def chat_async(self, prompt, *, images: ImageInput = None):
         if images and not isinstance(images, list):
@@ -243,6 +252,12 @@ class Model:
         for word, reasoning_content in self.model.chat_async(messages=self.get_messages()):
             if word or reasoning_content:
                 yield word, reasoning_content
+
+    def raise_for_unsupported(self, images: ImageInput = None, return_json=False):
+        if return_json and not self.model.supports_return_json:
+            raise NotImplementedError(f"{self.model.model_name} does not support return_json")
+        if images and not self.model.supports_image_input:
+            raise NotImplementedError(f"{self.model.model_name} does not support image input")
 
     def after_response(self):
         # content is in messages[-1]['completion']['choices'][0]['message']['content']

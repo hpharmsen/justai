@@ -1,5 +1,6 @@
 import base64
 from abc import ABC, abstractmethod
+from typing import AsyncGenerator
 
 from justai.model.message import Message
 
@@ -42,6 +43,10 @@ class BaseModel(ABC):
         self.supports_image_input = True
         self.supports_tool_use = True
 
+        # The Model class that wraps this model so this model can set attributes there like token count
+        # This value will be set by the Model class itself after instantiation
+        self.encapsulating_model = None
+
     def set(self, key: str, value):
         if not hasattr(self, key):
             raise (AttributeError(f"Model has no attribute {key}"))
@@ -53,7 +58,11 @@ class BaseModel(ABC):
         pass
 
     @abstractmethod
-    def chat_async(self, messages: list[Message]) -> str:
+    def prompt_async(self, message: str) -> AsyncGenerator[tuple[str, str], None]:
+        pass
+
+    @abstractmethod
+    def chat_async(self, messages: list[Message]) -> AsyncGenerator[tuple[str, str], None]:
         pass
 
     @abstractmethod

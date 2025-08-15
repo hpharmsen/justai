@@ -17,7 +17,7 @@ def json_example(model_name: str):
     model = Model(model_name)
     prompt = "Read the following story and give me a list of the persons involved. " + \
              "Return json with keys name, profession and house number\n\n" + get_story()
-    return model.chat(prompt, return_json=True)
+    return model.prompt(prompt, return_json=True, cached=False)
 
 
 def structured_output_with_type_annotations(model_name: str):
@@ -32,7 +32,7 @@ def structured_output_with_type_annotations(model_name: str):
 
     model = Model(model_name)
     prompt = "Read the following story and give me a list of the persons involved.\n\n" + get_story()
-    return model.chat(prompt, response_format=persons, cached=False)
+    return model.prompt(prompt, response_format=persons, cached=False)
 
 
 def structured_output_with_pydantic(model_name: str):
@@ -50,7 +50,7 @@ def structured_output_with_pydantic(model_name: str):
     model = Model(model_name)
     prompt = "Read the following story and give me a list of the persons involved.\n\n" + get_story()
     
-    return model.chat(prompt, response_format=Persons, cached=False)
+    return model.prompt(prompt, response_format=Persons, cached=False)
 
 
 

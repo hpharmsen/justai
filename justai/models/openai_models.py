@@ -47,9 +47,10 @@ Supported parameters:
     self.model_params['frequency_penalty'] = params.get('frequency_penalty', 0)
 """
 
+import asyncio
 import json
 import os
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import instructor
 import tiktoken
@@ -78,7 +79,7 @@ class OpenAIModel(BaseModel):
         # Works only for OpenAI models
         self.client = instructor.patch(OpenAI(api_key=api_key))
 
-    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format, use_cache: bool = False) \
+    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format) \
             -> tuple[Any, int|None, int|None, dict|None]:
 
         if tools and response_format:
@@ -140,17 +141,42 @@ class OpenAIModel(BaseModel):
             color_print(f"{message_text}", color=DEBUG_COLOR2)
 
         return result, input_token_count, output_token_count, tool_use
-    
-    def chat_async(self, messages: list[Message]):
+
+    async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
+        messages = [Message('user', prompt)]
+
+        async for content, reasoning in self.chat_async(messages):
+            if content or reasoning:
+                yield content, reasoning
+
+    async def chat_async(self, messages: list[Message]) -> AsyncGenerator[tuple[str, str], None]:
         try:
-            # Pass required parameters to completion method
-            completion = self.completion(
+            # Get the streaming response
+            stream = self.completion(
                 messages=messages,
-                tools=None,  # No tools for async streaming
-                return_json=False,  # Default to False for streaming
-                response_model=None,  # No response format for streaming
+                tools=None,
+                return_json=False,
+                response_model=None,
                 stream=True
             )
+            
+            # Process the streaming response
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                    
+                delta = chunk.choices[0].delta
+                if not delta:
+                    continue
+                
+                content = getattr(delta, 'content', None)
+                reasoning = getattr(delta, 'reasoning_content', None)
+                
+                if content or reasoning:
+                    yield (content or ''), (reasoning or '')
+                    # Small sleep to prevent overwhelming the event loop
+                    await asyncio.sleep(0.01)
+        
         except APIConnectionError as e:
             raise ConnectionException(e)
         except (AuthenticationError, PermissionDeniedError) as e:
@@ -163,15 +189,9 @@ class OpenAIModel(BaseModel):
             raise BadRequestException(e)
         except Exception as e:
             raise GeneralException(e)
-
-        for item in completion:
-            content = item.choices[0].delta.content if hasattr(item.choices[0].delta, "content") else None
-            reasoning = item.choices[0].delta.reasoning_content if hasattr(item.choices[0].delta, "reasoning_content") else None
-            if content or reasoning:
-                yield content, reasoning
                
     def completion(self, messages: list[Message], tools=NOT_GIVEN, return_json: bool = False,
-                   response_model: BaseModel = None, stream: bool = False):
+                  response_model: BaseModel = None, stream: bool = False):
         transformed_messages = self.transform_messages(messages)
 
         if response_model:
@@ -192,6 +212,7 @@ class OpenAIModel(BaseModel):
         if self.model_name.startswith("gpt-5"):
             self.model_params["temperature"] = 1  # Only the default of 1 is supported in GPT-5
 
+        # Create the completion with streaming
         result = self.client.chat.completions.create(
             model=self.model_name,
             messages=transformed_messages,
@@ -213,7 +234,8 @@ class OpenAIModel(BaseModel):
             msg = {"role": message.role}
 
             # Handle tool messages (function calls and their results)
-            if message.tool_use:
+            # Todo: tool use is geen onderdeel meer van message maar staat in de Model class.
+            if False and message.tool_use:
                 if message.role == 'assistant' and 'function_to_call' in message.tool_use:
                     # This is a function call from the assistant
                     msg["content"] = None
@@ -257,5 +279,9 @@ class OpenAIModel(BaseModel):
 
     def token_count(self, text: str) -> int:
         """ Returns the number of tokens in a string. """
-        encoding = tiktoken.encoding_for_model(self.model_name)
+        try:
+            encoding = tiktoken.encoding_for_model(self.model_name)
+        except KeyError:
+            # Fall back to cl100k_base encoding for newer models not yet in tiktoken
+            encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
