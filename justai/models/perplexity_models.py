@@ -5,11 +5,11 @@ from openai import OpenAI
 
 from justai.model.message import Message
 from justai.models.basemodel import BaseModel
-from justai.models.openai_models import OpenAIModel
+from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.display import color_print, ERROR_COLOR
 
 
-class PerplexityModel(OpenAIModel):
+class PerplexityModel(OpenAICompletionsModel):
     def __init__(self, model_name: str, params: dict = None):
         system_message = f"You are {model_name}, a large language model trained by Perplexity."
         BaseModel.__init__(self, model_name, params, system_message)
@@ -21,6 +21,8 @@ class PerplexityModel(OpenAIModel):
             color_print(f"No {keyname} found. Create one at https://www.perplexity.ai/settings/api and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
         self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+
+        self.messages = [{"role": "system", "content": self.system_message}]
 
         # Overwrite parent class defaults
         self.supports_return_json = False

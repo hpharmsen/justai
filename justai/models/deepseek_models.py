@@ -6,11 +6,11 @@ from openai import OpenAI
 
 from justai.model.message import Message
 from justai.models.basemodel import BaseModel
-from justai.models.openai_models import OpenAIModel
+from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.display import color_print, ERROR_COLOR
 
 
-class DeepSeekModel(OpenAIModel):
+class DeepSeekModel(OpenAICompletionsModel):
     def __init__(self, model_name: str, params: dict = None):
         system_message = f"You are {model_name}, a large language model trained by DeepSeek."
         BaseModel.__init__(self, model_name, params, system_message)
@@ -22,6 +22,8 @@ class DeepSeekModel(OpenAIModel):
             color_print("No DEEPSEEK API key found. Create one at https://platform.deepseek.com/api_keys and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
         self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+
+        self.messages = [{"role": "system", "content": self.system_message}]
 
         # Overwrite parent class defaults
         self.supports_image_input = False

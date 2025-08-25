@@ -1,7 +1,4 @@
-import re
-
 from dotenv import load_dotenv
-
 from justai import Model
 
 
@@ -12,9 +9,9 @@ def ergobam(x:int, y: int) -> str:
 
 if __name__ == '__main__':
     load_dotenv()
-    model = Model("gpt-5-mini")
-    model.add_function(ergobam, 'Calculates the ergobam of two numbers',
-                       {'x': int, 'y': int}, ['x', 'y'])
+    model = Model("gemini-2.5-flash")
+    model.add_tool(ergobam)
+
     prompt = "Give me the ergobam of 3 and 4."
-    response = model.chat(prompt)
+    response = model.prompt(prompt)
     print(response)

@@ -8,15 +8,20 @@ from justai import Model
 # Force unbuffered output
 os.environ['PYTHONUNBUFFERED'] = '1'
 
-models = [
-    # Model("gemini-2.5-flash"),
-    # Model("gpt-5-nano"),
-    Model('claude-3-7-sonnet-latest')
-]
 
 async def main():
     load_dotenv()
-    
+
+    models = [
+        Model("gpt-5-nano", temperature=1),
+        #Model('claude-3-7-sonnet-latest', temperature=1),
+        Model("gemini-2.5-flash", temperature=1),
+        Model("grok-4", temperature=0),
+        Model("deepseek-chat", temperature=0),
+        Model("sonar", temperature=0),
+        Model("openrouter/anthropic/claude-3.7-sonnet", temperature=0),
+    ]
+
     prompt = "Tell me a short story about a robot learning to paint. Max 100 words."
 
     for model in models:

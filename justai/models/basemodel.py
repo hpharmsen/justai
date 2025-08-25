@@ -1,6 +1,18 @@
 import base64
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any, Optional, Union
+
+from PIL.Image import Image
+
+ImageInput = Optional[Union[
+    list[str],
+    list[bytes],
+    list[Image],
+    str,
+    bytes,
+    Image
+]]
+
 
 from justai.model.message import Message
 
@@ -42,6 +54,9 @@ class BaseModel(ABC):
         self.supports_return_json = True
         self.supports_image_input = True
         self.supports_tool_use = True
+        self.supports_function_calling = False
+        self.supports_automatic_function_calling = False
+        self.supports_cached_prompts = False
 
         # The Model class that wraps this model so this model can set attributes there like token count
         # This value will be set by the Model class itself after instantiation
@@ -53,21 +68,26 @@ class BaseModel(ABC):
         setattr(self, key, value)
 
     @abstractmethod
-    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format) \
-            -> tuple[[str | object], int, int]:
-        pass
+    def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
+            -> tuple[Any, int|None, int|None]:
+        ...
 
     @abstractmethod
-    def prompt_async(self, message: str) -> AsyncGenerator[tuple[str, str], None]:
-        pass
+    def chat(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
+            -> tuple[Any, int|None, int|None]:
+        ...
 
     @abstractmethod
-    def chat_async(self, messages: list[Message]) -> AsyncGenerator[tuple[str, str], None]:
-        pass
+    def prompt_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
+        ...
+
+    @abstractmethod
+    def chat_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
+        ...
 
     @abstractmethod
     def token_count(self, text: str) -> int:
-        pass
+        ...
 
 
 def identify_image_format_from_base64(encoded_data: str) -> str:

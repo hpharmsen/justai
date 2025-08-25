@@ -2,29 +2,21 @@
 import json
 import time
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Callable
 
 from PIL.Image import Image
 
-from justai.tools.cache import cached_llm_response
+from justai.models.basemodel import ImageInput
+from justai.tools.cache import cached_response, cache_save
 from justai.model.message import Message
 from justai.models.modelfactory import ModelFactory
 
-ImageInput = Optional[Union[
-    List[str],
-    List[bytes],
-    List[Image],
-    str,
-    bytes,
-    Image
-]]
 
 class Model:
     def __init__(self, model_name: str, **kwargs):
         
         # Model parameters
         self.model = ModelFactory.create(model_name, **kwargs)
-        self.model_name = model_name
         self.model.encapsulating_model = self
 
         # Parameters to save the current conversation
@@ -59,22 +51,13 @@ class Model:
             # Update the property as intended
             super().__setattr__(name, value)
 
-    @classmethod
-    def from_json(cls, model_name, model_data, **kwargs):
-        """ Creates an model from a json string. Usefull in stateless environments like a web page """
-        model = cls(model_name, **kwargs)
-        dictionary = json.loads(model_data)
-        for key, value in dictionary.items():
-            match key:
-                case 'messages':
-                    model.messages = [Message.from_dict(m) for m in value]
-                case _:
-                    model.__setattr__(key, value)
-        return model
-
     def set_api_key(self, key: str):
         """ Used when using Aigent from a browser where the user has to specify a key """
         self.model.set('api_key', key)
+
+    @property
+    def model_name(self):
+        return self.model.model_name
 
     @property
     def system(self):  # This function can be overwritten by child classes to make the system message dynamic
@@ -112,54 +95,15 @@ class Model:
     def reset(self):
         self.messages = []
 
-    def append_messages(self, prompt: str, images: ImageInput = None):
-        if images:
-            if not isinstance(images, list):
-                images = [images]
-        else:
-            images = []
-        self.messages.append(Message('user', prompt, images))
-        return self.messages
-
-    def add_function(self, func: callable, description: str, parameters: dict, required_parameters=None):
-        """ Adds a function to the model.
-        name: name of the function
-        description: description of the function
-        parameters: dictionary with parameter name as key and parameter type as value """
-        # Basic mapping from Python types to JSON schema types
-        type_mapping = {
-            int: "integer",
-            str: "string",
-            float: "number",
-            bool: "boolean",
-            list: "array",
-            dict: "object"
-        }
-
-        tool = {
-            "type": "function",
-            "function": {
-                "name": func.__name__,
-                "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        param_name: {
-                            "type": type_mapping.get(_type, "string"),  # Default to string if type not in map
-                            "description": param_name,  # Or a more descriptive text if available
-                        }
-                        for param_name, _type in parameters.items()
-                    },
-                    "required": required_parameters or [],
-                    "additionalProperties": False
-                }
-            }
-        }
+    def add_tool(self, function: Callable, description: str|None = None, parameters: dict = None, required_parameters: list=None):
+        if description is None and not self.model.supports_function_calling:
+            raise NotImplementedError(f"{self.model.model_name} does not support function calling")
+        if not description and not self.model.supports_automatic_function_calling:
+            raise NotImplementedError(f"{self.model.model_name} does not support automatic function calling")
+        tool = {'type': 'function', 'function': function, 'description': description, 'parameters': parameters,
+                'required_parameters': required_parameters}
         self.tools.append(tool)
-        self.functions[func.__name__] = func
-
-    def get_messages(self) -> list[Message]:
-        return self.messages[-self.message_memory:]
+        self.functions[function.__name__] = function
 
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
@@ -167,79 +111,60 @@ class Model:
     def prompt(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
         self.raise_for_unsupported()
 
-        # Some models (like Gemini) have their own implementation of prompt which goes beyond the loop via chat
-        if not hasattr(self.model, 'prompt'):
-            self.reset()
-            return self.chat(prompt, images=images, return_json=return_json, response_format=response_format,
-                             cached=cached,)
-
         start_time = time.time()
-        # Call cached_llm_response with a string prompt instead of a list of messages
-        model_response = cached_llm_response(self.model, prompt, self.tools, return_json=return_json,
-                                             response_format=response_format, use_cache=cached, images=images)
-        result, self.input_token_count, self.output_token_count, tool_use = model_response
+        if images and not isinstance(images, list):
+            images = [images]
+
+        response = None
+
+        if cached:
+            response = cached_response(self.model, prompt, images, self.tools, return_json, response_format)
+
+        if response:
+            result, _, _, tool_use = response
+            self.input_token_count = self.output_token_count = 0
+        else:
+            response = self.model.prompt(prompt, images=images, tools=self.tools, return_json=return_json,
+                                         response_format=response_format)
+            if cached:
+                cache_save(response, self.model, prompt, images, self.tools, return_json, response_format)
+
+            result, self.input_token_count, self.output_token_count = response
+
         self.last_response_time = time.time() - start_time
         return result
 
-    def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
+    def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=False):
         self.raise_for_unsupported()
+        if cached:
+            raise NotImplementedError("Model.chat does not support cached=True. Use prompt instead.")
 
         start_time = time.time()
         if images and not isinstance(images, list):
             images = [images]
-        self.append_messages(prompt, images)
 
-        model_response = cached_llm_response(self.model, self.get_messages(), self.tools, return_json=return_json,
-                                             response_format=response_format, use_cache=cached)
-        result, self.input_token_count, self.output_token_count, tool_use = model_response
-        calls = 0  # Safety to prevent infinite loop
-        while tool_use and calls < 3:
-            # Add the assistant's tool call message to the history
-            assistant_message = Message(role='assistant')
-            self.messages.append(assistant_message)
+        response = self.model.chat(prompt, images=images, tools=self.tools, return_json=return_json,
+                                   response_format=response_format)
 
-            calls += 1
-            function = self.functions.get(tool_use["function_to_call"])
-            if not function:
-                raise ValueError(f"Function {tool_use['function_to_call']} not found")
-
-            # Run the tool/function
-            tool_use['function_result'] = function(*tool_use['function_parameters'].values())
-
-            # Add a model specific message with the tool use result to the conversation
-            self.messages.append(self.model.tool_use_message(tool_use))
-
-            model_response = cached_llm_response(
-                self.model,
-                self.get_messages(),
-                self.tools,
-                return_json=return_json,
-                response_format=response_format,
-                use_cache=cached,
-            )
-            result, self.input_token_count, self.output_token_count, tool_use = model_response
-
-        # Add the result to the messages
-        self.messages.append(Message('assistant', str(result)))
+        result, self.input_token_count, self.output_token_count = response
         self.last_response_time = time.time() - start_time
         return result
     
     async def prompt_async(self, prompt, *, images: ImageInput = None):
-        # Use 'async for' to properly yield from the chat_async generator
-        async for content, reasoning  in self.model.prompt_async(prompt=prompt):
+        # Using 'async for' to properly yield from the chat_async generator
+        async for content, reasoning in self.model.prompt_async(prompt=prompt):
             yield content, reasoning
 
     async def chat_async(self, prompt, *, images: ImageInput = None):
         if images and not isinstance(images, list):
             images = [images]
-        self.append_messages(prompt, images)
-        for word, _ in self.model.chat_async(messages=self.get_messages()):
+        for word in self.model.chat_async(prompt=prompt, images=images):
             if word:
                 yield word
 
     async def prompt_async_reasoning(self, prompt, *, images: ImageInput = None):
         self.reset()
-        # Use 'async for' to properly yield from the chat_async_reasoning generator
+        # Using 'async for' to properly yield from the chat_async_reasoning generator
         async for word, reasoning_content in self.chat_async_reasoning(prompt=prompt, images=images):
             yield word, reasoning_content
 
@@ -248,8 +173,7 @@ class Model:
         """
         if images and not isinstance(images, list):
             images = [images]
-        self.append_messages(prompt, images)
-        for word, reasoning_content in self.model.chat_async(messages=self.get_messages()):
+        async for word, reasoning_content in self.model.chat_async(prompt=prompt, images=images):
             if word or reasoning_content:
                 yield word, reasoning_content
 
@@ -258,10 +182,6 @@ class Model:
             raise NotImplementedError(f"{self.model.model_name} does not support return_json")
         if images and not self.model.supports_image_input:
             raise NotImplementedError(f"{self.model.model_name} does not support image input")
-
-    def after_response(self):
-        # content is in messages[-1]['completion']['choices'][0]['message']['content']
-        return  # Can be overridden
 
     def token_count(self, text: str):
         return self.model.token_count(text)

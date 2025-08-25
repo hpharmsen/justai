@@ -14,7 +14,7 @@ import asyncio
 
 from justai import Model
 
-from examples.return_types import json_example, structured_output_with_pydantic, structured_output_with_type_annotations
+from examples.return_types import json_example, structured_output_with_pydantic
 
 models = {
     "OpenAi": "gpt-5-nano",
@@ -45,14 +45,6 @@ def run_json(model_name):
         print(e)
 
 
-def run_type_annotates(model_name):
-    try:
-        res = structured_output_with_type_annotations(model_name)
-        print('Type annotations, ok')
-    except Exception as e:
-        print(e)
-
-
 def run_pydantic(model_name):
     try:
         res = structured_output_with_pydantic(model_name)
@@ -77,6 +69,5 @@ if __name__ == "__main__":
         print(f"===================== {provider} - {model_name}", "=" * (50-len(provider) - len(model_name)))
         run_async(model_name)
         run_json(model_name)
-        run_type_annotates(model_name)
         run_pydantic(model_name)
         run_vision(model_name)

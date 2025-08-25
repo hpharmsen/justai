@@ -10,8 +10,10 @@ class ModelFactory:
             assert '/' in model_name, "Model name should be in the format 'openrouter/provider/modelname'"
             return OpenRouterModel(model_name, params=kwargs)
         elif model_name.startswith("gpt") or model_name.startswith("o1") or model_name.startswith("o3"):
-            from justai.models.openai_models import OpenAIModel
-            return OpenAIModel(model_name, params=kwargs)
+            #from justai.models.openai_responses import OpenAIResponsesModel
+            #return OpenAIResponsesModel(model_name, params=kwargs)
+            from justai.models.openai_completions import OpenAICompletionsModel
+            return OpenAICompletionsModel(model_name, params=kwargs)
         elif model_name.endswith(".gguf"):
             from justai.models.gguf_models import GuffModel
             return GuffModel(model_name, params=kwargs)

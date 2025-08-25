@@ -3,6 +3,7 @@ import os
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from justdays import Day
 
@@ -46,7 +47,7 @@ def cached_llm_response(model, prompt_or_messages: str|list[Message], tools: lis
         result = model.prompt(prompt_or_messages, images, tools, return_json, response_format)
     else:
         assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
-        result = model.chat(prompt_or_messages, tools, return_json, response_format)
+        result = model.chat(prompt_or_messages, images, tools, return_json, response_format)
     try:
         if return_json:
             cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2], result[3]))
@@ -55,6 +56,18 @@ def cached_llm_response(model, prompt_or_messages: str|list[Message], tools: lis
     except Exception:
         print('cached_llm_response could not write to cache, result is', result)
     return result
+
+
+def cached_response(*args: Any) -> tuple[str | object, int, int, dict]:
+    hashcode = recursive_hash((*args,))
+    cachedb = CacheDB()
+    return cachedb.read(hashcode)
+
+
+def cache_save(response, *args: Any) -> None:
+    hashcode = recursive_hash((*args,))
+    cachedb = CacheDB()
+    cachedb.write(hashcode, response)
 
 
 cache_dir = ''
@@ -93,7 +106,7 @@ class CacheDB:
     def write(self, key: str, llm_response: tuple[str, int, int], valid_until: str = ''):
         if not valid_until:
             valid_until = str(Day().plus_months(1))
-        value, tokens_in, tokens_out, _ = llm_response  # Ignore tool use
+        value, tokens_in, tokens_out = llm_response  # Ignore tool use
         try:
             self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
                                     VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
@@ -104,8 +117,7 @@ class CacheDB:
     def read(self, key):
         self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
         result = self.cursor.fetchone()
-        if result:
-            return result[1], result[2], result[3], {}  # Ignore tool use
+        return result
 
     def clear(self):
         try:

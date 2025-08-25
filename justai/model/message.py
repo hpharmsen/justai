@@ -107,3 +107,12 @@ def is_image_url(url):
         if url.lower().endswith(image_extensions):
             return True
     return False
+
+
+class ToolUseMessage(Message):
+    def __init__(self, *, content=None, images: list=[], tool_use: dict=None):
+        super().__init__('tool', content, images)
+        self.tool_use = tool_use
+        self.tool_call_id = tool_use.get('call_id', '')
+
+

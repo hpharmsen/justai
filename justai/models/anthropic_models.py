@@ -28,12 +28,22 @@ from typing import Any, AsyncGenerator
 import httpx
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
     APITimeoutError, RateLimitError, BadRequestError
+from anthropic.types import ToolUseBlock
 from dotenv import dotenv_values
 from google.api_core.exceptions import InternalServerError
 
 from justai.model.message import Message
-from justai.models.basemodel import BaseModel, identify_image_format_from_base64, ConnectionException, AuthorizationException, \
-    ModelOverloadException, RatelimitException, BadRequestException, GeneralException
+from justai.models.basemodel import (
+    BaseModel,
+    identify_image_format_from_base64,
+    ConnectionException,
+    AuthorizationException,
+    ModelOverloadException,
+    RatelimitException,
+    BadRequestException,
+    GeneralException,
+    ImageInput,
+)
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -69,41 +79,24 @@ class AnthropicModel(BaseModel):
         if "max_tokens" not in params:
             params["max_tokens"] = 800
 
-    def chat(self, messages: list[Message], tools, return_json: bool, response_format, log=None) \
-            -> tuple[str | Any, int, int, dict[str, object | str] | dict[str, Any]]:
+        self.supports_cached_prompts = True
+        self.messages = []
+
+    def prompt(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
+            -> tuple[Any, int|None, int|None, dict|None]:
+        # Reset messages
+        self.messages = []
+        return self.chat(prompt, images, tools, return_json, response_format)
+
+
+    def chat(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
+            -> tuple[Any, int|None, int|None, dict|None]:
         if response_format:
             raise NotImplementedError("Anthropic does not support response_format")
 
-        antr_messages = transform_messages(messages, return_json)
-        antr_tools = transform_tools(tools)
-        system_message = self.cached_system_message() if self.cached_prompt else self.system_message
 
-        try:
-            message = self.client.messages.create(
-                model=self.model_name,
-                system=system_message,
-                messages=antr_messages,
-                tools=antr_tools,
-                **self.model_params,
-            )
-        except APIConnectionError as e:
-            print("LLM call failed (APIConnectionError):", repr(e))
-            raise ConnectionException(e)
-        except (AuthenticationError, PermissionDeniedError) as e:
-            print("LLM call failed (Auth):", repr(e))
-            raise AuthorizationException(e)
-        except InternalServerError as e:
-            print("LLM call failed (500):", repr(e))
-            raise ModelOverloadException(e)
-        except RateLimitError as e:
-            print("LLM call failed (RateLimit):", repr(e))
-            raise RatelimitException(e)
-        except BadRequestError as e:
-            print("LLM call failed (BadRequest):", repr(e))
-            raise BadRequestException(e)
-        except Exception as e:
-            print("LLM call failed (Unexpected):", repr(e))
-            raise GeneralException(e)
+        # Hier moet nog iets mee
+        message = self.completion(prompt, images, tools, return_json, response_format)
 
         # Text content
         response_str = message.content[0].text
@@ -117,18 +110,6 @@ class AnthropicModel(BaseModel):
         else:
             response = response_str
 
-        # Tool use
-        # if message.stop_reason == "tool_use":
-        #     for c in message.content:
-        #         if isinstance(c, ToolUseBlock):
-        #             tool_use = {'function_to_call': c.name,
-        #                         'function_parameters': c.input,
-        #                         'call_id': c.id}
-        #             break  # For now, only one function call is supported
-        # else:
-        #     tool_use = {}
-        tool_use = {}
-
         # Token count
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
@@ -138,7 +119,7 @@ class AnthropicModel(BaseModel):
         else:
             self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
 
-        return response, input_tokens, output_tokens, tool_use
+        return response, input_tokens, output_tokens
 
     async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
         messages = [Message("user", prompt)]
@@ -147,31 +128,170 @@ class AnthropicModel(BaseModel):
             if content or reasoning:
                 yield content, reasoning
 
-    async def chat_async(self, messages: list[Message]) -> AsyncGenerator[tuple[str, str], None]:
-        try:
-            stream = self.client.messages.create(
-                model=self.model_name,
-                system=self.system_message,
-                messages=transform_messages(messages, return_json=False),
-                stream=True,
-                **self.model_params
-            )
-        except APIConnectionError as e:
-            raise ConnectionException(e)
-        except (AuthenticationError, PermissionDeniedError) as e:
-            raise AuthorizationException(e)
-        except APITimeoutError as e:
-            raise ModelOverloadException(e)
-        except RateLimitError as e:
-            raise RatelimitException(e)
-        except BadRequestError as e:
-            raise BadRequestException(e)
-        except Exception as e:
-            raise GeneralException(e)
+    async def chat_async(self, prompt: str, images: ImageInput) -> AsyncGenerator[tuple[str, str], None]:
 
+        stream = self.completion(prompt, stream=True)
         for event in stream:
             if hasattr(event, "delta") and hasattr(event.delta, "text"):
                 yield event.delta.text, None   # 2nd parameter is reasoning_content. Not available yet for Anthropic
+
+    def completion(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None, stream=False):
+        system_message = self.cached_system_message() if self.cached_prompt else self.system_message
+        
+        # Add user message to conversation history if it's a new message
+        if prompt or images:
+            user_message = create_anthropic_message('user', prompt, images)
+            self.messages.append(user_message)
+        
+        antr_tools = transform_tools(tools or []) if tools is not None else None
+
+        for _ in range(3):
+            try:
+                if stream:
+                    if tools:
+                        raise NotImplementedError('Anthropic model does not support streaming and tools at the same time')
+                    return self.client.messages.create(
+                        model=self.model_name,
+                        system=system_message,
+                        messages=self.messages,
+                        stream=True,
+                        **self.model_params
+                    )
+                
+                # Prepare messages for the API call
+                api_messages = []
+                tool_use_context = {}
+                
+                for msg in self.messages:
+                    if msg['role'] == 'user':
+                        # For user messages, include them as-is
+                        api_messages.append(msg)
+                    elif msg['role'] == 'assistant':
+                        # For assistant messages, include tool_use blocks and text content
+                        content = []
+                        for item in msg.get('content', []):
+                            if isinstance(item, dict):
+                                if item.get('type') == 'tool_use':
+                                    # Store tool use context for later reference
+                                    tool_use_context[item['id']] = item
+                                    content.append(item)
+                                elif item.get('type') == 'text':
+                                    content.append(item)
+                            elif isinstance(item, str):
+                                content.append({"type": "text", "text": item})
+                        
+                        if content:
+                            api_messages.append({"role": "assistant", "content": content})
+                    
+                    # Tool results are handled as part of the next user message
+                    # So we don't need to add them to api_messages
+                
+                # Prepare the API call parameters
+                api_params = {
+                    'model': self.model_name,
+                    'messages': api_messages,
+                    **self.model_params
+                }
+                
+                # Only add system message if not using cached prompt
+                api_params['system'] = system_message
+                    
+                # Only add tools if we have any
+                if antr_tools:
+                    api_params['tools'] = antr_tools
+                
+                # Make the API call
+                result = self.client.messages.create(**api_params)
+            except APIConnectionError as e:
+                print("LLM call failed (APIConnectionError):", repr(e))
+                raise ConnectionException(e)
+            except (AuthenticationError, PermissionDeniedError) as e:
+                print("LLM call failed (Auth):", repr(e))
+                raise AuthorizationException(e)
+            except InternalServerError as e:
+                print("LLM call failed (500):", repr(e))
+                raise ModelOverloadException(e)
+            except RateLimitError as e:
+                print("LLM call failed (RateLimit):", repr(e))
+                raise RatelimitException(e)
+            except BadRequestError as e:
+                print("LLM call failed (BadRequest):", repr(e))
+                raise BadRequestException(e)
+            except Exception as e:
+                print("LLM call failed (Unexpected):", repr(e))
+                raise GeneralException(e)
+
+            # Check for tool use in the response
+            tool_use_blocks = [block for block in result.content if hasattr(block, 'type') and block.type == "tool_use"]
+            
+            if tool_use_blocks:
+                # Create a new assistant message with the tool use blocks
+                assistant_content = []
+                tool_results = []
+                
+                for block in result.content:
+                    if hasattr(block, 'type') and block.type == 'tool_use':
+                        # Add tool use to the assistant's message
+                        assistant_content.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input
+                        })
+                        
+                        # Execute the function
+                        function = self.encapsulating_model.functions.get(block.name)
+                        if not function:
+                            raise ValueError(f"Function {block.name} not found in model's functions")
+                        
+                        function_result = function(**block.input)
+                        
+                        # Prepare tool result for the next user message
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps(function_result) if not isinstance(function_result, (str, int, float, bool)) else str(function_result)
+                        })
+                    elif hasattr(block, 'text'):
+                        assistant_content.append({"type": "text", "text": block.text})
+                
+                # Add the assistant's message with tool use to history
+                self.messages.append({
+                    "role": "assistant",
+                    "content": assistant_content
+                })
+                
+                # Add tool results as a new user message if there are any
+                if tool_results:
+                    self.messages.append({
+                        "role": "user",
+                        "content": tool_results
+                    })
+                
+                # Continue the conversation with the tool results
+                continue
+            
+            # If we get here, we have a final response with no tool use
+            # Add the assistant's response to conversation history
+            assistant_content = []
+            for block in result.content:
+                if hasattr(block, 'text'):
+                    assistant_content.append({"type": "text", "text": block.text})
+                elif hasattr(block, 'tool_use'):
+                    assistant_content.append({
+                        "type": "tool_use",
+                        "id": block.tool_use.id,
+                        "name": block.tool_use.name,
+                        "input": block.tool_use.input
+                    })
+            
+            if assistant_content:
+                self.messages.append({
+                    "role": "assistant",
+                    "content": assistant_content
+                })
+            
+            return result
 
     def cached_system_message(self) -> list[dict]:
         return [
@@ -186,94 +306,79 @@ class AnthropicModel(BaseModel):
                   }
                 ]
 
-    @staticmethod  # !! Veranderen als deze niet anders wordt dan die van OpenAI
-    def tool_use_message(tool_use) -> Message:
-        return Message(role='user', content='', tool_use=tool_use)
-
     def token_count(self, text: str) -> int:
-        messages = transform_messages([Message("user", text)], return_json=False)
-        response = self.client.messages.count_tokens(model=self.model_name, messages=messages)
+        message = create_anthropic_message('user', text)
+        response = self.client.messages.count_tokens(model=self.model_name, messages=[message])
         return response.input_tokens
-
-
-def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
-    # Anthropic requires the first message to be a user message
-    msgs = messages[next(i for i, message in enumerate(messages) if message.role == "user"):]
-
-    if msgs and return_json:
-        msgs += [Message("assistant", "<json>")]
-    result = [create_anthropic_message(msg) for msg in msgs]
-    return result
 
 
 def transform_tools(tools: list[dict]) -> list[dict]:
     """
-    At Anthropic tools work like this:
-    tools=[
-        {
-            "name": "get_weather",
-            "description": "Get the current weather in a given location",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "The city and state, e.g. San Francisco, CA",
-                    }
-                },
-                "required": ["location"],
-            },
-        }
-    ],
+    Transforms tools into the format expected by Anthropic's API.
     """
-    def transform_tool(tool:dict) -> dict:
+    if not tools:
+        return None
+        
+    type_mapping = {
+        int: "integer",
+        str: "string",
+        float: "number",
+        bool: "boolean",
+        list: "array",
+        dict: "object",
+    }
+    
+    transformed_tools = []
+    
+    for tool in tools:
         if "function" in tool:
-            tool["name"] = tool["function"]["name"]
-            tool["description"] = tool["function"]["description"]
-            tool["input_schema"] = tool["function"]["parameters"]
-            del tool["function"]
-        if "type" in tool:
-            del tool["type"]
-        if "function" in tool:
-            del tool["function"]
-        return tool
+            # This is a function tool
+            tool_def = {
+                "name": tool["function"].__name__,
+                "description": tool.get("description", ""),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+            
+            # Add parameters to input_schema
+            for param_name, param_type in tool.get("parameters", {}).items():
+                tool_def["input_schema"]["properties"][param_name] = {
+                    "type": type_mapping.get(param_type, "string"),
+                    "description": param_name
+                }
+                
+            # Add required parameters
+            if "required_parameters" in tool:
+                tool_def["input_schema"]["required"] = tool["required_parameters"]
+                
+            transformed_tools.append(tool_def)
+    
+    return transformed_tools if transformed_tools else None
 
-    return [transform_tool(tool) for tool in tools]
 
-
-def create_anthropic_message(message: Message):
+def create_anthropic_message(role: str, prompt: str, images: ImageInput = None):
 
     content = []
-    role = message.role
 
-    for img in message.images:
-        base64img = Message.to_base64_image(img)
-        mime_type = identify_image_format_from_base64(base64img)
-        content += [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": mime_type,
-                    "data": base64img,
-                },
-            }
-        ]
+    if images:
+        for img in images:
+            base64img = Message.to_base64_image(img)
+            mime_type = identify_image_format_from_base64(base64img)
+            content += [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": base64img,
+                    },
+                }
+            ]
 
-    if message.content:
-        content += [{"type": "text", "text": message.content}]
-
-    # TODO: tool use is geen onderdeel meer van message maar staat in de Model class.
-    if False and message.tool_use:
-        _input = message.tool_use["function_result"]
-        if not isinstance(input, dict): # Anthropic requires input to be a dict
-            _input = {'data': _input}
-        content += [{
-            "type": "tool_use",
-            "id": message.tool_use["call_id"],
-            "name": message.tool_use["function_to_call"],
-            "input": _input,
-        }]
-        role = 'assistant' # Anthropic requires the role to be assistant when using tools
+    if prompt:
+        content += [{"type": "text", "text": prompt}]
 
     return {"role": role, "content": content}

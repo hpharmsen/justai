@@ -9,13 +9,14 @@ Feature table:
     - Image support:    YES 
     - Tool use:         NO (not yet)
 
-Supported parameters: 
-max_tokens: int (default: None)
-temperature: float (default:None)
-stop_sequences: list[str] (default: None)
-candidate_count: int (default: None)
-topP: float (default: None)
-topK: int (default: None)
+Supported parameters:
+    max_output_tokens= 400,
+    top_k= 2,
+    top_p= 0.5,
+    temperature= 0.5,
+    response_mime_type= 'application/json',
+    stop_sequences= ['\n'],
+    seed=42,
 
 (1) In contrast to Model.chat, Model.chat_async cannot return json and does not return input and output token counts
 
@@ -24,18 +25,12 @@ import json
 import os
 from typing import Any, AsyncGenerator
 
-import absl.logging
-from contextlib import contextmanager
-import time
-
 from dotenv import dotenv_values
-#import google
 from google import genai
 
 from justai.model.message import Message
 from justai.model.model import ImageInput
 from justai.models.basemodel import BaseModel
-from justai.tools.cache import recursive_hash, CacheDB
 from justai.tools.display import ERROR_COLOR, color_print
 
 
@@ -54,9 +49,11 @@ class GoogleModel(BaseModel):
 
         # Client
         self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
         self.chat_session = None  # Google uses this to keep track of the chat
 
+        # Diversions from the features that are supported or not supported by default
+        self.supports_function_calling = True
+        self.supports_automatic_function_calling = True
 
     def prompt(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) -> str | object:
         if isinstance(images, str):
@@ -64,29 +61,38 @@ class GoogleModel(BaseModel):
         opened_images = [Message.to_pil_image(img) for img in images] if images else []
         if opened_images:
             prompt = [prompt] + opened_images
-        config = {}
+        if tools and isinstance(tools[0], dict):
+            tools = [tool['function'] for tool in tools]
+        config = genai.types.GenerateContentConfig(system_instruction=self.system_message, tools=tools,
+                                                   **self.model_params)
         if return_json:
-            config["response_mime_type"] = "application/json"
+            config.response_mime_type = "application/json"
         if response_format:
-            config["response_mime_type"] = "application/json"
-            config["response_schema"] = response_format
+            config.response_mime_type = "application/json"
+            config.response_schema = response_format
         response = self.client.models.generate_content(model=self.model_name, contents=prompt,
                                                        config=config)
         return convert_to_justai_response(response, return_json or response_format)
 
-    def chat(self, messages: list[Message], tools: list, return_json: bool, response_format) \
-            -> tuple[Any, int|None, int|None, dict|None]:
-        if not self.chat_session:
-            self.chat_session = self.client.chats.create(model="gemini-2.0-flash")
+    def chat(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) \
+            -> tuple[Any, int|None, int|None]:
 
-        assert len(messages) > 0, 'google_model.chat requires at least one message'
-        assert not return_json, 'google_model.chat does not support return_json. Use prompt() instead'
-        assert not response_format, 'google_model.chat does not support response_format. Use prompt() instead'
-        assert not hasattr(messages[-1], 'images'), 'google_model.chat does not support image messages. Use prompt() instead'
-        response = self.chat_session.send_message(message=messages[-1].content)
+        if return_json:
+            raise NotImplementedError('google_model.chat does not support return_json. Use prompt() instead')
+        if response_format:
+            raise NotImplementedError('google_model.chat does not support response_format. Use prompt() instead')
+        if images:
+            raise NotImplementedError('google_model.chat does not support images. Use prompt() instead')
+
+        if not self.chat_session:
+            self.chat_session = self.client.chats.create(model=self.model_name)
+        response = self.chat_session.send_message(message=prompt)
         return convert_to_justai_response(response, return_json)
 
-    async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
+    async def prompt_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
+        if images:
+            raise NotImplementedError('google_model. ..._async does not support images. Use prompt() instead')
+
         stream = await self.client.aio.models.generate_content_stream(
             model=self.model_name,
             contents=prompt
@@ -95,44 +101,18 @@ class GoogleModel(BaseModel):
             if chunk.text:
                 yield chunk.text, ''
 
-    def chat_async(self, messages: list[Message]) -> AsyncGenerator[tuple[str, str], None]:
-        print('google_model.chat_async is not supported. Use prompt_async() instead.')
-        raise NotImplementedError
+    async def chat_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
+        async for chunk in self.prompt_async(prompt, images):
+            yield chunk
 
     def token_count(self, text: str) -> int:
         response = self.client.models.count_tokens(model=self.model_name, contents=text)
         return response.total_tokens
 
 
-def transform_messages(messages: list[Message], return_json: bool) -> list[dict]:
-    return [google_message(msg, return_json) for msg in messages]
-
-
-def google_message(msg: Message, return_json) -> dict:
-    return {
-        'role': 'model' if msg.role == 'assistant' else 'user',
-        'parts': [Message.to_pil_image(img) for img in msg.images] + [msg.content]
-    }
-
-
 def convert_to_justai_response(response, return_json):
     input_token_count = response.usage_metadata.prompt_token_count
     output_token_count = (response.usage_metadata.candidates_token_count or 0) + \
                          (response.usage_metadata.thoughts_token_count or 0)
-    tool_use = None  # TODO: implement
-    #result = json.loads(response.text) if return_json else response.text
     result = response.text if not return_json else response.parsed if response.parsed else json.loads(response.text)
-    return result, input_token_count, output_token_count, tool_use
-
-
-@contextmanager
-def temporary_verbosity(level):
-    # Sla het huidige logniveau op
-    original_level = absl.logging.get_verbosity()
-    try:
-        # Wijzig naar het nieuwe logniveau
-        absl.logging.set_verbosity(level)
-        yield
-    finally:
-        # Herstel het oorspronkelijke logniveau
-        absl.logging.set_verbosity(original_level)
+    return result, input_token_count, output_token_count
