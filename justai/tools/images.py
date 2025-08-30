@@ -112,3 +112,23 @@ def is_image_url(url):
         if url.lower().endswith(image_extensions):
             return True
     return False
+
+
+def crop_to_fit(image: Image.Image, target_w: int, target_h: int) -> Image.Image:
+    src_w, src_h = image.size
+    target_ratio = target_w / target_h
+    src_ratio = src_w / src_h
+
+    if src_ratio > target_ratio:
+        # bron is breder dan doel → crop links/rechts
+        new_w = int(src_h * target_ratio)
+        left = (src_w - new_w) // 2
+        box = (left, 0, left + new_w, src_h)
+    else:
+        # bron is hoger dan doel → crop boven/onder
+        new_h = int(src_w / target_ratio)
+        top = (src_h - new_h) // 2
+        box = (0, top, src_w, top + new_h)
+
+    cropped = image.crop(box)
+    return cropped.resize((target_w, target_h), Image.LANCZOS)

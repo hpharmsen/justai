@@ -10,6 +10,7 @@ from justai.models.basemodel import ImageInput
 from justai.tools.cache import cached_response, cache_save
 from justai.model.message import Message
 from justai.models.modelfactory import ModelFactory
+from justai.tools.images import crop_to_fit
 
 
 class Model:
@@ -186,8 +187,11 @@ class Model:
     def token_count(self, text: str):
         return self.model.token_count(text)
 
-    def generate_image(self, prompt: str, images: ImageInput = None) -> Image:
+    def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int]|None = None) -> Image:
        if not self.model.supports_image_generation:
            raise NotImplementedError(f"{self.model.model_name} does not support image generation")
-       return self.model.generate_image(prompt, images)
+       image = self.model.generate_image(prompt, images)
+       if size:
+           image = crop_to_fit(image, size[0], size[1])
+       return image
 
