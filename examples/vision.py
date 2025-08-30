@@ -10,7 +10,7 @@ if __name__ == "__main__":
     model = Model("gpt-5-mini")
     url = 'https://upload.wikimedia.org/wikipedia/commons/9/94/Common_dolphin.jpg'
     image = Image.open(io.BytesIO(httpx.get(url).content))
-    message = model.prompt("What is in this image", images=url, cached=False)
+    message = model.prompt("What is in this image", images=image, cached=False)
     print(message)
     print(model.last_token_count(), 'tokens')  # (input_token_count, output_token_count, total_token_count)
 

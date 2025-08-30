@@ -185,3 +185,9 @@ class Model:
 
     def token_count(self, text: str):
         return self.model.token_count(text)
+
+    def generate_image(self, prompt: str, images: ImageInput = None) -> Image:
+       if not self.model.supports_image_generation:
+           raise NotImplementedError(f"{self.model.model_name} does not support image generation")
+       return self.model.generate_image(prompt, images)
+

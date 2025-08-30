@@ -10,28 +10,25 @@ Feature table:
     - File input:       NOT YET IMPLEMENTED
     - Web search:       NOT YET IMPLEMENTED
 """
-
-import asyncio
+import base64
 import json
 import os
-import time
+from io import BytesIO
 from typing import Any, AsyncGenerator
 import pydantic
 
-import instructor
 import tiktoken
+from PIL import Image
 from dotenv import dotenv_values
-from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
+from openai import OpenAI, APIConnectionError, \
     RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
-from openai.types.beta.realtime import ResponseTextDeltaEvent
 
 from justai.model.message import Message, ToolUseMessage
 from justai.models.basemodel import ImageInput
-from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR1, DEBUG_COLOR2
+from justai.tools.display import color_print, ERROR_COLOR
 from justai.models.basemodel import BaseModel, ConnectionException, AuthorizationException, \
     ModelOverloadException, RatelimitException, BadRequestException, GeneralException
-
-
+from justai.tools.images import extract_images, to_base64_image, get_image_type
 
 
 class OpenAIResponsesModel(BaseModel):
@@ -54,6 +51,7 @@ class OpenAIResponsesModel(BaseModel):
 
         # Diversions from the features that are supported or not supported by default
         self.supports_function_calling = True
+        self.supports_image_generation = True
 
         self.last_response_id = None
 
@@ -334,8 +332,8 @@ class OpenAIResponsesModel(BaseModel):
 
         if images:
             for image in images:
-                image_type = Message.get_image_type(image)
-                image_url = image if image_type == "image_url" else Message.to_base64_image(image)
+                image_type = get_image_type(image)
+                image_url = image if image_type == "image_url" else to_base64_image(image)
                 content += [{"type": "input_image", "image_url": image_url}]
         return content
 
@@ -408,7 +406,7 @@ class OpenAIResponsesModel(BaseModel):
                     for image in message.images:
                         content.append({
                             "type": "image_url",
-                            "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
+                            "image_url": {'url': f"data:image/jpeg;base64,{to_base64_image(image)}"}
                         })
                     msg["content"] = content
                 else:
@@ -426,3 +424,37 @@ class OpenAIResponsesModel(BaseModel):
             # Fall back to cl100k_base encoding for newer models not yet in tiktoken
             encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
+
+
+    def generate_image(self, prompt, images: ImageInput):
+
+        # Responses API call met tool "image_generation"
+        client = OpenAI()
+        input_structure = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt}
+                ],
+            }
+        ]
+        if images:
+            for image in images:
+                if get_image_type(image) == "image_url":
+                    image_dict = {"type": "input_image", "image_url": image}
+                else:
+                    image_dict = {"type": "input_image", "image_data": to_base64_image(image)}
+                input_structure[0]["content"] += [image_dict]
+
+        resp = client.responses.create(
+            model=self.model_name,
+            input=input_structure,
+            tools=[{"type": "image_generation"}],
+        )
+
+        images_b64 = extract_images(resp)
+
+        # Decode base64 -> PIL image
+        raw = base64.b64decode(images_b64[0])
+        img = Image.open(BytesIO(raw))
+        return img

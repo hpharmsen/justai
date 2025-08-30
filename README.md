@@ -141,3 +141,27 @@ print('cache_read_input_tokens', model.cache_read_input_tokens)
 
 ```
 
+### Creating images
+
+Some models can create images. You need to pass an image generating model to the Model to use it.
+
+```python
+model = Model('gpt-5')
+pil_image = model.generate_image("Create an image dolphin reading a book")
+```
+
+Passing other images alongside the prompt is also possible.
+This can be used to alter images or to do style transfer.
+
+
+```python
+model = Model('gemini-2.5-flash-image-preview')
+url = 'https://upload.wikimedia.org/wikipedia/commons/9/94/Common_dolphin.jpg'
+image = Image.open(io.BytesIO(httpx.get(url).content))
+pil_image = model.generate_image("Convert this image into the style of van Gogh", images=image)
+```
+
+Image input can be a single image or a list of images. \
+Each image can be a a url, a PIL image or raw image data.
+
+Output is always a PIL image.

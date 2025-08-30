@@ -45,6 +45,7 @@ from justai.models.basemodel import (
     ImageInput,
 )
 from justai.tools.display import ERROR_COLOR, color_print
+from justai.tools.images import to_base64_image
 
 
 class AnthropicModel(BaseModel):
@@ -365,7 +366,7 @@ def create_anthropic_message(role: str, prompt: str, images: ImageInput = None):
 
     if images:
         for img in images:
-            base64img = Message.to_base64_image(img)
+            base64img = to_base64_image(img)
             mime_type = identify_image_format_from_base64(base64img)
             content += [
                 {

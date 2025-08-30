@@ -54,9 +54,11 @@ class BaseModel(ABC):
         self.supports_return_json = True
         self.supports_image_input = True
         self.supports_tool_use = True
+
         self.supports_function_calling = False
         self.supports_automatic_function_calling = False
         self.supports_cached_prompts = False
+        self.supports_image_generation = False
 
         # The Model class that wraps this model so this model can set attributes there like token count
         # This value will be set by the Model class itself after instantiation

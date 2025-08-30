@@ -70,6 +70,7 @@ from justai.models.basemodel import (
     GeneralException,
     ImageInput,
 )
+from justai.tools.images import to_base64_image
 
 
 class OpenAICompletionsModel(BaseModel):
@@ -170,7 +171,7 @@ class OpenAICompletionsModel(BaseModel):
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/jpeg;base64,{Message.to_base64_image(image)}"
+                            "url": f"data:image/jpeg;base64,{to_base64_image(image)}"
                         },
                     }
                 )
@@ -292,7 +293,7 @@ class OpenAICompletionsModel(BaseModel):
                     for image in message.images:
                         content.append({
                             "type": "image_url",
-                            "image_url": {'url': f"data:image/jpeg;base64,{Message.to_base64_image(image)}"}
+                            "image_url": {'url': f"data:image/jpeg;base64,{to_base64_image(image)}"}
                         })
                     msg["content"] = content
                 else:

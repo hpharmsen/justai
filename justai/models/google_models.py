@@ -23,8 +23,10 @@ Supported parameters:
 """
 import json
 import os
+from io import BytesIO
 from typing import Any, AsyncGenerator
 
+from PIL import Image
 from dotenv import dotenv_values
 from google import genai
 
@@ -32,6 +34,7 @@ from justai.model.message import Message
 from justai.model.model import ImageInput
 from justai.models.basemodel import BaseModel
 from justai.tools.display import ERROR_COLOR, color_print
+from justai.tools.images import to_pil_image
 
 
 class GoogleModel(BaseModel):
@@ -54,6 +57,7 @@ class GoogleModel(BaseModel):
         # Diversions from the features that are supported or not supported by default
         self.supports_function_calling = True
         self.supports_automatic_function_calling = True
+        self.supports_image_generation = True
 
     def prompt(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) -> str | object:
         if isinstance(images, str):
@@ -108,6 +112,25 @@ class GoogleModel(BaseModel):
     def token_count(self, text: str) -> int:
         response = self.client.models.count_tokens(model=self.model_name, contents=text)
         return response.total_tokens
+
+    def generate_image(self, prompt, images: ImageInput):
+        client = genai.Client()
+
+        if not isinstance(images, list):
+            images = [images]
+        images = [to_pil_image(img) for img in images]
+
+        response = client.models.generate_content(
+            model=self.model_name,
+            contents=images + [prompt],
+        )
+
+        for part in response.candidates[0].content.parts:
+            if part.text is not None:
+                print(part.text)
+            elif part.inline_data is not None:
+                image = Image.open(BytesIO(part.inline_data.data))
+                return image
 
 
 def convert_to_justai_response(response, return_json):
