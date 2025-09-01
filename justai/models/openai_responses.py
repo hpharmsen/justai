@@ -10,13 +10,16 @@ Feature table:
     - File input:       NOT YET IMPLEMENTED
     - Web search:       NOT YET IMPLEMENTED
 """
+from __future__ import annotations
 import base64
 import json
 import os
 from io import BytesIO
 from typing import Any, AsyncGenerator
 import pydantic
+from typing import Any, List, Tuple
 
+from jsonschema import exceptions, validators, Draft202012Validator
 import tiktoken
 from PIL import Image
 from dotenv import dotenv_values
@@ -58,12 +61,8 @@ class OpenAIResponsesModel(BaseModel):
     def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False) \
             -> tuple[Any, int|None, int|None]:
 
-        # _chat can only be called from chat()
-
-        if return_json:
-            raise NotImplementedError("OpenAI Responses API does not support return_json. Pass a response_format instead.")
-        if response_format and not issubclass(response_format, pydantic.BaseModel):
-            raise NotImplementedError("OpenAI Responses API requires response_format to be a Pydantic model.")
+        # if response_format and not issubclass(response_format, pydantic.BaseModel):
+        #     raise NotImplementedError("OpenAI Responses API requires response_format to be a Pydantic model.")
 
         content = self.create_content(prompt, images)
         input_list = [{'role': 'system', 'content': self.system_message},
@@ -74,10 +73,24 @@ class OpenAIResponsesModel(BaseModel):
 
         for run in range(3):  # Max 3 function calls to prevent infinite loop
             try:
-                if response_format:
+                if response_format and return_json:
+                    assert is_valid_json_schema(response_format), "Response format should be a valid JSON Schema"
+                    response = self.client.responses.create(model=self.model_name, input=input_list, tools=tool_spec,
+                                                            text = {"format": {
+                                                                "type": "json_schema",
+                                                                "name": "response_format",
+                                                                "strict": True,
+                                                                "schema":response_format}},
+                                                            previous_response_id=last_response_id)
+                elif response_format:
+                    assert issubclass(response_format, pydantic.BaseModel), 'Response format should be a Pydantic model unless you specify return_json=True'
                     response = self.client.responses.parse(model=self.model_name, input=input_list, tools=tool_spec,
                                                            text_format=response_format,
                                                            previous_response_id=last_response_id)
+                elif return_json:
+                    response = self.client.responses.create(model=self.model_name, input=input_list, tools=tool_spec,
+                                                            text = { "format": { "type": "json_object" } },
+                                                            previous_response_id=last_response_id)
                 else:
                     response = self.client.responses.create(model=self.model_name, input=input_list, tools=tool_spec,
                                                             previous_response_id=last_response_id)
@@ -108,7 +121,13 @@ class OpenAIResponsesModel(BaseModel):
                     function_call_arguments = json.loads(item.arguments)
 
             if not function_call or run == 2:
-                output = response.output_parsed if response_format else response.output_text
+                if issubclass(response_format, pydantic.BaseModel):
+                    field = list(response.output_parsed.model_fields_set)[0]
+                    output = getattr(response.output_parsed, field)
+                elif return_json:
+                    output = json.loads(response.output_text)
+                else:
+                    output = response.output_text
                 return output, response.usage.input_tokens, response.usage.output_tokens
 
             # The rest of the function is to process the function call output
@@ -458,3 +477,75 @@ class OpenAIResponsesModel(BaseModel):
         raw = base64.b64decode(images_b64[0])
         img = Image.open(BytesIO(raw))
         return img
+
+
+def is_valid_json_schema(schema: Any) -> Tuple[bool, List[str]]:
+    """
+    Check whether a Python object is a *valid JSON Schema* (meta-schema validation).
+
+    It auto-detects the draft via `$schema` when present and falls back to Draft 2020-12.
+    Returns (is_valid, errors) where errors is a list of human-readable messages.
+
+    Parameters
+    ----------
+    schema : Any
+        The candidate JSON Schema as a Python dict (or JSON-loaded structure).
+
+    Returns
+    -------
+    Tuple[bool, List[str]]
+        - True and [] when the input is a valid JSON Schema.
+        - False and a list of error messages when invalid.
+
+    Notes
+    -----
+    - This validates the *schema itself* against the appropriate meta-schema.
+    - It does not validate an instance/document *against* the schema.
+    """
+
+    def _format_iter_error(err: exceptions.ValidationError) -> str:
+        """Human-friendly error message for iter_errors results."""
+        # Build a JSON Pointer–like path for clarity
+        path = "/" + "/".join(map(str, err.path)) if err.path else "(root)"
+        schema_path = "#/" + "/".join(map(str, err.schema_path)) if err.schema_path else "#"
+        return f"[at {path}] {err.message}  (schema path: {schema_path})"
+
+
+    def _format_schema_error(err: exceptions.SchemaError) -> str:
+        """Format SchemaError raised by check_schema()."""
+        path = "/" + "/".join(map(str, err.path)) if getattr(err, "path", None) else "(root)"
+        schema_path = "#/" + "/".join(map(str, err.schema_path)) if getattr(err, "schema_path", None) else "#"
+        base = f"[at {path}] {err.message}  (schema path: {schema_path})"
+        if err.context:
+            # Include nested context messages (useful for 'oneOf', 'anyOf' diagnostics)
+            ctx = "; ".join(_format_iter_error(c) for c in err.context)  # type: ignore[arg-type]
+            return f"{base} | context: {ctx}"
+        return base
+
+    error_messages: List[str] = []
+
+    # 1) Pick the best validator class for the provided schema (uses `$schema` if present)
+    try:
+        ValidatorClass = validators.validator_for(schema, default=Draft202012Validator)  # type: ignore[attr-defined]
+    except Exception as e:
+        return False, [f"Unable to choose validator for schema (is it a dict?): {e!r}"]
+
+    # 2) Fast sanity check (raises on the first structural problem)
+    try:
+        ValidatorClass.check_schema(schema)
+    except exceptions.SchemaError as e:
+        # We still continue to collect *all* errors below for a complete report
+        error_messages.append(_format_schema_error(e))
+
+    # 3) Full meta-schema validation to gather all issues
+    try:
+        meta_validator = ValidatorClass(ValidatorClass.META_SCHEMA)  # type: ignore[arg-type]
+        errors = sorted(meta_validator.iter_errors(schema), key=lambda err: (list(err.path), err.message))
+        if errors:
+            for err in errors:
+                error_messages.append(_format_iter_error(err))
+    except Exception as e:
+        # If meta-validation itself fails, report that clearly
+        error_messages.append(f"Meta-validation failed: {e!r}")
+
+    return (len(error_messages) == 0), error_messages

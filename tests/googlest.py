@@ -3,19 +3,23 @@ import json
 from dotenv import load_dotenv
 
 from examples.prompt_caching import caching_example
-from examples.return_types import json_example, structured_output_with_pydantic
+from examples.return_types import (
+    json_example,
+    structured_output_with_pydantic,
+    structured_output_with_json_schema,
+)
 from justai import Model
 
 if __name__ == '__main__':
     load_dotenv()
     models = [
-        Model("gpt-5-nano", temperature=1),
-        Model('claude-3-7-sonnet-latest', temperature=1),
-        Model("gemini-2.5-flash", temperature=1),
-        Model("grok-4", temperature=0),
-        Model("deepseek-chat", temperature=0),
-        Model("sonar", temperature=0),
-        Model("openrouter/anthropic/claude-3.7-sonnet", temperature=0),
+        Model("gpt-5"),
+        # Model('claude-3-7-sonnet-latest', temperature=1),
+        # Model("gemini-2.5-flash", temperature=1),
+        # Model("grok-4", temperature=0),
+        # Model("deepseek-chat", temperature=0),
+        # Model("sonar", temperature=0),
+        # Model("openrouter/anthropic/claude-3.7-sonnet", temperature=0),
     ]
 
     # # prompt with token usage and response time
@@ -54,17 +58,25 @@ if __name__ == '__main__':
     # Return types
     for model in models:
         print('\n',model.model_name)
-        try:
-            data = json_example(model)
-            print('json')
-            print(json.dumps(data, indent=4))
-        except NotImplementedError as e:
-            print(e)
+
+        # print("json schema")
+        # try:
+        #     data = structured_output_with_json_schema(model)
+        #     print(json.dumps(data, indent=4))
+        # except NotImplementedError as e:
+        #     print(e)
+        #
+        # print("json")
+        # try:
+        #     data = json_example(model)
+        #     print(json.dumps(data, indent=4))
+        # except NotImplementedError as e:
+        #     print(e)
 
         print('pydantic')
         try:
             data = structured_output_with_pydantic(model)
-            for person in data.persons:
+            for person in data:
                 print(person)
         except NotImplementedError as e:
             print(e)

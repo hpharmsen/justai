@@ -2,6 +2,7 @@ anthropic>=0.34.0
 absl-py  # To suppress warnings in Gemini code
 google-genai  # Gemini
 httpx
+jsonschema # For passing a json schema to OpenAI Responses API
 justdays
 llama-cpp-python  # For guff_models
 lxml==5.1.1  # for translator, vanaf 5.2.0 moet lxml_clean apart geïnstalleerd worden

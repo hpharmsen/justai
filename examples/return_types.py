@@ -19,6 +19,32 @@ def json_example(model):
     return model.prompt(prompt, return_json=True, cached=False)
 
 
+def structured_output_with_json_schema(model: Model):
+    prompt = "Read the following story and give me a list of the persons involved. " + \
+             "Return json with keys name, profession and house number\n\n" + get_story()
+    schema = {
+        "type": "object",
+        "properties": {
+            "persons": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "house_number": {"type": "integer"},
+                        "profession": {"type": "string"},
+                    },
+                    "required": ["name", "house_number", "profession"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["persons"],
+        "additionalProperties": False,
+    }
+    return model.prompt(prompt, return_json=True, response_format=schema, cached=False)
+
+
 def structured_output_with_pydantic(model: Model):
     """ As of now, only the OpenAI models support structured output with Pydantic"""
     from pydantic import BaseModel
