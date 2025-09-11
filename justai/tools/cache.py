@@ -100,7 +100,10 @@ class CacheDB:
                                     tokens_in INT,
                                     tokens_out INT,
                                     valid_until DATETIME)''')
-        self.cursor.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
+        try:
+            self.cursor.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
+        except sqlite3.OperationalError:
+            pass
         self.conn.commit()
 
     def write(self, key: str, llm_response: tuple[str, int, int], valid_until: str = ''):

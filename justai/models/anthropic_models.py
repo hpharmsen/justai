@@ -103,6 +103,8 @@ class AnthropicModel(BaseModel):
         response_str = message.content[0].text
         if return_json:
             response_str = response_str.split("</json>")[0]  # !!
+            if response_str.startswith("```json"):
+                response_str = response_str[7:-3]
             try:
                 response = json.loads(response_str, strict=False)
             except json.decoder.JSONDecodeError:
