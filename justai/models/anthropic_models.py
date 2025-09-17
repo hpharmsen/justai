@@ -27,10 +27,9 @@ from typing import Any, AsyncGenerator
 
 import httpx
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
-    APITimeoutError, RateLimitError, BadRequestError
-from anthropic.types import ToolUseBlock
+    APITimeoutError, RateLimitError, BadRequestError, InternalServerError
 from dotenv import dotenv_values
-from google.api_core.exceptions import InternalServerError
+
 
 from justai.model.message import Message
 from justai.models.basemodel import (
@@ -109,7 +108,7 @@ class AnthropicModel(BaseModel):
                 response = json.loads(response_str, strict=False)
             except json.decoder.JSONDecodeError:
                 print("ERROR DECODING JSON, RESPONSE:", response_str)
-                response = response_str
+                response = extract_dict(response_str)
         else:
             response = response_str
 
@@ -385,3 +384,20 @@ def create_anthropic_message(role: str, prompt: str, images: ImageInput = None):
         content += [{"type": "text", "text": prompt}]
 
     return {"role": role, "content": content}
+
+
+def extract_dict(text: str) -> dict:
+    """ Extracts the first valid JSON dictionary from a string, even if it contains nested objects. """
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError
+
+    depth = 0
+    for i, ch in enumerate(text[start:], start=start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start:i+1])
+    raise json.JSONDecodeError

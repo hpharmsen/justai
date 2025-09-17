@@ -115,9 +115,6 @@ class GoogleModel(BaseModel):
 
     def generate_image(self, prompt, images: ImageInput):
         client = genai.Client()
-
-        if not isinstance(images, list):
-            images = [images]
         images = [to_pil_image(img) for img in images]
 
         response = client.models.generate_content(

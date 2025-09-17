@@ -1,18 +1,14 @@
-import io
 import os
 import tempfile
-from tempfile import TemporaryFile
 
-import httpx
 from dotenv import load_dotenv
-
 from justai import Model
-from PIL import Image
+from PIL.Image import Image
 
 
 def simple_image_example() -> Image:
-    model = Model('gpt-5')
-    pil_image = model.generate_image("Create an image of a dolphin reading a book")
+    model = Model('reve')
+    pil_image = model.generate_image("Create an image of a dolphin reading a book", options={"aspect_ratio": "9:16"})
     return pil_image
 
 

@@ -87,6 +87,12 @@ class BaseModel(ABC):
     def chat_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
         ...
 
+    def generate_image(self, *args, **kwargs):
+        """ Overwrite in subclasses that DO support image generation."""
+        raise NotImplementedError(
+            f"generate_image() is not supported by {self.__class__.__name__}"
+        )
+
     @abstractmethod
     def token_count(self, text: str) -> int:
         ...

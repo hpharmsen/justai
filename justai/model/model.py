@@ -187,11 +187,13 @@ class Model:
     def token_count(self, text: str):
         return self.model.token_count(text)
 
-    def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int]|None = None) -> Image:
-       if not self.model.supports_image_generation:
-           raise NotImplementedError(f"{self.model.model_name} does not support image generation")
-       image = self.model.generate_image(prompt, images)
-       if size:
-           image = crop_to_fit(image, size[0], size[1])
-       return image
+    def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int]|None = None, options: dict = None) -> Image:
+        if not self.model.supports_image_generation:
+            raise NotImplementedError(f"{self.model.model_name} does not support image generation")
+        if images and not isinstance(images, list):
+            images = [images]
+        image = self.model.generate_image(prompt, images, options=options)
+        if size:
+            image = crop_to_fit(image, size[0], size[1])
+        return image
 
