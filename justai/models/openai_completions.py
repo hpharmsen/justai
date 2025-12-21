@@ -84,10 +84,14 @@ class OpenAICompletionsModel(BaseModel):
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
-        # instructor.patch makes the OpenAI client compatible with structured output via response_model=”
+        # instructor.patch makes the OpenAI client compatible with structured output via response_model="
         # Works only for OpenAI models
-        self.client = instructor.patch(OpenAI(api_key=api_key))
-        self.messages = [{"role": "system", "content": self.system_message}]
+        self.client = instructor.patch(OpenAI(api_key=api_key, timeout=120.0))
+        # Only include system message if not empty (some providers reject empty system messages)
+        if self.system_message and self.system_message.strip():
+            self.messages = [{"role": "system", "content": self.system_message}]
+        else:
+            self.messages = []
 
     def chat(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) \
             -> tuple[Any, int|None, int|None, dict|None]:
@@ -99,7 +103,11 @@ class OpenAICompletionsModel(BaseModel):
         if not tools: # Models like deepseek-chat don't like tools to be an empty list
             tools = NOT_GIVEN
 
-        self.messages = [{"role": "system", "content": self.system_message}]  # Reset messages to system prompt
+        # Reset messages - only include system message if not empty
+        if self.system_message and self.system_message.strip():
+            self.messages = [{"role": "system", "content": self.system_message}]
+        else:
+            self.messages = []
 
         completion = self.completion(prompt, images, tools, return_json, response_format)
 
@@ -115,7 +123,6 @@ class OpenAICompletionsModel(BaseModel):
         output_token_count = completion.usage.completion_tokens
 
         if message_text and message_text.startswith("```json"):
-            print("Unexpected JSON response found in completion")
             message_text = message_text[7:-3]
         result = json.loads(message_text) if return_json and self.supports_return_json else message_text
 

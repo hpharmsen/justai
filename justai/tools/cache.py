@@ -111,7 +111,7 @@ class CacheDB:
             valid_until = str(Day().plus_months(1))
         value, tokens_in, tokens_out = llm_response  # Ignore tool use
         try:
-            self.cursor.execute('''INSERT INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
+            self.cursor.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
                                     VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
             self.conn.commit()
         except sqlite3.ProgrammingError:

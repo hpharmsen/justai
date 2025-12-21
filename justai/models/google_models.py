@@ -36,6 +36,8 @@ from justai.models.basemodel import BaseModel
 from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_pil_image
 
+HTTP_TIMEOUT = 120_000  # milliseconds (120 seconds)
+
 
 class GoogleModel(BaseModel):
 
@@ -51,7 +53,8 @@ class GoogleModel(BaseModel):
                         "set it in the .env file like GOOGLE_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
         # Client
-        self.client = genai.Client(api_key=api_key)
+        http_options = genai.types.HttpOptions(timeout=HTTP_TIMEOUT)
+        self.client = genai.Client(api_key=api_key, http_options=http_options)
         self.chat_session = None  # Google uses this to keep track of the chat
 
         # Diversions from the features that are supported or not supported by default
@@ -62,7 +65,7 @@ class GoogleModel(BaseModel):
     def prompt(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) -> str | object:
         if isinstance(images, str):
             images = [images]
-        opened_images = [Message.to_pil_image(img) for img in images] if images else []
+        opened_images = [to_pil_image(img) for img in images] if images else []
         if opened_images:
             prompt = [prompt] + opened_images
         if tools and isinstance(tools[0], dict):
@@ -113,9 +116,9 @@ class GoogleModel(BaseModel):
         response = self.client.models.count_tokens(model=self.model_name, contents=text)
         return response.total_tokens
 
-    def generate_image(self, prompt, images: ImageInput):
+    def generate_image(self, prompt, images: ImageInput, options: dict = None):
         client = genai.Client()
-        images = [to_pil_image(img) for img in images]
+        images = [to_pil_image(img) for img in images] if images else []
 
         response = client.models.generate_content(
             model=self.model_name,

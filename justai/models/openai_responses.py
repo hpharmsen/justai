@@ -50,7 +50,7 @@ class OpenAIResponsesModel(BaseModel):
 
         # Not sure if this works, or is needed, for the Responses API
         # self.client = instructor.patch(OpenAI(api_key=api_key))
-        self.client = OpenAI()
+        self.client = OpenAI(timeout=120.0)
 
         # Diversions from the features that are supported or not supported by default
         self.supports_function_calling = True
@@ -121,7 +121,7 @@ class OpenAIResponsesModel(BaseModel):
                     function_call_arguments = json.loads(item.arguments)
 
             if not function_call or run == 2:
-                if issubclass(response_format, pydantic.BaseModel):
+                if response_format and issubclass(response_format, pydantic.BaseModel):
                     field = list(response.output_parsed.model_fields_set)[0]
                     output = getattr(response.output_parsed, field)
                 elif return_json:
@@ -352,7 +352,7 @@ class OpenAIResponsesModel(BaseModel):
         if images:
             for image in images:
                 image_type = get_image_type(image)
-                image_url = image if image_type == "image_url" else to_base64_image(image)
+                image_url = image if image_type == "image_url" else f"data:image/jpeg;base64,{to_base64_image(image)}"
                 content += [{"type": "input_image", "image_url": image_url}]
         return content
 
@@ -445,7 +445,7 @@ class OpenAIResponsesModel(BaseModel):
         return len(encoding.encode(text))
 
 
-    def generate_image(self, prompt, images: ImageInput):
+    def generate_image(self, prompt, images: ImageInput, options: dict = None):
 
         # Responses API call met tool "image_generation"
         client = OpenAI()

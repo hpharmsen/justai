@@ -1,34 +1,47 @@
-""" Implementation of the Anthropic models. 
+""" Implementation of the Anthropic models.
 
 Feature table:
     - Async chat:       YES (1)
-    - Return JSON:      YES
-    - Structured types: NO
+    - Return JSON:      YES (2)
+    - Structured types: YES (Claude 4.x only)
     - Token count:      YES
     - Image support:    YES
-    - Tool use:         not yet
-    
+    - Tool use:         YES
+
 Models:
-Claude 3 Opus:	 claude-3-opus-20240229
+Claude 3 Opus:   claude-3-opus-20240229
 Claude 3 Sonnet: claude-3-5-sonnet-20240620
 Claude 3 Haiku:  claude-3-haiku-20240307
+Claude 4 Sonnet: claude-sonnet-4-5-*
+Claude 4 Opus:   claude-opus-4-*
+Claude 4 Haiku:  claude-haiku-4-*
 
 Supported parameters:
 max_tokens: int (default 800)
 temperature: float (default 0.8)
 
 (1) In contrast to Model.chat, Model.chat_async cannot return json and does not return input and output token counts
+(2) Claude 4.x uses structured outputs beta for guaranteed JSON. Claude 3.x uses legacy parsing with deprecation warning.
 
 """
 
 import json
+import logging
 import os
+import re
 from typing import Any, AsyncGenerator
 
 import httpx
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
     APITimeoutError, RateLimitError, BadRequestError, InternalServerError
 from dotenv import dotenv_values
+
+logger = logging.getLogger(__name__)
+
+# Models that support structured outputs (beta)
+# See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+STRUCTURED_OUTPUT_MODELS = re.compile(r'claude-(sonnet-4|opus-4|haiku-4)')
+STRUCTURED_OUTPUTS_BETA = 'structured-outputs-2025-11-13'
 
 
 from justai.model.message import Message
@@ -67,7 +80,7 @@ class AnthropicModel(BaseModel):
             )
 
         # Client
-        timeout = httpx.Timeout(30.0)
+        timeout = httpx.Timeout(120.0)
         if params.get("async"):
             http_client = httpx.AsyncClient(timeout=timeout)
             self.client = AsyncAnthropic(api_key=api_key, http_client=http_client)
@@ -91,24 +104,28 @@ class AnthropicModel(BaseModel):
 
     def chat(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
             -> tuple[Any, int|None, int|None, dict|None]:
-        if response_format:
-            raise NotImplementedError("Anthropic does not support response_format")
+        # Check if we should use structured outputs (beta) for newer models
+        use_structured_outputs = return_json and self._supports_structured_outputs()
 
-
-        # Hier moet nog iets mee
-        message = self.completion(prompt, images, tools, return_json, response_format)
+        if use_structured_outputs:
+            message = self._completion_with_structured_output(prompt, images, tools, response_format)
+        else:
+            message = self.completion(prompt, images, tools, return_json, response_format)
 
         # Text content
         response_str = message.content[0].text
         if return_json:
-            response_str = response_str.split("</json>")[0]  # !!
-            if response_str.startswith("```json"):
-                response_str = response_str[7:-3]
-            try:
-                response = json.loads(response_str, strict=False)
-            except json.decoder.JSONDecodeError:
-                print("ERROR DECODING JSON, RESPONSE:", response_str)
-                response = extract_dict(response_str)
+            if use_structured_outputs:
+                # Structured outputs guarantees valid JSON
+                response = json.loads(response_str)
+            else:
+                # Legacy JSON parsing for older models
+                # TODO: Remove this code path when Claude 3.x models are deprecated
+                logger.warning(
+                    f'Using legacy JSON parsing for {self.model_name}. '
+                    'Consider upgrading to Claude 4.x for guaranteed structured outputs.'
+                )
+                response = self._parse_json_legacy(response_str)
         else:
             response = response_str
 
@@ -122,6 +139,93 @@ class AnthropicModel(BaseModel):
             self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
 
         return response, input_tokens, output_tokens
+
+    def _supports_structured_outputs(self) -> bool:
+        """Check if the model supports structured outputs (Claude 4.x models)."""
+        return bool(STRUCTURED_OUTPUT_MODELS.search(self.model_name))
+
+    def _parse_json_legacy(self, response_str: str) -> dict | list:
+        """
+        Legacy JSON parsing for older models that don't support structured outputs.
+        TODO: Remove when Claude 3.x models are deprecated.
+        """
+        response_str = response_str.split('</json>')[0]
+        if response_str.startswith('```json'):
+            response_str = response_str[7:-3]
+        try:
+            return json.loads(response_str, strict=False)
+        except json.decoder.JSONDecodeError:
+            logger.error(f'Error decoding JSON: {response_str[:200]}')
+            try:
+                return extract_dict(response_str)
+            except json.decoder.JSONDecodeError as e:
+                raise ValueError(f'Expected JSON but got: {response_str[:200]}') from e
+
+    def _completion_with_structured_output(self, prompt: str, images: ImageInput = None,
+                                           tools: list = None, response_format=None):
+        """Use the structured outputs beta API for guaranteed JSON responses."""
+        system_message = self.cached_system_message() if self.cached_prompt else self.system_message
+
+        # Add user message to conversation history
+        if prompt or images:
+            user_message = create_anthropic_message('user', prompt, images)
+            self.messages.append(user_message)
+
+        # Build output_format schema
+        if response_format and hasattr(response_format, 'model_json_schema'):
+            # Pydantic model - extract JSON schema
+            schema = response_format.model_json_schema()
+        elif response_format and isinstance(response_format, dict):
+            # Already a JSON schema dict
+            schema = response_format
+        else:
+            # Default: accept any JSON object
+            schema = {'type': 'object'}
+
+        # Ensure additionalProperties is set to false (required by Anthropic)
+        if schema.get('type') == 'object' and 'additionalProperties' not in schema:
+            schema['additionalProperties'] = False
+
+        output_format = {
+            'type': 'json_schema',
+            'schema': schema
+        }
+
+        antr_tools = transform_tools(tools or []) if tools is not None else None
+
+        try:
+            api_params = {
+                'model': self.model_name,
+                'messages': self.messages,
+                'system': system_message,
+                'betas': [STRUCTURED_OUTPUTS_BETA],
+                'output_format': output_format,
+                **self.model_params
+            }
+
+            if antr_tools:
+                api_params['tools'] = antr_tools
+
+            return self.client.beta.messages.create(**api_params)
+
+        except APIConnectionError as e:
+            logger.error(f'LLM call failed (APIConnectionError): {e!r}')
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            logger.error(f'LLM call failed (Auth): {e!r}')
+            raise AuthorizationException(e)
+        except InternalServerError as e:
+            logger.error(f'LLM call failed (500): {e!r}')
+            raise ModelOverloadException(e)
+        except RateLimitError as e:
+            logger.error(f'LLM call failed (RateLimit): {e!r}')
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            logger.error(f'LLM call failed (BadRequest): {e!r}')
+            raise BadRequestException(e)
+        except Exception as e:
+            logger.error(f'LLM call failed (Unexpected): {e!r}')
+            raise GeneralException(e)
 
     async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
         messages = [Message("user", prompt)]
@@ -390,7 +494,7 @@ def extract_dict(text: str) -> dict:
     """ Extracts the first valid JSON dictionary from a string, even if it contains nested objects. """
     start = text.find("{")
     if start == -1:
-        raise json.JSONDecodeError
+        raise json.JSONDecodeError('No JSON object found in text', text, 0)
 
     depth = 0
     for i, ch in enumerate(text[start:], start=start):
@@ -400,4 +504,4 @@ def extract_dict(text: str) -> dict:
             depth -= 1
             if depth == 0:
                 return json.loads(text[start:i+1])
-    raise json.JSONDecodeError
+    raise json.JSONDecodeError('No valid JSON object found', text, start)
