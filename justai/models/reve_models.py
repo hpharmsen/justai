@@ -22,19 +22,20 @@ import httpx
 from PIL import Image
 
 from justai.model.model import ImageInput
-from justai.models.basemodel import BaseModel, GeneralException, BadRequestException
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, GeneralException, BadRequestException
 from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_base64_image
 
 
 class ReveModel(BaseModel):
 
-    def __init__(self, model_name: str, params: dict):
+    def __init__(self, model_name: str, params: dict = None):
+        params = params or {}
         system_message = f"You are {model_name}, a large language model trained by Google."
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        self.api_key = params.get("REVE_API_KEY") or params.get("REVE_API_KEY") or os.getenv("REVE_API_KEY")
+        self.api_key = params.get("REVE_API_KEY") or os.getenv("REVE_API_KEY")
         if not self.api_key:
             color_print("No REVE_API_KEY found. Create one at https://api.reve.com and " +
                         "set it in the .env file like REVE_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
@@ -60,8 +61,9 @@ class ReveModel(BaseModel):
         if options and options.get("aspect_ratio"):
             payload["aspect_ratio"] = options["aspect_ratio"]
 
+        timeout = self.model_params.get('timeout', DEFAULT_TIMEOUT)
         try:
-            response = httpx.post(endpoint, headers=headers, json=payload, timeout=60.0)
+            response = httpx.post(endpoint, headers=headers, json=payload, timeout=timeout)
             response.raise_for_status()  # Raises an HTTPError for bad responses
 
             # Parse the response

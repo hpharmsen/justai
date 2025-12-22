@@ -5,6 +5,11 @@ import re
 import httpx
 from PIL import Image
 
+# Standard headers for fetching images from URLs
+_HTTP_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (compatible; JustAI/1.0; +https://github.com/justai)'
+}
+
 
 # --- Robuuste extractie van base64 PNG uit verschillende SDK-vormen ---
 def extract_images(response):
@@ -68,11 +73,12 @@ def get_image_type(image):
         raise ValueError("Unknown content type in message. Must be image url or PIL image or image data.")
 
 
-def to_base64_image(image):
+def to_base64_image(image) -> str:
+    """Convert image to base64 string."""
     image_type = get_image_type(image)
     match image_type:
         case 'image_url':
-            img = httpx.get(image).content
+            img = httpx.get(image, headers=_HTTP_HEADERS).content
         case 'image_data':
             img = image
         case 'pil_image':
@@ -84,11 +90,47 @@ def to_base64_image(image):
     return base64.b64encode(img).decode("utf-8")
 
 
+def detect_mime_type(data: bytes) -> str:
+    """Detect MIME type from image data using magic bytes."""
+    if len(data) >= 8 and data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    elif len(data) >= 3 and data[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    elif len(data) >= 6 and data[:6] in (b'GIF87a', b'GIF89a'):
+        return 'image/gif'
+    elif len(data) >= 12 and data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    elif len(data) >= 2 and data[:2] == b'BM':
+        return 'image/bmp'
+    return 'image/jpeg'  # Default fallback
+
+
+def to_base64_data_uri(image) -> str:
+    """Convert image to base64 data URI with proper MIME type detection."""
+    image_type = get_image_type(image)
+    match image_type:
+        case 'image_url':
+            img_data = httpx.get(image, headers=_HTTP_HEADERS).content
+            mime_type = detect_mime_type(img_data)
+        case 'image_data':
+            img_data = image
+            mime_type = detect_mime_type(img_data)
+        case 'pil_image':
+            buffered = io.BytesIO()
+            image.save(buffered, format="jpeg")
+            img_data = buffered.getvalue()
+            mime_type = 'image/jpeg'
+        case _:
+            raise ValueError(f"Unknown image type: {image_type}")
+    b64 = base64.b64encode(img_data).decode("utf-8")
+    return f"data:{mime_type};base64,{b64}"
+
+
 def to_pil_image(image):
     image_type = get_image_type(image)
     match image_type:
         case 'image_url':
-            return Image.open(io.BytesIO(httpx.get(image).content))
+            return Image.open(io.BytesIO(httpx.get(image, headers=_HTTP_HEADERS).content))
         case 'image_data':
             return Image.open(io.BytesIO(image))
         case 'pil_image':

@@ -62,6 +62,7 @@ from justai.model.message import Message, ToolUseMessage
 from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR2
 from justai.models.basemodel import (
     BaseModel,
+    DEFAULT_TIMEOUT,
     ConnectionException,
     AuthorizationException,
     ModelOverloadException,
@@ -75,6 +76,7 @@ from justai.tools.images import to_base64_image
 
 class OpenAICompletionsModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
+        params = params or {}
         system_message = f"You are {model_name}, a large language model trained by OpenAI."
         super().__init__(model_name, params, system_message)
 
@@ -86,8 +88,10 @@ class OpenAICompletionsModel(BaseModel):
 
         # instructor.patch makes the OpenAI client compatible with structured output via response_model="
         # Works only for OpenAI models
-        self.client = instructor.patch(OpenAI(api_key=api_key, timeout=120.0))
+        self.client = instructor.patch(OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT)))
         # Only include system message if not empty (some providers reject empty system messages)
+        assert self.system_message is None or isinstance(self.system_message, str), \
+            f'system_message must be a string, got {type(self.system_message)}'
         if self.system_message and self.system_message.strip():
             self.messages = [{"role": "system", "content": self.system_message}]
         else:
@@ -131,18 +135,18 @@ class OpenAICompletionsModel(BaseModel):
 
         return result, input_token_count, output_token_count
 
-    async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
-
-        async for content, reasoning in self.chat_async(prompt):
+    async def prompt_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
+        async for content, reasoning in self.chat_async(prompt, images):
             yield content, reasoning
 
-    async def chat_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
+    async def chat_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
         # Get the streaming response
         stream = self.completion(
-            messages=self.messages,
-            tools=None,
+            prompt=prompt,
+            images=images,
+            tools=NOT_GIVEN,
             return_json=False,
-            response_model=None,
+            response_format=NOT_GIVEN,
             stream=True
         )
 
@@ -231,7 +235,11 @@ class OpenAICompletionsModel(BaseModel):
             except Exception as e:
                 raise GeneralException(e)
 
-            # Inspect the model’s response
+            # For streaming, return the stream directly
+            if stream:
+                return result
+
+            # Inspect the model's response
             response_msg = result.choices[0].message
 
             if not response_msg.tool_calls:

@@ -16,6 +16,9 @@ ImageInput = Optional[Union[
 
 from justai.model.message import Message
 
+# Default timeout in seconds for all API calls
+DEFAULT_TIMEOUT = 120.0
+
 
 class ConnectionException(Exception):
     pass
@@ -99,25 +102,26 @@ class BaseModel(ABC):
 
 
 def identify_image_format_from_base64(encoded_data: str) -> str:
-    raw_data = base64.b64decode(encoded_data)[:8]
+    """Identify image format from base64 data. Returns MIME type supported by LLM APIs."""
+    raw_data = base64.b64decode(encoded_data)[:12]  # Need 12 bytes for WebP detection
 
     # Magic numbers and corresponding mime types for each image format
-    formats = {
-        b'\xff\xd8\xff': 'image/jpeg',  # JPEG files
-        b'\x89PNG\r\n\x1a\n': 'image/png',  # PNG files
-        b'GIF87a': 'image/gif',  # GIF files (version 87a)
-        b'GIF89a': 'image/gif',  # GIF files (version 89a)
-        b'BM': 'image/bmp',  # BMP files
-        b'II*\x00': 'image/tiff',  # TIFF files (little endian)
-        b'MM\x00*': 'image/tiff',  # TIFF files (big endian)
-        b'RIFF': 'image/webp',  # WebP files (part of RIFF)
-        b'<svg': 'image/svg+xml',  # SVG files (this is a rough check; SVG is a text-based format)
-        b'<!DOCT': 'image/svg+xml',  # SVG files with DOCTYPE declaration
-    }
+    # Ordered by specificity (longer magic bytes first)
+    formats = [
+        (b'\x89PNG\r\n\x1a\n', 'image/png'),   # PNG files
+        (b'GIF87a', 'image/gif'),              # GIF files (version 87a)
+        (b'GIF89a', 'image/gif'),              # GIF files (version 89a)
+        (b'\xff\xd8\xff', 'image/jpeg'),       # JPEG files
+    ]
 
     # Check the raw data against known magic numbers
-    for magic, mime_type in formats.items():
+    for magic, mime_type in formats:
         if raw_data.startswith(magic):
             return mime_type
 
-    return 'unknown/unknown'
+    # WebP files: RIFF....WEBP (bytes 0-3: RIFF, bytes 8-11: WEBP)
+    if raw_data[:4] == b'RIFF' and len(raw_data) >= 12 and raw_data[8:12] == b'WEBP':
+        return 'image/webp'
+
+    # Default to JPEG for unknown formats (most widely supported)
+    return 'image/jpeg'

@@ -32,16 +32,14 @@ from google import genai
 
 from justai.model.message import Message
 from justai.model.model import ImageInput
-from justai.models.basemodel import BaseModel
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
 from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_pil_image
 
-HTTP_TIMEOUT = 120_000  # milliseconds (120 seconds)
-
-
 class GoogleModel(BaseModel):
 
-    def __init__(self, model_name: str, params: dict):
+    def __init__(self, model_name: str, params: dict = None):
+        params = params or {}
         system_message = f"You are {model_name}, a large language model trained by Google."
         super().__init__(model_name, params, system_message)
 
@@ -52,8 +50,9 @@ class GoogleModel(BaseModel):
             color_print("No Google API key found. Create one at https://aistudio.google.com/app/apikey and " +
                         "set it in the .env file like GOOGLE_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
-        # Client
-        http_options = genai.types.HttpOptions(timeout=HTTP_TIMEOUT)
+        # Client (Google uses milliseconds for timeout)
+        timeout_ms = int(params.get('timeout', DEFAULT_TIMEOUT) * 1000)
+        http_options = genai.types.HttpOptions(timeout=timeout_ms)
         self.client = genai.Client(api_key=api_key, http_options=http_options)
         self.chat_session = None  # Google uses this to keep track of the chat
 
@@ -96,7 +95,7 @@ class GoogleModel(BaseModel):
         response = self.chat_session.send_message(message=prompt)
         return convert_to_justai_response(response, return_json)
 
-    async def prompt_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
+    async def prompt_async(self, prompt: str, images: list[ImageInput] = None) -> AsyncGenerator[tuple[str, str], None]:
         if images:
             raise NotImplementedError('google_model. ..._async does not support images. Use prompt() instead')
 
@@ -108,7 +107,7 @@ class GoogleModel(BaseModel):
             if chunk.text:
                 yield chunk.text, ''
 
-    async def chat_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
+    async def chat_async(self, prompt: str, images: list[ImageInput] = None) -> AsyncGenerator[tuple[str, str], None]:
         async for chunk in self.prompt_async(prompt, images):
             yield chunk
 
@@ -117,12 +116,23 @@ class GoogleModel(BaseModel):
         return response.total_tokens
 
     def generate_image(self, prompt, images: ImageInput, options: dict = None):
-        client = genai.Client()
         images = [to_pil_image(img) for img in images] if images else []
 
-        response = client.models.generate_content(
+        # Build config from options if provided
+        config = None
+        if options:
+            config_params = {}
+            if 'aspect_ratio' in options:
+                config_params['aspect_ratio'] = options['aspect_ratio']
+            if 'number_of_images' in options:
+                config_params['number_of_images'] = options['number_of_images']
+            if config_params:
+                config = genai.types.GenerateContentConfig(**config_params)
+
+        response = self.client.models.generate_content(
             model=self.model_name,
             contents=images + [prompt],
+            config=config,
         )
 
         for part in response.candidates[0].content.parts:

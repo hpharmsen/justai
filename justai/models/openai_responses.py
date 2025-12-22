@@ -29,13 +29,14 @@ from openai import OpenAI, APIConnectionError, \
 from justai.model.message import Message, ToolUseMessage
 from justai.models.basemodel import ImageInput
 from justai.tools.display import color_print, ERROR_COLOR
-from justai.models.basemodel import BaseModel, ConnectionException, AuthorizationException, \
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ConnectionException, AuthorizationException, \
     ModelOverloadException, RatelimitException, BadRequestException, GeneralException
-from justai.tools.images import extract_images, to_base64_image, get_image_type
+from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
 
 
 class OpenAIResponsesModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
+        params = params or {}
         system_message = f"You are {model_name}, a large language model trained by OpenAI."
         super().__init__(model_name, params, system_message)
 
@@ -45,12 +46,12 @@ class OpenAIResponsesModel(BaseModel):
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
-        # instructor.patch makes the OpenAI client compatible with structured output via response_model=”
+        # instructor.patch makes the OpenAI client compatible with structured output via response_model="
         # Works only for OpenAI models
 
         # Not sure if this works, or is needed, for the Responses API
         # self.client = instructor.patch(OpenAI(api_key=api_key))
-        self.client = OpenAI(timeout=120.0)
+        self.client = OpenAI(timeout=params.get('timeout', DEFAULT_TIMEOUT))
 
         # Diversions from the features that are supported or not supported by default
         self.supports_function_calling = True
@@ -83,7 +84,8 @@ class OpenAIResponsesModel(BaseModel):
                                                                 "schema":response_format}},
                                                             previous_response_id=last_response_id)
                 elif response_format:
-                    assert issubclass(response_format, pydantic.BaseModel), 'Response format should be a Pydantic model unless you specify return_json=True'
+                    assert isinstance(response_format, type) and issubclass(response_format, pydantic.BaseModel), \
+                        'Response format should be a Pydantic model unless you specify return_json=True'
                     response = self.client.responses.parse(model=self.model_name, input=input_list, tools=tool_spec,
                                                            text_format=response_format,
                                                            previous_response_id=last_response_id)
@@ -121,7 +123,7 @@ class OpenAIResponsesModel(BaseModel):
                     function_call_arguments = json.loads(item.arguments)
 
             if not function_call or run == 2:
-                if response_format and issubclass(response_format, pydantic.BaseModel):
+                if response_format and isinstance(response_format, type) and issubclass(response_format, pydantic.BaseModel):
                     field = list(response.output_parsed.model_fields_set)[0]
                     output = getattr(response.output_parsed, field)
                 elif return_json:
@@ -210,7 +212,7 @@ class OpenAIResponsesModel(BaseModel):
         # }]
 
 
-    async def prompt_async(self, prompt: str, images: list[ImageInput]=None, _chat=False) -> AsyncGenerator[str]:
+    async def prompt_async(self, prompt: str, images: list[ImageInput]=None, _chat=False) -> AsyncGenerator[tuple[str, str], None]:
 
         content = self.create_content(prompt, images)
         input_ = [{"role": "user", "content": content}]
@@ -225,7 +227,7 @@ class OpenAIResponsesModel(BaseModel):
 
         for event in response:
             if hasattr(event, 'delta'):
-                yield event.delta
+                yield event.delta, ''  # Second value is reasoning (not available for OpenAI)
         # Events can have different types:
         # event: response.created
         # data: {
@@ -346,13 +348,14 @@ class OpenAIResponsesModel(BaseModel):
             yield chunk
                
     @staticmethod
-    def create_content(prompt, images:list[ImageInput]) -> list[dict]:
+    def create_content(prompt, images: list[ImageInput]) -> list[dict]:
         content = [{"type": "input_text", "text": prompt}]
 
         if images:
             for image in images:
-                image_type = get_image_type(image)
-                image_url = image if image_type == "image_url" else f"data:image/jpeg;base64,{to_base64_image(image)}"
+                # Always convert to base64 data URI to avoid URL download issues
+                # Some servers (like Wikipedia) block OpenAI's download attempts
+                image_url = to_base64_data_uri(image)
                 content += [{"type": "input_image", "image_url": image_url}]
         return content
 
@@ -425,7 +428,7 @@ class OpenAIResponsesModel(BaseModel):
                     for image in message.images:
                         content.append({
                             "type": "image_url",
-                            "image_url": {'url': f"data:image/jpeg;base64,{to_base64_image(image)}"}
+                            "image_url": {'url': to_base64_data_uri(image)}
                         })
                     msg["content"] = content
                 else:

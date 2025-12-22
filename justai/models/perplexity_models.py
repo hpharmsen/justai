@@ -27,11 +27,10 @@ class PerplexityModel(OpenAICompletionsModel):
         # Overwrite parent class defaults
         self.supports_return_json = False
 
-    def chat_async(self, messages: list[Message]):
-        """ Perplexity does not separately return thinking content
-        but returns it's thinking between <think> and </think> tags."""
+    async def chat_async(self, prompt: str, images=None):
+        """Perplexity does not separately return thinking content but returns it between <think> and </think> tags."""
         thinking = False
-        for content, _ in super().chat_async(messages):
+        async for content, _ in super().chat_async(prompt, images):
             if content == '<think>':
                 thinking = True
             elif '</think>' in content:

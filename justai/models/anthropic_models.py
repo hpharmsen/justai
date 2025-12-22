@@ -47,6 +47,7 @@ STRUCTURED_OUTPUTS_BETA = 'structured-outputs-2025-11-13'
 from justai.model.message import Message
 from justai.models.basemodel import (
     BaseModel,
+    DEFAULT_TIMEOUT,
     identify_image_format_from_base64,
     ConnectionException,
     AuthorizationException,
@@ -61,7 +62,8 @@ from justai.tools.images import to_base64_image
 
 
 class AnthropicModel(BaseModel):
-    def __init__(self, model_name: str, params: dict):
+    def __init__(self, model_name: str, params: dict = None):
+        params = params or {}
         system_message = f"You are {model_name}, a large language model trained by Anthropic."
         super().__init__(model_name, params, system_message)
         self.cached_prompt = None
@@ -80,8 +82,8 @@ class AnthropicModel(BaseModel):
             )
 
         # Client
-        timeout = httpx.Timeout(120.0)
-        if params.get("async"):
+        timeout = httpx.Timeout(params.get('timeout', DEFAULT_TIMEOUT))
+        if params.get('async'):
             http_client = httpx.AsyncClient(timeout=timeout)
             self.client = AsyncAnthropic(api_key=api_key, http_client=http_client)
         else:
@@ -108,7 +110,18 @@ class AnthropicModel(BaseModel):
         use_structured_outputs = return_json and self._supports_structured_outputs()
 
         if use_structured_outputs:
-            message = self._completion_with_structured_output(prompt, images, tools, response_format)
+            try:
+                message = self._completion_with_structured_output(prompt, images, tools, response_format)
+            except TypeError as e:
+                # Fall back to legacy path if SDK doesn't support structured outputs
+                # This happens with older anthropic SDK versions
+                logger.warning(
+                    f'Structured outputs not available (SDK may be outdated): {e}. '
+                    'Falling back to legacy JSON parsing. '
+                    'Upgrade anthropic SDK with: pip install --upgrade anthropic'
+                )
+                use_structured_outputs = False
+                message = self.completion(prompt, images, tools, return_json, response_format)
         else:
             message = self.completion(prompt, images, tools, return_json, response_format)
 
@@ -119,12 +132,7 @@ class AnthropicModel(BaseModel):
                 # Structured outputs guarantees valid JSON
                 response = json.loads(response_str)
             else:
-                # Legacy JSON parsing for older models
-                # TODO: Remove this code path when Claude 3.x models are deprecated
-                logger.warning(
-                    f'Using legacy JSON parsing for {self.model_name}. '
-                    'Consider upgrading to Claude 4.x for guaranteed structured outputs.'
-                )
+                # Legacy JSON parsing for older models or fallback
                 response = self._parse_json_legacy(response_str)
         else:
             response = response_str
@@ -186,7 +194,7 @@ class AnthropicModel(BaseModel):
         if schema.get('type') == 'object' and 'additionalProperties' not in schema:
             schema['additionalProperties'] = False
 
-        output_format = {
+        output_format_param = {
             'type': 'json_schema',
             'schema': schema
         }
@@ -198,16 +206,31 @@ class AnthropicModel(BaseModel):
                 'model': self.model_name,
                 'messages': self.messages,
                 'system': system_message,
-                'betas': [STRUCTURED_OUTPUTS_BETA],
-                'output_format': output_format,
                 **self.model_params
             }
 
             if antr_tools:
                 api_params['tools'] = antr_tools
 
-            return self.client.beta.messages.create(**api_params)
+            # Use parse() for Pydantic models (recommended by Anthropic SDK)
+            if response_format and hasattr(response_format, 'model_json_schema'):
+                return self.client.beta.messages.parse(
+                    betas=[STRUCTURED_OUTPUTS_BETA],
+                    output_format=response_format,
+                    **api_params
+                )
+            else:
+                # Use create() with output_format for raw JSON schemas
+                return self.client.beta.messages.create(
+                    betas=[STRUCTURED_OUTPUTS_BETA],
+                    output_format=output_format_param,
+                    **api_params
+                )
 
+        except TypeError:
+            # Re-raise TypeError directly for fallback handling in chat()
+            # This happens when SDK doesn't support output_format parameter
+            raise
         except APIConnectionError as e:
             logger.error(f'LLM call failed (APIConnectionError): {e!r}')
             raise ConnectionException(e)
@@ -227,19 +250,16 @@ class AnthropicModel(BaseModel):
             logger.error(f'LLM call failed (Unexpected): {e!r}')
             raise GeneralException(e)
 
-    async def prompt_async(self, prompt: str) -> AsyncGenerator[tuple[str, str], None]:
-        messages = [Message("user", prompt)]
-
-        async for content, reasoning in self.chat_async(messages):
+    async def prompt_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
+        async for content, reasoning in self.chat_async(prompt, images):
             if content or reasoning:
                 yield content, reasoning
 
-    async def chat_async(self, prompt: str, images: ImageInput) -> AsyncGenerator[tuple[str, str], None]:
-
-        stream = self.completion(prompt, stream=True)
+    async def chat_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
+        stream = self.completion(prompt, images, stream=True)
         for event in stream:
             if hasattr(event, "delta") and hasattr(event.delta, "text"):
-                yield event.delta.text, None   # 2nd parameter is reasoning_content. Not available yet for Anthropic
+                yield event.delta.text, None  # 2nd parameter is reasoning_content. Not available yet for Anthropic
 
     def completion(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None, stream=False):
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message

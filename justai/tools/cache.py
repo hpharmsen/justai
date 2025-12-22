@@ -9,9 +9,12 @@ from justdays import Day
 
 from justai.model.message import Message
 
+# Type alias for cache response tuple: (value, tokens_in, tokens_out, extra)
+CacheResponse = tuple[str | object, int | None, int | None, dict | None]
 
-def cached_llm_response(model, prompt_or_messages: str|list[Message], tools: list, return_json: bool, response_format=None,
-                        use_cache=True, images=None) -> tuple[[str | object], int, int, dict]:
+
+def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: list, return_json: bool,
+                        response_format=None, use_cache: bool = True, images=None) -> CacheResponse:
     """ Double use function.
     It can be called with
     A: A list of Messages. This is used in chat(). images parameter is ignored.
@@ -58,13 +61,15 @@ def cached_llm_response(model, prompt_or_messages: str|list[Message], tools: lis
     return result
 
 
-def cached_response(*args: Any) -> tuple[str | object, int, int, dict]:
+def cached_response(*args: Any) -> CacheResponse | None:
+    """Retrieve a cached response by hashing the provided arguments."""
     hashcode = recursive_hash((*args,))
     cachedb = CacheDB()
     return cachedb.read(hashcode)
 
 
-def cache_save(response, *args: Any) -> None:
+def cache_save(response: tuple[str, int | None, int | None], *args: Any) -> None:
+    """Save a response to the cache using hashed arguments as key."""
     hashcode = recursive_hash((*args,))
     cachedb = CacheDB()
     cachedb.write(hashcode, response)
@@ -74,9 +79,10 @@ cache_dir = ''
 cache_file = 'llmcache.db'
 
 
-def set_cache_dir(_dir):
+def set_cache_dir(_dir: str | Path) -> None:
+    """Set the directory for the cache database."""
     global cache_dir
-    cache_dir = _dir
+    cache_dir = str(_dir)
 
 
 class CacheDB:
@@ -106,35 +112,41 @@ class CacheDB:
             pass
         self.conn.commit()
 
-    def write(self, key: str, llm_response: tuple[str, int, int], valid_until: str = ''):
+    def write(self, key: str, llm_response: tuple[str, int | None, int | None], valid_until: str = '') -> None:
+        """Write a response to the cache."""
         if not valid_until:
             valid_until = str(Day().plus_months(1))
         value, tokens_in, tokens_out = llm_response  # Ignore tool use
         try:
-            self.cursor.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until) 
+            self.cursor.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until)
                                     VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
             self.conn.commit()
         except sqlite3.ProgrammingError:
             pass  # Something went wrong. Whatever, just don't add to the cache but never crash
 
-    def read(self, key):
+    def read(self, key: str) -> tuple[str, int, int, str, str] | None:
+        """Read a response from the cache by key."""
         self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
         result = self.cursor.fetchone()
         return result
 
-    def clear(self):
+    def clear(self) -> None:
+        """Clear all cached entries."""
         try:
             self.cursor.execute('DELETE FROM cache')
             self.conn.commit()
         except sqlite3.ProgrammingError:
             pass  # Something went wrong. Whatever, just don't delete the cache but never crash
 
-    def close(self):
+    def close(self) -> None:
+        """Close the database connection."""
         self.conn.close()
 
 
-def recursive_hash(value, depth=0, ignore_params=[]):
-    """Hash primitives recursively with maximum depth. Via https://docs.sweep.dev/blogs/file-cache"""
+def recursive_hash(value: Any, depth: int = 0, ignore_params: list[str] | None = None) -> str:
+    """Hash primitives recursively with maximum depth."""
+    if ignore_params is None:
+        ignore_params = []
     if depth > 6:
         return hash_code("max_depth_reached")
     if isinstance(value, (int, float, str, bool, bytes)):
@@ -156,5 +168,6 @@ def recursive_hash(value, depth=0, ignore_params=[]):
     return hash_code("unknown")
 
 
-def hash_code(code):
+def hash_code(code: str) -> str:
+    """Generate MD5 hash of a string."""
     return hashlib.md5(code.encode()).hexdigest()
