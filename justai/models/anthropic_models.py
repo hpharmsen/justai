@@ -198,9 +198,16 @@ class AnthropicModel(BaseModel):
             # Default: accept any JSON object
             schema = {'type': 'object'}
 
-        # Ensure additionalProperties is set to false (required by Anthropic)
+        # For default schema (no response_format provided), allow additional properties
+        # so the model can return any JSON object. For explicit schemas, set additionalProperties
+        # to false as required by Anthropic API.
         if schema.get('type') == 'object' and 'additionalProperties' not in schema:
-            schema['additionalProperties'] = False
+            if response_format:
+                # Explicit schema provided - restrict to defined properties
+                schema['additionalProperties'] = False
+            else:
+                # Default schema - allow any properties
+                schema['additionalProperties'] = True
 
         output_format_param = {
             'type': 'json_schema',
