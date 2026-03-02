@@ -154,7 +154,7 @@ class AnthropicModel(BaseModel):
         else:
             self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
 
-        return response, input_tokens, output_tokens
+        return response, input_tokens, output_tokens, None
 
     def _supports_structured_outputs(self) -> bool:
         """Check if the model supports structured outputs (Claude 4.x models)."""

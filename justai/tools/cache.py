@@ -41,9 +41,10 @@ def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: l
     cachedb = CacheDB()
     result = cachedb.read(hashcode)
     if result:
+        # Cache returns (value, tokens_in, tokens_out), add None for extra
         if return_json:
-            return json.loads(result[0]), result[1], result[2], result[3]
-        return result
+            return json.loads(result[0]), result[1], result[2], None
+        return result[0], result[1], result[2], None
 
     if isinstance(prompt_or_messages, str):
         assert hasattr(model, 'prompt')
@@ -52,10 +53,11 @@ def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: l
         assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
         result = model.chat(prompt_or_messages, images, tools, return_json, response_format)
     try:
+        # Write only (value, tokens_in, tokens_out) to cache, ignore extra (result[3])
         if return_json:
-            cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2], result[3]))
+            cachedb.write(hashcode, (json.dumps(result[0]), result[1], result[2]))
         else:
-            cachedb.write(hashcode, result)
+            cachedb.write(hashcode, (result[0], result[1], result[2]))
     except Exception:
         print('cached_llm_response could not write to cache, result is', result)
     return result
@@ -124,9 +126,9 @@ class CacheDB:
         except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.IntegrityError):
             pass  # Something went wrong. Whatever, just don't add to the cache but never crash
 
-    def read(self, key: str) -> tuple[str, int, int, str, str] | None:
+    def read(self, key: str) -> tuple[str, int, int] | None:
         """Read a response from the cache by key."""
-        self.cursor.execute("SELECT * FROM cache WHERE hashkey = ?", (key,))
+        self.cursor.execute("SELECT value, tokens_in, tokens_out FROM cache WHERE hashkey = ?", (key,))
         result = self.cursor.fetchone()
         return result
 
