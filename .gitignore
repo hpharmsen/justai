@@ -23,3 +23,4 @@ justai/saves
 /examples/structured_output.py
 /examples/.cache.sqlite
 /.cache.sqlite
+/.safety-project.ini

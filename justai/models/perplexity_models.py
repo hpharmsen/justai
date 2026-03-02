@@ -4,7 +4,7 @@ from dotenv import dotenv_values
 from openai import OpenAI
 
 from justai.model.message import Message
-from justai.models.basemodel import BaseModel
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.display import color_print, ERROR_COLOR
 
@@ -20,7 +20,8 @@ class PerplexityModel(OpenAICompletionsModel):
         if not api_key:
             color_print(f"No {keyname} found. Create one at https://www.perplexity.ai/settings/api and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
-        self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
+        timeout = params.get('timeout', DEFAULT_TIMEOUT)
+        self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", timeout=timeout)
 
         self.messages = [{"role": "system", "content": self.system_message}]
 

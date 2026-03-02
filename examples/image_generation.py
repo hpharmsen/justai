@@ -13,7 +13,7 @@ def simple_image_example() -> Image:
 
 
 def style_transfer_example() -> Image:
-    model = Model('gemini-2.5-flash-image-preview')
+    model = Model('gemini-2.5-flash-image')
     url = 'https://upload.wikimedia.org/wikipedia/commons/9/94/Common_dolphin.jpg'
     pil_image = model.generate_image("Convert this image into the style of van Gogh", images=url)
     return pil_image

@@ -121,7 +121,7 @@ class CacheDB:
             self.cursor.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until)
                                     VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
             self.conn.commit()
-        except sqlite3.ProgrammingError:
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.IntegrityError):
             pass  # Something went wrong. Whatever, just don't add to the cache but never crash
 
     def read(self, key: str) -> tuple[str, int, int, str, str] | None:

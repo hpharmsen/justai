@@ -5,7 +5,7 @@ from dotenv import dotenv_values
 from openai import OpenAI
 
 from justai.model.message import Message
-from justai.models.basemodel import BaseModel
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.display import color_print, ERROR_COLOR
 
@@ -21,7 +21,8 @@ class DeepSeekModel(OpenAICompletionsModel):
         if not api_key:
             color_print("No DEEPSEEK API key found. Create one at https://platform.deepseek.com/api_keys and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
-        self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+        timeout = params.get('timeout', DEFAULT_TIMEOUT)
+        self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=timeout)
 
         self.messages = [{"role": "system", "content": self.system_message}]
 

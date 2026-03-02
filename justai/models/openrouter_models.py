@@ -3,7 +3,7 @@ import os
 from dotenv import dotenv_values
 from openai import OpenAI
 
-from justai.models.basemodel import BaseModel
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.display import color_print, ERROR_COLOR
 
@@ -17,8 +17,9 @@ class OpenRouterModel(OpenAICompletionsModel):
         keyname = "OPENROUTER_API_KEY"
         api_key = params.get(keyname) or os.getenv(keyname) or dotenv_values()[keyname]
         if not api_key:
-            color_print("No X AI API key found. Create one at https://openrouter.ai/settings/keys and " +
+            color_print("No OpenRouter API key found. Create one at https://openrouter.ai/settings/keys and " +
                         f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
-        self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+        timeout = params.get('timeout', DEFAULT_TIMEOUT)
+        self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=timeout)
 
         self.messages = [{"role": "system", "content": self.system_message}]

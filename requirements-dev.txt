@@ -1,3 +1,4 @@
+-i https://pkgs.safetycli.com/repository/harmsennl-ai-consultancy/project/justai/pypi/simple/
 black
 build
 nox
