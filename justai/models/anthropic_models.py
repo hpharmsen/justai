@@ -107,7 +107,9 @@ class AnthropicModel(BaseModel):
     def chat(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
             -> tuple[Any, int|None, int|None, dict|None]:
         # Check if we should use structured outputs (beta) for newer models
-        use_structured_outputs = return_json and self._supports_structured_outputs()
+        # Only use structured outputs when response_format is explicitly provided,
+        # because Anthropic requires a complete schema (additionalProperties: false)
+        use_structured_outputs = return_json and response_format and self._supports_structured_outputs()
 
         if use_structured_outputs:
             try:
@@ -198,16 +200,9 @@ class AnthropicModel(BaseModel):
             # Default: accept any JSON object
             schema = {'type': 'object'}
 
-        # For default schema (no response_format provided), allow additional properties
-        # so the model can return any JSON object. For explicit schemas, set additionalProperties
-        # to false as required by Anthropic API.
+        # Anthropic requires additionalProperties: false for object schemas
         if schema.get('type') == 'object' and 'additionalProperties' not in schema:
-            if response_format:
-                # Explicit schema provided - restrict to defined properties
-                schema['additionalProperties'] = False
-            else:
-                # Default schema - allow any properties
-                schema['additionalProperties'] = True
+            schema['additionalProperties'] = False
 
         output_format_param = {
             'type': 'json_schema',
