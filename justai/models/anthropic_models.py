@@ -122,6 +122,14 @@ class AnthropicModel(BaseModel):
                 )
                 use_structured_outputs = False
                 message = self.completion(prompt, images, tools, return_json, response_format)
+            except BadRequestError as e:
+                # Fall back to legacy path if model doesn't support structured outputs
+                if 'does not support output format' in str(e):
+                    logger.warning(f'Model {self.model_name} does not support structured outputs. Falling back to legacy JSON parsing.')
+                    use_structured_outputs = False
+                    message = self.completion(prompt, images, tools, return_json, response_format)
+                else:
+                    raise
         else:
             message = self.completion(prompt, images, tools, return_json, response_format)
 
