@@ -132,7 +132,7 @@ class Model:
                 cache_save(response, self.model.model_name, self.model.model_params, prompt, images, self.tools,
                            return_json, response_format)
 
-            result, self.input_token_count, self.output_token_count = response
+            result, self.input_token_count, self.output_token_count, _ = response
 
         self.last_response_time = time.time() - start_time
         return result
@@ -149,7 +149,7 @@ class Model:
         response = self.model.chat(prompt, images=images, tools=self.tools, return_json=return_json,
                                    response_format=response_format)
 
-        result, self.input_token_count, self.output_token_count = response
+        result, self.input_token_count, self.output_token_count, _ = response
         self.last_response_time = time.time() - start_time
         return result
     

@@ -67,14 +67,19 @@ def cached_response(*args: Any) -> CacheResponse | None:
     """Retrieve a cached response by hashing the provided arguments."""
     hashcode = recursive_hash((*args,))
     cachedb = CacheDB()
-    return cachedb.read(hashcode)
+    result = cachedb.read(hashcode)
+    if result:
+        # Cache returns (value, tokens_in, tokens_out), add None for extra
+        return result[0], result[1], result[2], None
+    return None
 
 
-def cache_save(response: tuple[str, int | None, int | None], *args: Any) -> None:
+def cache_save(response: tuple[str, int | None, int | None, dict | None], *args: Any) -> None:
     """Save a response to the cache using hashed arguments as key."""
     hashcode = recursive_hash((*args,))
     cachedb = CacheDB()
-    cachedb.write(hashcode, response)
+    # Only store the first 3 values (value, tokens_in, tokens_out), ignore extra
+    cachedb.write(hashcode, (response[0], response[1], response[2]))
 
 
 cache_dir = ''
