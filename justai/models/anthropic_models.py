@@ -252,6 +252,9 @@ class AnthropicModel(BaseModel):
             logger.error(f'LLM call failed (RateLimit): {e!r}')
             raise RatelimitException(e)
         except BadRequestError as e:
+            # Re-raise "does not support output format" errors for fallback handling in chat()
+            if 'does not support output format' in str(e):
+                raise
             logger.error(f'LLM call failed (BadRequest): {e!r}')
             raise BadRequestException(e)
         except Exception as e:
