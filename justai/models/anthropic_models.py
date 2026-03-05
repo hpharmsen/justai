@@ -114,16 +114,11 @@ class AnthropicModel(BaseModel):
         if use_structured_outputs:
             try:
                 message = self._completion_with_structured_output(prompt, images, tools, response_format)
-            except TypeError as e:
-                # Fall back to legacy path if SDK doesn't support structured outputs
-                # This happens with older anthropic SDK versions
-                logger.warning(
-                    f'Structured outputs not available (SDK may be outdated): {e}. '
-                    'Falling back to legacy JSON parsing. '
-                    'Upgrade anthropic SDK with: pip install --upgrade anthropic'
-                )
-                use_structured_outputs = False
-                message = self.completion(prompt, images, tools, return_json, response_format)
+            except (TypeError, AttributeError) as e:
+                raise RuntimeError(
+                    'Structured outputs require a recent Anthropic SDK. '
+                    'Upgrade with: pip install --upgrade anthropic'
+                ) from e
             except BadRequestError as e:
                 # Fall back to legacy path if model doesn't support structured outputs
                 if 'does not support output format' in str(e):
@@ -243,9 +238,9 @@ class AnthropicModel(BaseModel):
                     **api_params
                 )
 
-        except TypeError:
-            # Re-raise TypeError directly for fallback handling in chat()
-            # This happens when SDK doesn't support output_format parameter
+        except (TypeError, AttributeError):
+            # Re-raise directly for fallback handling in chat()
+            # This happens when SDK doesn't support output_format/parse
             raise
         except APIConnectionError as e:
             logger.error(f'LLM call failed (APIConnectionError): {e!r}')
