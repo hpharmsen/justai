@@ -74,12 +74,12 @@ class BaseModel(ABC):
 
     @abstractmethod
     def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
-            -> tuple[Any, int|None, int|None]:
+            -> tuple[Any, int|None, int|None, dict|None]:
         ...
 
     @abstractmethod
     def chat(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
-            -> tuple[Any, int|None, int|None]:
+            -> tuple[Any, int|None, int|None, dict|None]:
         ...
 
     @abstractmethod

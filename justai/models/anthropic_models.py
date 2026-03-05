@@ -98,14 +98,14 @@ class AnthropicModel(BaseModel):
         self.messages = []
 
     def prompt(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
-            -> tuple[Any, int|None, int|None, dict|None]:
+            -> tuple[Any, int|None, int|None]:
         # Reset messages
         self.messages = []
         return self.chat(prompt, images, tools, return_json, response_format)
 
 
     def chat(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
-            -> tuple[Any, int|None, int|None, dict|None]:
+            -> tuple[Any, int|None, int|None]:
         # Check if we should use structured outputs (beta) for newer models
         # Only use structured outputs when response_format is explicitly provided,
         # because Anthropic requires a complete schema (additionalProperties: false)
@@ -132,7 +132,7 @@ class AnthropicModel(BaseModel):
 
         # Text content
         response_str = message.content[0].text
-        if return_json:
+        if return_json or response_format:
             if use_structured_outputs:
                 # Structured outputs guarantees valid JSON
                 response = json.loads(response_str)
@@ -151,7 +151,7 @@ class AnthropicModel(BaseModel):
         else:
             self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
 
-        return response, input_tokens, output_tokens, None
+        return response, input_tokens, output_tokens
 
     def _supports_structured_outputs(self) -> bool:
         """Check if the model supports structured outputs (Claude 4.x models)."""

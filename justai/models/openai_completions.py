@@ -52,7 +52,6 @@ import json
 import os
 from typing import Any, AsyncGenerator
 
-import instructor
 import tiktoken
 from dotenv import dotenv_values
 from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
@@ -86,9 +85,7 @@ class OpenAICompletionsModel(BaseModel):
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
-        # instructor.patch makes the OpenAI client compatible with structured output via response_model="
-        # Works only for OpenAI models
-        self.client = instructor.patch(OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT)))
+        self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
         # Only include system message if not empty (some providers reject empty system messages)
         assert self.system_message is None or isinstance(self.system_message, str), \
             f'system_message must be a string, got {type(self.system_message)}'
@@ -213,9 +210,10 @@ class OpenAICompletionsModel(BaseModel):
                     # Structured output requires enough tokens to complete the JSON.
                     # Truncated JSON is always useless, so enforce a reasonable minimum.
                     params = {**self.model_params}
-                    MIN_STRUCTURED_TOKENS = 16384
-                    if params.get('max_tokens', 0) < MIN_STRUCTURED_TOKENS:
-                        params['max_tokens'] = MIN_STRUCTURED_TOKENS
+                    max_allowed = getattr(self, 'max_output_tokens', 16384)
+                    min_structured = min(16384, max_allowed)
+                    if params.get('max_tokens', 0) < min_structured:
+                        params['max_tokens'] = min_structured
                     result = self.client.chat.completions.parse(
                         model=self.model_name,
                         messages=self.messages,

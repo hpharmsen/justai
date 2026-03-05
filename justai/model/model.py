@@ -13,6 +13,25 @@ from justai.models.modelfactory import ModelFactory
 from justai.tools.images import crop_to_fit
 
 
+def _to_pydantic(result, response_format):
+    """Convert result to a Pydantic model instance when response_format is a Pydantic class."""
+    if not response_format:
+        return result
+    try:
+        from pydantic import BaseModel as PydanticModel
+    except ImportError:
+        return result
+    if not (isinstance(response_format, type) and issubclass(response_format, PydanticModel)):
+        return result
+    if isinstance(result, response_format):
+        return result
+    if isinstance(result, dict):
+        return response_format.model_validate(result)
+    if isinstance(result, str):
+        return response_format.model_validate_json(result)
+    return result
+
+
 class Model:
     def __init__(self, model_name: str, **kwargs):
         
@@ -123,7 +142,7 @@ class Model:
                                        return_json, response_format)
 
         if response:
-            result, _, _, tool_use = response
+            result, _, _ = response
             self.input_token_count = self.output_token_count = 0
         else:
             response = self.model.prompt(prompt, images=images, tools=self.tools, return_json=return_json,
@@ -132,10 +151,10 @@ class Model:
                 cache_save(response, self.model.model_name, self.model.model_params, prompt, images, self.tools,
                            return_json, response_format)
 
-            result, self.input_token_count, self.output_token_count, _ = response
+            result, self.input_token_count, self.output_token_count = response
 
         self.last_response_time = time.time() - start_time
-        return result
+        return _to_pydantic(result, response_format)
 
     def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=False):
         self.raise_for_unsupported()
@@ -149,9 +168,9 @@ class Model:
         response = self.model.chat(prompt, images=images, tools=self.tools, return_json=return_json,
                                    response_format=response_format)
 
-        result, self.input_token_count, self.output_token_count, _ = response
+        result, self.input_token_count, self.output_token_count = response
         self.last_response_time = time.time() - start_time
-        return result
+        return _to_pydantic(result, response_format)
     
     async def prompt_async(self, prompt, *, images: ImageInput = None):
         # Using 'async for' to properly yield from the chat_async generator

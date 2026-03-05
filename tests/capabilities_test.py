@@ -53,7 +53,7 @@ def run_vision(model_name):
     """Test image/vision input."""
     url = 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/1928_Model_A_Ford.jpg/520px-1928_Model_A_Ford.jpg'
     model = Model(model_name)
-    model.chat('What is in this image', images=url, cached=False)
+    model.prompt('What is in this image', images=url, cached=False)
 
 
 def run_tooluse(model_name):

@@ -28,3 +28,4 @@ class DeepSeekModel(OpenAICompletionsModel):
 
         # Overwrite parent class defaults
         self.supports_image_input = False
+        self.max_output_tokens = 8192
