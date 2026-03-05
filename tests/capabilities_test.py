@@ -18,6 +18,7 @@ from justai import Model
 from examples.return_types import json_example, structured_output_with_pydantic
 
 ALL_MODELS = [
+    'claude-sonnet-4-6',
     'gpt-5-mini',
     'claude-haiku-4-5',
     'gemini-2.5-flash',

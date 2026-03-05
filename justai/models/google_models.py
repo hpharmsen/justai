@@ -69,8 +69,15 @@ class GoogleModel(BaseModel):
             prompt = [prompt] + opened_images
         if tools and isinstance(tools[0], dict):
             tools = [tool['function'] for tool in tools]
+        params = {**self.model_params}
+        if response_format or return_json:
+            # Structured output requires enough tokens to complete the JSON.
+            # Truncated JSON is always useless, so enforce a reasonable minimum.
+            MIN_STRUCTURED_TOKENS = 16384
+            if params.get('max_output_tokens', 0) < MIN_STRUCTURED_TOKENS:
+                params['max_output_tokens'] = MIN_STRUCTURED_TOKENS
         config = genai.types.GenerateContentConfig(system_instruction=self.system_message, tools=tools,
-                                                   **self.model_params)
+                                                   **params)
         if return_json:
             config.response_mime_type = "application/json"
         if response_format:

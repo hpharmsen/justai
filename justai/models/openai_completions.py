@@ -128,7 +128,12 @@ class OpenAICompletionsModel(BaseModel):
 
         if message_text and message_text.startswith("```json"):
             message_text = message_text[7:-3]
-        result = json.loads(message_text) if return_json and self.supports_return_json else message_text
+        if return_json and self.supports_return_json:
+            if not message_text:
+                raise ValueError(f'Expected JSON response but got empty response from {self.model_name}')
+            result = json.loads(message_text)
+        else:
+            result = message_text
 
         if self.debug:
             color_print(f"{message_text}", color=DEBUG_COLOR2)
@@ -205,12 +210,18 @@ class OpenAICompletionsModel(BaseModel):
         for _ in range(3):
             try:
                 if response_format:
+                    # Structured output requires enough tokens to complete the JSON.
+                    # Truncated JSON is always useless, so enforce a reasonable minimum.
+                    params = {**self.model_params}
+                    MIN_STRUCTURED_TOKENS = 16384
+                    if params.get('max_tokens', 0) < MIN_STRUCTURED_TOKENS:
+                        params['max_tokens'] = MIN_STRUCTURED_TOKENS
                     result = self.client.chat.completions.parse(
                         model=self.model_name,
                         messages=self.messages,
                         tools=tool_spec,
                         response_format=response_format,
-                        **self.model_params,
+                        **params,
                     )
                 else:
                     result = self.client.chat.completions.create(

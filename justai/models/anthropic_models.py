@@ -109,7 +109,7 @@ class AnthropicModel(BaseModel):
         # Check if we should use structured outputs (beta) for newer models
         # Only use structured outputs when response_format is explicitly provided,
         # because Anthropic requires a complete schema (additionalProperties: false)
-        use_structured_outputs = return_json and response_format and self._supports_structured_outputs()
+        use_structured_outputs = (return_json or response_format) and self._supports_structured_outputs()
 
         if use_structured_outputs:
             try:
@@ -175,7 +175,7 @@ class AnthropicModel(BaseModel):
         except json.decoder.JSONDecodeError:
             logger.error(f'Error decoding JSON: {response_str[:200]}')
             try:
-                return extract_dict(response_str)
+                return extract_json(response_str)
             except json.decoder.JSONDecodeError as e:
                 raise ValueError(f'Expected JSON but got: {response_str[:200]}') from e
 
@@ -218,6 +218,12 @@ class AnthropicModel(BaseModel):
                 'system': system_message,
                 **self.model_params
             }
+
+            # Structured output requires enough tokens to complete the JSON.
+            # Truncated JSON is always useless, so enforce a reasonable minimum.
+            MIN_STRUCTURED_TOKENS = 16384
+            if api_params.get('max_tokens', 0) < MIN_STRUCTURED_TOKENS:
+                api_params['max_tokens'] = MIN_STRUCTURED_TOKENS
 
             if antr_tools:
                 api_params['tools'] = antr_tools
@@ -523,18 +529,26 @@ def create_anthropic_message(role: str, prompt: str, images: ImageInput = None):
     return {"role": role, "content": content}
 
 
-def extract_dict(text: str) -> dict:
-    """ Extracts the first valid JSON dictionary from a string, even if it contains nested objects. """
-    start = text.find("{")
-    if start == -1:
-        raise json.JSONDecodeError('No JSON object found in text', text, 0)
+def extract_json(text: str) -> dict | list:
+    """Extracts the first valid JSON object or array from a string."""
+    # Find the first { or [ to determine JSON type
+    dict_start = text.find('{')
+    list_start = text.find('[')
+    if dict_start == -1 and list_start == -1:
+        raise json.JSONDecodeError('No JSON found in text', text, 0)
+
+    # Pick whichever comes first
+    if list_start != -1 and (dict_start == -1 or list_start < dict_start):
+        start, open_ch, close_ch = list_start, '[', ']'
+    else:
+        start, open_ch, close_ch = dict_start, '{', '}'
 
     depth = 0
     for i, ch in enumerate(text[start:], start=start):
-        if ch == "{":
+        if ch == open_ch:
             depth += 1
-        elif ch == "}":
+        elif ch == close_ch:
             depth -= 1
             if depth == 0:
                 return json.loads(text[start:i+1])
-    raise json.JSONDecodeError('No valid JSON object found', text, start)
+    raise json.JSONDecodeError('No valid JSON found', text, start)

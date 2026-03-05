@@ -24,3 +24,4 @@ justai/saves
 /examples/.cache.sqlite
 /.cache.sqlite
 /.safety-project.ini
+/tests/ainewstest.py
