@@ -2,6 +2,8 @@ from pathlib import Path
 from importlib.metadata import version, PackageNotFoundError
 
 from justai.model.model import Model
+from justai.agent import Agent, AgentEvent, AgentResult, AuditEntry, AgentContext
+from justai.agent.tools import FileSystemTool, ShellTool, WebFetchTool
 from justai.tools.prompts import get_prompt, set_prompt_file, add_prompt_file
 
 

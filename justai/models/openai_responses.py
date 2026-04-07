@@ -30,7 +30,7 @@ from justai.model.message import Message, ToolUseMessage
 from justai.models.basemodel import ImageInput
 from justai.tools.display import color_print, ERROR_COLOR
 from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ConnectionException, AuthorizationException, \
-    ModelOverloadException, RatelimitException, BadRequestException, GeneralException
+    ModelOverloadException, RatelimitException, BadRequestException, GeneralException, ToolCallRequest, StreamChunk
 from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
 
 
@@ -346,7 +346,112 @@ class OpenAIResponsesModel(BaseModel):
     async def chat_async(self, prompt: str, images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
         async for chunk in self.prompt_async(prompt, images, _chat=True):
             yield chunk
-               
+
+    async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator[StreamChunk, None]:
+        """Stateless streaming call. Caller manages conversation history."""
+        # Build input list from messages
+        input_list = []
+        for msg in messages:
+            if 'role' not in msg:
+                # Tool result or other provider-specific format — pass through as-is
+                input_list.append(msg)
+            elif msg['role'] == 'system':
+                input_list.append({'role': 'developer', 'content': msg['content']})
+            else:
+                input_list.append(msg)
+
+        # Build tool spec from tool dicts, accepting both 'parameters' and 'input_schema' keys
+        tool_spec = []
+        if tools:
+            for t in tools:
+                params = t.get('parameters') or t.get('input_schema', {})
+                tool_spec.append({
+                    'type': 'function',
+                    'name': t['name'],
+                    'description': t.get('description', ''),
+                    'parameters': params,
+                })
+
+        try:
+            response = self.client.responses.create(
+                model=self.model_name,
+                input=input_list,
+                tools=tool_spec or [],
+                stream=True,
+            )
+        except APITimeoutError as e:
+            raise ModelOverloadException(e)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
+
+        # Track function calls: {output_index: {call_id, name, arguments_str}}
+        pending_calls = {}
+        tool_calls = []
+        input_tokens = 0
+        output_tokens = 0
+
+        for event in response:
+            if event.type == 'response.output_text.delta':
+                yield StreamChunk(type='text', content=event.delta)
+
+            elif event.type == 'response.output_item.added':
+                if hasattr(event, 'item') and event.item.type == 'function_call':
+                    pending_calls[event.output_index] = {
+                        'call_id': event.item.call_id,
+                        'name': event.item.name,
+                        'arguments': '',
+                    }
+
+            elif event.type == 'response.function_call_arguments.delta':
+                if event.output_index in pending_calls:
+                    pending_calls[event.output_index]['arguments'] += event.delta
+
+            elif event.type == 'response.function_call_arguments.done':
+                if event.output_index in pending_calls:
+                    call = pending_calls[event.output_index]
+                    tool_calls.append(ToolCallRequest(
+                        id=call['call_id'],
+                        name=call['name'],
+                        arguments=json.loads(call['arguments']),
+                    ))
+
+            elif event.type == 'response.completed':
+                usage = event.response.usage
+                input_tokens = usage.input_tokens
+                output_tokens = usage.output_tokens
+
+        if tool_calls:
+            yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
+
+        yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+
+    def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
+        """Format a tool result message for the OpenAI Responses API."""
+        return {'type': 'function_call_output', 'call_id': tool_call_id, 'output': result}
+
+    def format_assistant_message(self, text: str, tool_calls: list[ToolCallRequest] | None = None) -> list[dict]:
+        """Format an assistant message for OpenAI Responses API."""
+        items = []
+        if text:
+            items.append({
+                'type': 'message', 'role': 'assistant',
+                'content': [{'type': 'output_text', 'text': text}],
+            })
+        for tc in (tool_calls or []):
+            items.append({
+                'type': 'function_call', 'call_id': tc.id,
+                'name': tc.name, 'arguments': json.dumps(tc.arguments),
+            })
+        return items
+
     @staticmethod
     def create_content(prompt, images: list[ImageInput]) -> list[dict]:
         content = [{"type": "input_text", "text": prompt}]

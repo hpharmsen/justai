@@ -199,6 +199,19 @@ class Model:
             if word or reasoning_content:
                 yield word, reasoning_content
 
+    async def stream(self, messages: list[dict], tools: list[dict] | None = None):
+        """Stateless streaming call. Forwards to provider's stream()."""
+        async for chunk in self.model.stream(messages, tools):
+            yield chunk
+
+    def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
+        """Format a tool result message for the current provider."""
+        return self.model.format_tool_result(tool_call_id, tool_name, result)
+
+    def format_assistant_message(self, text: str, tool_calls=None) -> list[dict]:
+        """Format an assistant message for the current provider."""
+        return self.model.format_assistant_message(text, tool_calls)
+
     def raise_for_unsupported(self, images: ImageInput = None, return_json=False):
         if return_json and not self.model.supports_return_json:
             raise NotImplementedError(f"{self.model.model_name} does not support return_json")

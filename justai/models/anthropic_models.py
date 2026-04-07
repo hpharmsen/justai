@@ -48,6 +48,8 @@ from justai.model.message import Message
 from justai.models.basemodel import (
     BaseModel,
     DEFAULT_TIMEOUT,
+    ToolCallRequest,
+    StreamChunk,
     identify_image_format_from_base64,
     ConnectionException,
     AuthorizationException,
@@ -81,14 +83,17 @@ class AnthropicModel(BaseModel):
                 color=ERROR_COLOR,
             )
 
-        # Client
+        # Client — always create both sync and async clients
         timeout = httpx.Timeout(params.get('timeout', DEFAULT_TIMEOUT))
         if params.get('async'):
             http_client = httpx.AsyncClient(timeout=timeout)
             self.client = AsyncAnthropic(api_key=api_key, http_client=http_client)
+            self.async_client = self.client
         else:
             http_client = httpx.Client(timeout=timeout)
             self.client = Anthropic(api_key=api_key, http_client=http_client)
+            async_http_client = httpx.AsyncClient(timeout=timeout)
+            self.async_client = AsyncAnthropic(api_key=api_key, http_client=async_http_client)
 
         # Required model parameters
         if "max_tokens" not in params:
@@ -432,6 +437,98 @@ class AnthropicModel(BaseModel):
                 })
             
             return result
+
+    async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator[StreamChunk, None]:
+        """Stateless streaming call. Caller manages conversation history."""
+        # Extract system message from messages list
+        system_message = ''
+        api_messages = []
+        for msg in messages:
+            if msg['role'] == 'system':
+                system_message = msg['content']
+            else:
+                api_messages.append(msg)
+
+        api_params = {
+            'model': self.model_name,
+            'messages': api_messages,
+            'system': system_message,
+            **self.model_params,
+        }
+        if tools:
+            api_params['tools'] = tools
+
+        try:
+            response = await self.async_client.messages.create(stream=True, **api_params)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except InternalServerError as e:
+            raise ModelOverloadException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
+
+        input_tokens = 0
+        output_tokens = 0
+        # Track tool_use blocks as they stream in
+        current_tool = None  # {id, name, json_str}
+        tool_calls = []
+
+        async with response as stream:
+            async for event in stream:
+                if event.type == 'message_start':
+                    if hasattr(event.message, 'usage') and event.message.usage:
+                        input_tokens = event.message.usage.input_tokens or 0
+                elif event.type == 'content_block_start':
+                    if hasattr(event.content_block, 'type') and event.content_block.type == 'tool_use':
+                        current_tool = {
+                            'id': event.content_block.id,
+                            'name': event.content_block.name,
+                            'json_str': '',
+                        }
+                elif event.type == 'content_block_delta':
+                    if hasattr(event.delta, 'type'):
+                        if event.delta.type == 'text_delta':
+                            yield StreamChunk(type='text', content=event.delta.text)
+                        elif event.delta.type == 'input_json_delta' and current_tool is not None:
+                            current_tool['json_str'] += event.delta.partial_json
+                elif event.type == 'content_block_stop':
+                    if current_tool is not None:
+                        arguments = json.loads(current_tool['json_str']) if current_tool['json_str'] else {}
+                        tool_calls.append(ToolCallRequest(
+                            id=current_tool['id'],
+                            name=current_tool['name'],
+                            arguments=arguments,
+                        ))
+                        current_tool = None
+                elif event.type == 'message_delta':
+                    if hasattr(event.usage, 'output_tokens'):
+                        output_tokens = event.usage.output_tokens or 0
+
+        if tool_calls:
+            yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
+        yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+
+    def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
+        """Format a tool result message for Anthropic."""
+        return {
+            'role': 'user',
+            'content': [{'type': 'tool_result', 'tool_use_id': tool_call_id, 'content': result}],
+        }
+
+    def format_assistant_message(self, text: str, tool_calls: list[ToolCallRequest] | None = None) -> list[dict]:
+        """Format an assistant message for Anthropic."""
+        content = []
+        if text:
+            content.append({'type': 'text', 'text': text})
+        for tc in (tool_calls or []):
+            content.append({'type': 'tool_use', 'id': tc.id, 'name': tc.name, 'input': tc.arguments})
+        return [{'role': 'assistant', 'content': content or text}]
 
     def cached_system_message(self) -> list[dict]:
         return [

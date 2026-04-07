@@ -1,5 +1,6 @@
 import base64
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import AsyncGenerator, Any, Optional, Union
 
 from PIL.Image import Image
@@ -40,6 +41,24 @@ class TimeoutException(Exception):
 
 class GeneralException(Exception):
     pass
+
+
+@dataclass
+class ToolCallRequest:
+    """A tool/function call requested by the LLM."""
+    id: str
+    name: str
+    arguments: dict
+
+
+@dataclass
+class StreamChunk:
+    """A chunk from a streaming LLM response."""
+    type: str  # 'text' | 'tool_calls' | 'done'
+    content: str | None = None
+    tool_calls: list[ToolCallRequest] = field(default_factory=list)
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class BaseModel(ABC):
@@ -89,6 +108,19 @@ class BaseModel(ABC):
     @abstractmethod
     def chat_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
         ...
+
+    async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator['StreamChunk', None]:
+        """Stateless streaming call. Caller manages conversation history."""
+        raise NotImplementedError(f'stream() is not supported by {self.__class__.__name__}')
+        yield  # Make it a generator
+
+    def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
+        """Format a tool result message for this provider."""
+        raise NotImplementedError(f'format_tool_result() is not supported by {self.__class__.__name__}')
+
+    def format_assistant_message(self, text: str, tool_calls: list['ToolCallRequest'] | None = None) -> list[dict]:
+        """Format an assistant message with optional tool calls. Returns list of message dicts."""
+        raise NotImplementedError(f'format_assistant_message() is not supported by {self.__class__.__name__}')
 
     def generate_image(self, *args, **kwargs):
         """ Overwrite in subclasses that DO support image generation."""
