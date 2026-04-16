@@ -126,10 +126,10 @@ class AnthropicModel(BaseModel):
 
     def chat(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
             -> tuple[Any, int|None, int|None]:
-        # Check if we should use structured outputs (beta) for newer models
         # Only use structured outputs when response_format is explicitly provided,
-        # because Anthropic requires a complete schema (additionalProperties: false)
-        use_structured_outputs = (return_json or response_format) and self._supports_structured_outputs()
+        # because Anthropic requires additionalProperties: false which needs a complete schema.
+        # For plain return_json=True, use the regular completion path.
+        use_structured_outputs = response_format and self._supports_structured_outputs()
 
         if use_structured_outputs:
             try:
@@ -212,8 +212,9 @@ class AnthropicModel(BaseModel):
         else:
             schema = {'type': 'object'}
 
-        # Anthropic requires additionalProperties: false for object schemas
-        if schema.get('type') == 'object' and 'additionalProperties' not in schema:
+        # For explicit schemas, Anthropic requires additionalProperties: false.
+        # For the default schema (no response_format), allow any properties.
+        if response_format and schema.get('type') == 'object' and 'additionalProperties' not in schema:
             schema['additionalProperties'] = False
 
         output_config = {
@@ -345,8 +346,15 @@ class AnthropicModel(BaseModel):
                     'messages': api_messages,
                     **self.model_params
                 }
+
+                # JSON responses need enough tokens to avoid truncation
+                if return_json and api_params.get('max_tokens', 0) < 16384:
+                    api_params['max_tokens'] = 16384
                 
-                # Only add system message if not using cached prompt
+                # Strip trailing assistant message for models that don't support prefill
+                if api_messages and api_messages[-1]['role'] == 'assistant' and NO_PREFILL_MODELS.search(self.model_name):
+                    api_messages = api_messages[:-1]
+
                 api_params['system'] = system_message
                     
                 # Only add tools if we have any
