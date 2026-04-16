@@ -7,7 +7,7 @@ Feature table:
     - Structured types: YES, via Python type definition
     - Token counter:    YES
     - Image support:    YES 
-    - Tool use:         NO (not yet)
+    - Tool use:         YES (via stream/agent)
 
 Supported parameters:
     max_output_tokens= 400,
@@ -32,7 +32,7 @@ from google import genai
 
 from justai.model.message import Message
 from justai.model.model import ImageInput
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, StreamChunk, ToolCallRequest
 from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_pil_image
 
@@ -118,6 +118,116 @@ class GoogleModel(BaseModel):
         async for chunk in self.prompt_async(prompt, images):
             yield chunk
 
+    async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator[StreamChunk, None]:
+        """Stateless streaming call with tool support for the Agent."""
+        # Extract system message and convert messages to Google Content objects
+        system_instruction = ''
+        contents = []
+        pending_tool_parts = []
+
+        def flush_tool_parts():
+            """Merge consecutive tool results into a single Content."""
+            if pending_tool_parts:
+                contents.append(genai.types.Content(role='user', parts=list(pending_tool_parts)))
+                pending_tool_parts.clear()
+
+        for msg in messages:
+            if msg['role'] == 'tool':
+                # Collect tool results; they'll be merged into one Content
+                for r in msg['results']:
+                    pending_tool_parts.append(
+                        genai.types.Part.from_function_response(name=r['name'], response={'result': r['result']})
+                    )
+                continue
+
+            flush_tool_parts()
+
+            if msg['role'] == 'system':
+                system_instruction = msg['content']
+            elif msg['role'] == 'user':
+                contents.append(genai.types.Content(
+                    role='user',
+                    parts=[genai.types.Part.from_text(text=msg['content'])],
+                ))
+            elif msg['role'] == 'model':
+                parts = []
+                for part in msg.get('parts', []):
+                    if 'text' in part:
+                        parts.append(genai.types.Part.from_text(text=part['text']))
+                    elif 'function_call' in part:
+                        fc = part['function_call']
+                        parts.append(genai.types.Part.from_function_call(name=fc['name'], args=fc['args']))
+                if not parts and 'content' in msg:
+                    parts.append(genai.types.Part.from_text(text=msg['content']))
+                contents.append(genai.types.Content(role='model', parts=parts))
+
+        flush_tool_parts()
+
+        # Convert tool specs to Google FunctionDeclarations
+        google_tools = None
+        if tools:
+            declarations = []
+            for t in tools:
+                params = t.get('input_schema', {})
+                declarations.append(genai.types.FunctionDeclaration(
+                    name=t['name'],
+                    description=t.get('description', ''),
+                    parameters_json_schema=params if params.get('properties') else None,
+                ))
+            google_tools = [genai.types.Tool(function_declarations=declarations)]
+
+        config = genai.types.GenerateContentConfig(
+            system_instruction=system_instruction or self.system_message,
+            tools=google_tools,
+            **self.model_params,
+        )
+
+        response_stream = await self.client.aio.models.generate_content_stream(
+            model=self.model_name,
+            contents=contents,
+            config=config,
+        )
+
+        input_tokens = 0
+        output_tokens = 0
+        tool_calls = []
+
+        async for chunk in response_stream:
+            # Only yield text when there are no function calls to avoid SDK warning
+            if not chunk.function_calls and chunk.text:
+                yield StreamChunk(type='text', content=chunk.text)
+            if chunk.function_calls:
+                for fc in chunk.function_calls:
+                    tool_calls.append(ToolCallRequest(
+                        id=fc.id or fc.name,
+                        name=fc.name,
+                        arguments=dict(fc.args) if fc.args else {},
+                    ))
+            if chunk.usage_metadata:
+                input_tokens = chunk.usage_metadata.prompt_token_count or input_tokens
+                output_tokens = (chunk.usage_metadata.candidates_token_count or 0) + \
+                                (chunk.usage_metadata.thoughts_token_count or 0)
+
+        if tool_calls:
+            yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
+        yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+
+    def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
+        """Format a tool result message for Google."""
+        return {
+            'role': 'tool',
+            'results': [{'name': tool_name, 'result': result}],
+        }
+
+    def format_assistant_message(self, text: str, tool_calls: list[ToolCallRequest] | None = None) -> list[dict]:
+        """Format an assistant message for Google."""
+        parts = []
+        if text:
+            parts.append({'text': text})
+        for tc in (tool_calls or []):
+            parts.append({'function_call': {'name': tc.name, 'args': tc.arguments}})
+        return [{'role': 'model', 'parts': parts}]
+
     def token_count(self, text: str) -> int:
         response = self.client.models.count_tokens(model=self.model_name, contents=text)
         return response.total_tokens
@@ -142,7 +252,10 @@ class GoogleModel(BaseModel):
             config=config,
         )
 
-        for part in response.candidates[0].content.parts:
+        parts = response.candidates[0].content.parts if response.candidates and response.candidates[0].content else None
+        if not parts:
+            return None
+        for part in parts:
             if part.text is not None:
                 print(part.text)
             elif part.inline_data is not None:

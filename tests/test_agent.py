@@ -4,13 +4,14 @@ Usage:
     python tests/test_agent.py
 """
 import asyncio
+import logging
 import os
 import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from justai import Agent, AgentEvent, AgentResult, FileSystemTool, ShellTool, WebFetchTool
+from justai import Agent, AgentEvent, AgentResult, AgentContext, Model, FileSystemTool, ShellTool, WebFetchTool
 from justai.agent.skills import load_skills
 from justai.models.basemodel import ToolCallRequest, StreamChunk
 
@@ -210,13 +211,209 @@ def test_agent_init():
 def test_agent_system_prompt():
     """Test system prompt composition."""
     agent = Agent(model='claude-sonnet-4-6', role='developer', goal='fix bugs')
-    ctx = __import__('justai.agent.agent', fromlist=['AgentContext']).AgentContext(deps={'user': 'test'})
+    ctx = AgentContext(deps={'user': 'test'})
     prompt = agent._build_system_prompt(ctx)
     assert 'developer' in prompt
     assert 'fix bugs' in prompt
     assert 'final_answer' in prompt
 
     print('  OK: system prompt composition')
+
+
+def test_agent_system_prompt_with_skills():
+    """Test system prompt includes skills from directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        (Path(tmpdir) / 'coding.md').write_text('Always write tests.')
+        agent = Agent(model='claude-sonnet-4-6', role='coder', goal='write code', skills_dir=tmpdir)
+        ctx = AgentContext()
+        prompt = agent._build_system_prompt(ctx)
+        assert 'Always write tests' in prompt
+        assert 'coder' in prompt
+
+    print('  OK: system prompt with skills')
+
+
+def test_agent_system_prompt_with_instructions():
+    """Test dynamic instructions are included in system prompt."""
+    agent = Agent(model='claude-sonnet-4-6', role='helper', goal='help')
+
+    @agent.instructions
+    def add_context(ctx) -> str:
+        return f'User is {ctx.deps["name"]}'
+
+    ctx = AgentContext(deps={'name': 'Alice'})
+    prompt = agent._build_system_prompt(ctx)
+    assert 'User is Alice' in prompt
+
+    print('  OK: system prompt with instructions')
+
+
+def test_agent_final_answer_tool():
+    """Test the built-in final_answer tool."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test')
+    assert agent._answer == ''
+    result = agent._final_answer(answer='done!')
+    assert agent._answer == 'done!'
+    assert 'submitted' in result.lower()
+
+    print('  OK: final answer tool')
+
+
+def test_agent_execute_unknown_tool():
+    """Test executing a tool that doesn't exist."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test')
+    ctx = AgentContext()
+    tc = ToolCallRequest(id='1', name='nonexistent', arguments={})
+    result_str, success = agent._execute_tool(tc, ctx)
+    assert not success
+    assert 'not found' in result_str
+
+    print('  OK: unknown tool handling')
+
+
+def test_agent_execute_tool_error():
+    """Test tool execution that raises an exception."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test')
+
+    def bad_tool() -> str:
+        """A tool that always fails."""
+        raise ValueError('something went wrong')
+
+    agent._register_tool(bad_tool, needs_ctx=False)
+    ctx = AgentContext()
+    tc = ToolCallRequest(id='1', name='bad_tool', arguments={})
+    result_str, success = agent._execute_tool(tc, ctx)
+    assert not success
+    assert 'ValueError' in result_str
+    assert 'something went wrong' in result_str
+    assert len(agent._audit) == 1
+    assert not agent._audit[0].success
+
+    print('  OK: tool execution error handling')
+
+
+def test_agent_audit_trail():
+    """Test that audit entries are recorded correctly."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test')
+    ctx = AgentContext()
+
+    # Execute final_answer to create an audit entry
+    tc = ToolCallRequest(id='1', name='final_answer', arguments={'answer': 'test'})
+    result_str, success = agent._execute_tool(tc, ctx)
+    assert success
+    assert len(agent._audit) == 1
+    entry = agent._audit[0]
+    assert entry.tool_name == 'final_answer'
+    assert entry.success
+    assert entry.duration_ms >= 0
+    assert entry.timestamp
+
+    print('  OK: audit trail')
+
+
+def test_agent_tool_decorator_with_context():
+    """Test that @agent.tool passes context correctly."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test')
+
+    @agent.tool
+    def greet(ctx, name: str) -> str:
+        """Greet someone."""
+        return f'hello {name} from {ctx.deps}'
+
+    ctx = AgentContext(deps='world')
+    tc = ToolCallRequest(id='1', name='greet', arguments={'name': 'Alice'})
+    result_str, success = agent._execute_tool(tc, ctx)
+    assert success
+    assert result_str == 'hello Alice from world'
+
+    print('  OK: tool decorator with context')
+
+
+def test_agent_build_tool_specs():
+    """Test tool spec generation format."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test',
+                  tools=[FileSystemTool(read=['/tmp'])])
+    specs = agent._build_tool_specs()
+    names = {s['name'] for s in specs}
+    assert 'final_answer' in names
+    assert 'read_file' in names
+    for spec in specs:
+        assert 'name' in spec
+        assert 'description' in spec
+        assert 'input_schema' in spec
+        assert spec['input_schema']['type'] == 'object'
+
+    print('  OK: tool spec generation')
+
+
+def test_agent_read_tasks():
+    """Test reading tasks from file."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test')
+
+    # Existing file
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        f.write('- [ ] Task 1\n- [ ] Task 2')
+        f.flush()
+        content = agent._read_tasks(f.name)
+        assert 'Task 1' in content
+        assert 'Task 2' in content
+        os.unlink(f.name)
+
+    # Non-existent file returns empty string
+    assert agent._read_tasks('/nonexistent/file.md') == ''
+
+    print('  OK: read tasks')
+
+
+def test_agent_with_model_instance():
+    """Test Agent accepts a Model instance directly."""
+    model = Model('claude-sonnet-4-6')
+    agent = Agent(model=model, role='test', goal='test')
+    assert agent.model is model
+
+    print('  OK: agent with model instance')
+
+
+def test_filesystem_tool_symlink_write_blocked():
+    """Test that FileSystemTool blocks writing through symlinks."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        write_dir = Path(tmpdir) / 'write'
+        write_dir.mkdir()
+        outside = Path(tmpdir) / 'outside'
+        outside.mkdir()
+        link = write_dir / 'sneaky_link'
+        link.symlink_to(outside)
+
+        tool = FileSystemTool(write=[str(write_dir)])
+        try:
+            tool.write_file(str(link / 'evil.txt'), 'bad content')
+            assert False, 'Should have raised PermissionError'
+        except PermissionError:
+            pass
+
+    print('  OK: symlink write blocked')
+
+
+def test_shell_tool_timeout():
+    """Test ShellTool with custom timeout."""
+    tool = ShellTool(allowlist=['sleep'], timeout=1)
+    result = tool.run_command('sleep', ['5'])
+    assert 'exit_code' in result or 'timed out' in result.lower() or 'Error' in result
+
+    print('  OK: shell tool timeout')
+
+
+def test_web_fetch_tool_blocked_schemes():
+    """Test WebFetchTool blocks non-http schemes."""
+    tool = WebFetchTool()
+    for scheme in ['ftp://example.com', 'file:///etc/passwd', 'gopher://example.com']:
+        try:
+            tool.fetch_url(scheme)
+            assert False, f'Should have blocked {scheme}'
+        except PermissionError:
+            pass
+
+    print('  OK: web fetch blocked schemes')
 
 
 # ──────────────────────────────────────────────
@@ -271,16 +468,30 @@ def test_agent_run_live():
 if __name__ == '__main__':
     load_dotenv(override=True)
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    logging.disable(logging.WARNING)  # Suppress expected warnings in tests
 
     print('Unit tests:')
     test_dataclasses()
     test_filesystem_tool_read_write()
+    test_filesystem_tool_symlink_write_blocked()
     test_shell_tool()
+    test_shell_tool_timeout()
     test_web_fetch_tool_ssrf()
+    test_web_fetch_tool_blocked_schemes()
     test_skills_loader()
     test_tool_specs()
     test_agent_init()
     test_agent_system_prompt()
+    test_agent_system_prompt_with_skills()
+    test_agent_system_prompt_with_instructions()
+    test_agent_final_answer_tool()
+    test_agent_execute_unknown_tool()
+    test_agent_execute_tool_error()
+    test_agent_audit_trail()
+    test_agent_tool_decorator_with_context()
+    test_agent_build_tool_specs()
+    test_agent_read_tasks()
+    test_agent_with_model_instance()
 
     print('\nIntegration tests:')
     test_agent_run_live()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "justai"
-version = "5.5.1"
+version = "5.5.2"
 description = "Makes working with LLMs like OpenAI GPT, Anthropic Claude, Google Gemini and Open source models super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
@@ -17,7 +17,7 @@ keywords = ["OpenAI", "ChatGPT", "GPT-5", "GPT5", "api", "Claude", "Anthropic", 
 requires-python = ">=3.10"
 dependencies = [
     "absl-py",
-    "anthropic",
+    "anthropic>=0.90",
     "google-genai",
     "httpx",
     "instructor",

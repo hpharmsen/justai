@@ -38,10 +38,17 @@ from dotenv import dotenv_values
 
 logger = logging.getLogger(__name__)
 
-# Models that support structured outputs (beta)
-# See: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+# Models that support structured outputs (GA since Jan 2026)
 STRUCTURED_OUTPUT_MODELS = re.compile(r'claude-(sonnet-4|opus-4|haiku-4)')
-STRUCTURED_OUTPUTS_BETA = 'structured-outputs-2025-11-13'
+
+# Models that do not support the temperature parameter
+NO_TEMPERATURE_MODELS = re.compile(r'claude-opus-4-7')
+
+# Models that do not support assistant message prefill
+NO_PREFILL_MODELS = re.compile(r'claude-(opus-4-[6-9]|sonnet-4-[6-9])')
+
+# Non-API params that should not be sent to the Anthropic API
+_NON_API_PARAMS = {'timeout', 'async', 'debug'}
 
 
 from justai.model.message import Message
@@ -95,9 +102,17 @@ class AnthropicModel(BaseModel):
             async_http_client = httpx.AsyncClient(timeout=timeout)
             self.async_client = AsyncAnthropic(api_key=api_key, http_client=async_http_client)
 
+        # Remove non-API params so they don't leak into API calls
+        for key in _NON_API_PARAMS:
+            params.pop(key, None)
+
         # Required model parameters
-        if "max_tokens" not in params:
-            params["max_tokens"] = 800
+        if 'max_tokens' not in params:
+            params['max_tokens'] = 800
+
+        # Temperature not supported by some newer models
+        if NO_TEMPERATURE_MODELS.search(model_name):
+            params.pop('temperature', None)
 
         self.supports_cached_prompts = True
         self.messages = []
@@ -181,7 +196,7 @@ class AnthropicModel(BaseModel):
 
     def _completion_with_structured_output(self, prompt: str, images: ImageInput = None,
                                            tools: list = None, response_format=None):
-        """Use the structured outputs beta API for guaranteed JSON responses."""
+        """Use GA structured outputs API for guaranteed JSON responses."""
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message
 
         # Add user message to conversation history
@@ -189,24 +204,23 @@ class AnthropicModel(BaseModel):
             user_message = create_anthropic_message('user', prompt, images)
             self.messages.append(user_message)
 
-        # Build output_format schema
+        # Build output schema
         if response_format and hasattr(response_format, 'model_json_schema'):
-            # Pydantic model - extract JSON schema
             schema = response_format.model_json_schema()
         elif response_format and isinstance(response_format, dict):
-            # Already a JSON schema dict
             schema = response_format
         else:
-            # Default: accept any JSON object
             schema = {'type': 'object'}
 
         # Anthropic requires additionalProperties: false for object schemas
         if schema.get('type') == 'object' and 'additionalProperties' not in schema:
             schema['additionalProperties'] = False
 
-        output_format_param = {
-            'type': 'json_schema',
-            'schema': schema
+        output_config = {
+            'format': {
+                'type': 'json_schema',
+                'schema': schema
+            }
         }
 
         antr_tools = transform_tools(tools or []) if tools is not None else None
@@ -216,11 +230,11 @@ class AnthropicModel(BaseModel):
                 'model': self.model_name,
                 'messages': self.messages,
                 'system': system_message,
+                'output_config': output_config,
                 **self.model_params
             }
 
             # Structured output requires enough tokens to complete the JSON.
-            # Truncated JSON is always useless, so enforce a reasonable minimum.
             MIN_STRUCTURED_TOKENS = 16384
             if api_params.get('max_tokens', 0) < MIN_STRUCTURED_TOKENS:
                 api_params['max_tokens'] = MIN_STRUCTURED_TOKENS
@@ -228,20 +242,14 @@ class AnthropicModel(BaseModel):
             if antr_tools:
                 api_params['tools'] = antr_tools
 
-            # Use parse() for Pydantic models (recommended by Anthropic SDK)
+            # Use parse() for Pydantic models
             if response_format and hasattr(response_format, 'model_json_schema'):
-                return self.client.beta.messages.parse(
-                    betas=[STRUCTURED_OUTPUTS_BETA],
+                return self.client.messages.parse(
                     output_format=response_format,
                     **api_params
                 )
             else:
-                # Use create() with output_format for raw JSON schemas
-                return self.client.beta.messages.create(
-                    betas=[STRUCTURED_OUTPUTS_BETA],
-                    output_format=output_format_param,
-                    **api_params
-                )
+                return self.client.messages.create(**api_params)
 
         except (TypeError, AttributeError):
             # Re-raise directly for fallback handling in chat()
