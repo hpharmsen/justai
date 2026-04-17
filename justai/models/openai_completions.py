@@ -69,6 +69,8 @@ from justai.models.basemodel import (
     BadRequestException,
     GeneralException,
     ImageInput,
+    ToolCallRequest,
+    StreamChunk,
 )
 from justai.tools.images import to_base64_image
 
@@ -86,6 +88,8 @@ class OpenAICompletionsModel(BaseModel):
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
         self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
+        self.supports_function_calling = True
+
         # Only include system message if not empty (some providers reject empty system messages)
         assert self.system_message is None or isinstance(self.system_message, str), \
             f'system_message must be a string, got {type(self.system_message)}'
@@ -363,7 +367,7 @@ class OpenAICompletionsModel(BaseModel):
             else:
                 # If function is not provided, use a default name
                 function_name = tool.get('name', 'unknown_function')
-                
+
             tool_spec.append({
                 "type": "function",
                 "function": {
@@ -383,3 +387,120 @@ class OpenAICompletionsModel(BaseModel):
                 }
             })
         return tool_spec
+
+    async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator[StreamChunk, None]:
+        """Stateless streaming call for the Chat Completions API."""
+        # Build tool spec from provider-agnostic format
+        tool_spec = NOT_GIVEN
+        if tools:
+            tool_spec = []
+            for t in tools:
+                params = t.get('parameters') or t.get('input_schema', {})
+                tool_spec.append({
+                    'type': 'function',
+                    'function': {
+                        'name': t['name'],
+                        'description': t.get('description', ''),
+                        'parameters': params,
+                    }
+                })
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                tools=tool_spec,
+                stream=True,
+                **self.model_params,
+            )
+        except APITimeoutError as e:
+            raise ModelOverloadException(e)
+        except APIConnectionError as e:
+            raise ConnectionException(e)
+        except (AuthenticationError, PermissionDeniedError) as e:
+            raise AuthorizationException(e)
+        except RateLimitError as e:
+            raise RatelimitException(e)
+        except BadRequestError as e:
+            raise BadRequestException(e)
+        except Exception as e:
+            raise GeneralException(e)
+
+        # Accumulate tool calls from streaming deltas
+        pending_tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
+        input_tokens = 0
+        output_tokens = 0
+
+        for chunk in response:
+            if not chunk.choices:
+                # Usage chunk (some providers send usage in a separate chunk)
+                if chunk.usage:
+                    input_tokens = chunk.usage.prompt_tokens or 0
+                    output_tokens = chunk.usage.completion_tokens or 0
+                continue
+
+            delta = chunk.choices[0].delta
+            if not delta:
+                continue
+
+            # Text content
+            if delta.content:
+                yield StreamChunk(type='text', content=delta.content)
+
+            # Tool call deltas
+            if delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index
+                    if idx not in pending_tool_calls:
+                        pending_tool_calls[idx] = {
+                            'id': tc_delta.id or '',
+                            'name': tc_delta.function.name if tc_delta.function and tc_delta.function.name else '',
+                            'arguments': '',
+                        }
+                    else:
+                        if tc_delta.id:
+                            pending_tool_calls[idx]['id'] = tc_delta.id
+                        if tc_delta.function and tc_delta.function.name:
+                            pending_tool_calls[idx]['name'] = tc_delta.function.name
+                    if tc_delta.function and tc_delta.function.arguments:
+                        pending_tool_calls[idx]['arguments'] += tc_delta.function.arguments
+
+            # Usage from chunk
+            if chunk.usage:
+                input_tokens = chunk.usage.prompt_tokens or 0
+                output_tokens = chunk.usage.completion_tokens or 0
+
+        # Emit accumulated tool calls
+        if pending_tool_calls:
+            tool_calls = []
+            for idx in sorted(pending_tool_calls):
+                tc = pending_tool_calls[idx]
+                tool_calls.append(ToolCallRequest(
+                    id=tc['id'],
+                    name=tc['name'],
+                    arguments=json.loads(tc['arguments']) if tc['arguments'] else {},
+                ))
+            yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
+
+        yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+
+    def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
+        """Format a tool result message for the Chat Completions API."""
+        return {'role': 'tool', 'tool_call_id': tool_call_id, 'content': result}
+
+    def format_assistant_message(self, text: str, tool_calls: list[ToolCallRequest] | None = None) -> list[dict]:
+        """Format an assistant message for the Chat Completions API."""
+        msg = {'role': 'assistant', 'content': text or ''}
+        if tool_calls:
+            msg['tool_calls'] = [
+                {
+                    'id': tc.id,
+                    'type': 'function',
+                    'function': {
+                        'name': tc.name,
+                        'arguments': json.dumps(tc.arguments),
+                    }
+                }
+                for tc in tool_calls
+            ]
+        return [msg]
