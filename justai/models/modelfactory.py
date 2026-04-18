@@ -13,8 +13,8 @@ class ModelFactory:
             from justai.models.openai_responses import OpenAIResponsesModel
             return OpenAIResponsesModel(model_name, params=kwargs)
         elif model_name.endswith(".gguf"):
-            from justai.models.gguf_models import GuffModel
-            return GuffModel(model_name, params=kwargs)
+            from justai.models.gguf_models import GgufModel
+            return GgufModel(model_name, params=kwargs)
         elif model_name.startswith("claude"):
             from justai.models.anthropic_models import AnthropicModel
             return AnthropicModel(model_name, params=kwargs)

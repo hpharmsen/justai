@@ -1,71 +1,126 @@
-from typing import Any
+"""Implementation of local GGUF models via llama-cpp-python.
 
-from justai.model.message import Message
+Feature table:
+    - Async chat:       YES (streaming via sync iterator)
+    - Return JSON:      YES (via response_format)
+    - Structured types: NO
+    - Token count:      YES (via Llama tokenizer)
+    - Image support:    NO
+    - Tool use:         NO
+
+Supported parameters:
+n_ctx: int (default 8192) - context window size (constructor only)
+n_gpu_layers: int (default -1) - GPU layers, -1 for all (constructor only)
+n_threads: int (default 4) - CPU threads (constructor only)
+n_batch: int (default 512) - batch size (constructor only)
+max_tokens: int (default 800) - max output tokens (per-call)
+temperature: float (default 0.8) - sampling temperature (per-call)
+"""
+
+from typing import Any, AsyncGenerator
 
 try:
     from llama_cpp import Llama
 except ImportError:
-    raise ImportError("If you want to use Llama models with justai run `pip install justai[llama]`")
+    Llama = None
+
+from justai.models.basemodel import BaseModel, ImageInput
 
 
-from justai.models.basemodel import BaseModel
-
-
-class GuffModel(BaseModel):
-    def __init__(self, model_name: str, params: dict):
-        """Model implemention should create attributes for all supported parameters"""
-        system_message = f"You are {model_name.split('/')[-1]}, a large open source language model."
+class GgufModel(BaseModel):
+    def __init__(self, model_name: str, params: dict = None):
+        params = params or {}
+        system_message = f'You are {model_name.split("/")[-1].replace(".gguf", "")}, a helpful assistant.'
         super().__init__(model_name, params, system_message)
 
-        # Client
+        if Llama is None:
+            raise ImportError('To use local GGUF models, install llama-cpp-python: pip install justai[llama]')
+
+        # Capability flags
+        self.supports_image_input = False
+        self.supports_tool_use = False
+        self.supports_function_calling = False
+        self.supports_return_json = True
+
+        # Constructor params (immutable after init)
+        n_ctx = params.get('n_ctx', 8192)
+        n_gpu_layers = params.get('n_gpu_layers', -1)
+        n_threads = params.get('n_threads', 4)
+        n_batch = params.get('n_batch', 512)
+
+        # Per-call params (mutable via model_params)
+        self.model_params['max_tokens'] = params.get('max_tokens', 800)
+        if 'temperature' not in self.model_params:
+            self.model_params['temperature'] = 0.8
+
+        # Create client after params are set
         self.client = Llama(
             model_path=model_name,
-            temperature=self.temperature,
-            n_ctx=self.n_ctx,
-            n_batch=self.n_batch,
-            n_threads=self.n_threads,
-            n_gpu_layers=self.n_gpu_layers,
+            n_ctx=n_ctx,
+            n_batch=n_batch,
+            n_threads=n_threads,
+            n_gpu_layers=n_gpu_layers,
             verbose=False,
-            seed=42,
         )
 
-        # Model specific parameters
-        self.model_params["n_ctx"] = params.get("n_ctx", 8192)  # Max tokens for prompt and response combined
-        # 0 for CPU only, 1 for Metal, otherwise dependent on GPU-type
-        self.model_params["n_gpu_layers"] = params.get("n_gpu_layers", 1)
-        self.model_params["n_threads"] = params.get("n_threads", 4)
-        self.model_params["temperature"] = params.get("temperature", 0.8)
-        self.model_params["n_batch"] = params.get("n_batch", 512)
+        # Conversation state
+        self.messages = []
 
-    def chat(
-        self, messages: list[Message], return_json: bool, response_format, use_cache: bool = False, max_retries=None
-    ) -> tuple[[str | object], int, int]:
-        if response_format:
-            raise NotImplementedError("GUFF models do not support response_format")
+    def prompt(self, prompt: str, images: ImageInput = None, tools: list = None,
+               return_json: bool = False, response_format=None) -> tuple[Any, int | None, int | None]:
+        """Stateless prompt - resets conversation history."""
+        self.messages = []
+        return self.chat(prompt, images, tools, return_json, response_format)
 
-        system = messages[0]["content"]
-        message = f"<s>[INST] <<SYS>>{system}<</SYS>>{messages[-1]['content']}[/INST]"
-        output = self.client(message, echo=True, stream=False)
-        if self.debug:
-            print(output["choices"][0]["text"] + "\n")
-        output_text = output["choices"][0]["text"].split("[/INST]")[1].strip()
-        if output["choices"][0]["text"][0] == '"' and output_text[-1] == '"':
-            output_text = output_text[:-1]
-        if not output_text:
-            output_text = "Model produced no result"
-        elif output_text[-1] != ".":
-            try:
-                a, b = output_text.replace("\n", " ").rsplit(". ", 1)
-                output_text = a + ". [" + b + "]"
-            except ValueError:
-                pass
-        prompt_tokens = output["usage"]["prompt_tokens"]
-        completion_tokens = output["usage"]["completion_tokens"]
-        return output_text, prompt_tokens, completion_tokens
+    def chat(self, prompt: str, images: ImageInput = None, tools: list = None,
+             return_json: bool = False, response_format=None) -> tuple[Any, int | None, int | None]:
+        """Stateful chat - maintains conversation history."""
+        self.messages.append({'role': 'user', 'content': prompt})
+        messages = [{'role': 'system', 'content': self.system_message}] + self.messages
 
-    def chat_async(self, messages: list[Message]) -> tuple[Any, int, int]:
-        print("chat_async not implemented for GUFF models")
-        return self.chat(messages, False, response_format=None)
+        kwargs = {
+            'messages': messages,
+            'temperature': self.model_params.get('temperature', 0.8),
+            'max_tokens': self.model_params.get('max_tokens', 800),
+        }
+        if return_json or response_format:
+            kwargs['response_format'] = {'type': 'json_object'}
+
+        output = self.client.create_chat_completion(**kwargs)
+
+        result = output['choices'][0]['message']['content']
+        self.messages.append({'role': 'assistant', 'content': result})
+
+        return result, output['usage']['prompt_tokens'], output['usage']['completion_tokens']
+
+    async def prompt_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
+        """Stateless streaming prompt."""
+        self.messages = []
+        async for content, reasoning in self.chat_async(prompt, images):
+            yield content, reasoning
+
+    async def chat_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
+        """Stateful streaming chat via sync iterator."""
+        self.messages.append({'role': 'user', 'content': prompt})
+        messages = [{'role': 'system', 'content': self.system_message}] + self.messages
+
+        stream = self.client.create_chat_completion(
+            messages=messages,
+            temperature=self.model_params.get('temperature', 0.8),
+            max_tokens=self.model_params.get('max_tokens', 800),
+            stream=True,
+        )
+
+        full_response = ''
+        for chunk in stream:
+            delta = chunk['choices'][0].get('delta', {})
+            content = delta.get('content', '')
+            if content:
+                full_response += content
+                yield content, ''
+
+        self.messages.append({'role': 'assistant', 'content': full_response})
 
     def token_count(self, text: str) -> int:
-        return 0
+        """Count tokens using the model's tokenizer."""
+        return len(self.client.tokenize(text.encode('utf-8')))

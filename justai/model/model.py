@@ -180,7 +180,7 @@ class Model:
     async def chat_async(self, prompt, *, images: ImageInput = None):
         if images and not isinstance(images, list):
             images = [images]
-        for word in self.model.chat_async(prompt=prompt, images=images):
+        async for word in self.model.chat_async(prompt=prompt, images=images):
             if word:
                 yield word
 
