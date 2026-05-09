@@ -1,6 +1,6 @@
 [project]
 name = "justai"
-version = "5.5.4"
+version = "5.5.5"
 description = "Makes working with LLMs like OpenAI GPT, Anthropic Claude, Google Gemini and Open source models super easy"
 readme = "README.md"
 authors = [{ name = "HP Harmsen", email = "hp@harmsen.nl" }]
