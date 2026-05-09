@@ -43,7 +43,7 @@ class ReveModel(BaseModel):
         # Diversions from the features that are supported or not supported by default
         self.supports_image_generation = True
 
-    def generate_image(self, prompt, images: ImageInput, options: dict = None):
+    def generate_image(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
         # options['aspect_ratio'] = One of '16:9', '9:16', '3:2', '2:3', '4:3', '3:4', or '1:1'.
         # Default: '3:2'
 

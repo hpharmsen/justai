@@ -22,7 +22,7 @@ ALL_MODELS = [
     'gpt-5-mini',
     'claude-haiku-4-5',
     'gemini-2.5-flash',
-    'grok-4-fast-non-reasoning',
+    'grok-4.20-non-reasoning',
     'deepseek-chat',
     'sonar',
 ]

@@ -15,6 +15,8 @@ import base64
 import json
 import os
 from io import BytesIO
+
+import httpx
 from typing import Any, AsyncGenerator
 import pydantic
 from typing import Any, List, Tuple
@@ -554,9 +556,139 @@ class OpenAIResponsesModel(BaseModel):
         return len(encoding.encode(text))
 
 
-    def generate_image(self, prompt, images: ImageInput, options: dict = None):
+    def generate_image(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
+        if 'gpt-image' in self.model_name:
+            return self._generate_image_api(prompt, images, size, options)
+        return self._generate_image_responses(prompt, images)
 
-        # Responses API call met tool "image_generation"
+    def _pick_image_api_size(self, size: tuple[int, int] | None) -> str:
+        from math import sqrt
+
+        def fit_size(size: tuple[int, int]) -> tuple[int, int]:
+            """ OpenAI Size constraints:
+            - Maximum edge length must be less than or equal to 3840px
+            - Both edges must be multiples of 16px
+            - Long edge to short edge ratio must not exceed 3:1
+            - Total pixels must be at least 655,360 and no more than 8,294,400"""
+            min_pixels = 655_360
+            max_pixels = 8_294_400
+            max_edge = 3_840
+            max_ratio = 3
+
+            w, h = size
+            ratio = w / h
+            if ratio > max_ratio:
+                w = h * max_ratio
+            elif ratio < 1 / max_ratio:
+                h = w * max_ratio
+
+            pixels = w * h
+            if pixels > max_pixels:
+                scale = sqrt(max_pixels / pixels)
+                w *= scale
+                h *= scale
+            elif pixels < min_pixels:
+                scale = sqrt(min_pixels / pixels)
+                w *= scale
+                h *= scale
+
+            if max(w, h) > max_edge:
+                scale = max_edge / max(w, h)
+                w *= scale
+                h *= scale
+
+            w = max(16, round(w / 16) * 16)
+            h = max(16, round(h / 16) * 16)
+
+            while (
+                w * h > max_pixels
+                or max(w, h) > max_edge
+                or max(w, h) / min(w, h) > max_ratio
+            ):
+                if w >= h:
+                    w -= 16
+                else:
+                    h -= 16
+
+            while w * h < min_pixels:
+                if w <= h:
+                    w += 16
+                else:
+                    h += 16
+
+            return w, h
+
+
+        w, h = fit_size(size)
+        return f'{w}x{h}'
+
+        """Pick the smallest Images API size that covers the target dimensions."""
+        if not size:
+            return 'auto'
+        w, h = size
+        # 1024x1024 covers any target up to 1024 in either dimension
+        if w <= 1024 and h <= 1024:
+            return '1024x1024'
+        ratio = w / h
+        if ratio > 1.2:
+            return '1536x1024'
+        elif ratio < 0.8:
+            return '1024x1536'
+        return '1024x1024'
+
+    def _generate_image_api(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
+        """Generate image via OpenAI Images API (gpt-image-2)."""
+        api_size = self._pick_image_api_size(size)
+        quality = (options or {}).get('quality', 'medium')
+
+        if images:
+            # images.edit: convert reference images to PNG file-like objects with proper mime type
+            image_files = []
+            for i, image in enumerate(images):
+                img_type = get_image_type(image)
+                if img_type == 'image_url':
+                    img_data = httpx.get(image, headers={'User-Agent': 'JustAI/1.0'}).content
+                    # Re-encode as PNG to ensure correct format
+                    pil = Image.open(BytesIO(img_data))
+                    buf = BytesIO()
+                    pil.save(buf, format='PNG')
+                    img_data = buf.getvalue()
+                elif img_type == 'pil_image':
+                    buf = BytesIO()
+                    image.save(buf, format='PNG')
+                    img_data = buf.getvalue()
+                else:
+                    img_data = image
+                image_files.append((f'ref_{i}.png', img_data, 'image/png'))
+
+            resp = self.client.images.edit(
+                model=self.model_name,
+                image=image_files,
+                prompt=prompt,
+                n=1,
+                size=api_size,
+                quality=quality,
+            )
+        else:
+            resp = self.client.images.generate(
+                model=self.model_name,
+                prompt=prompt,
+                n=1,
+                size=api_size,
+                quality=quality,
+            )
+
+        img_data = resp.data[0]
+        if hasattr(img_data, 'b64_json') and img_data.b64_json:
+            raw = base64.b64decode(img_data.b64_json)
+        elif hasattr(img_data, 'url') and img_data.url:
+            raw = httpx.get(img_data.url).content
+        else:
+            raise RuntimeError('No image data in Images API response')
+        return Image.open(BytesIO(raw))
+
+    def _generate_image_responses(self, prompt, images: ImageInput):
+        """Generate image via Responses API with image_generation tool."""
         client = OpenAI()
         input_structure = [
             {

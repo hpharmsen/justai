@@ -1,6 +1,5 @@
 start_time=$(date +%s)
-pip install --upgrade pip
-pip install twine build
+uv pip install twine build
 /bin/rm -f dist/*
 export VERSION=`python bumpversion.py -v patch`
 python -m build
@@ -13,8 +12,4 @@ duration=$(($(date +%s) - start_time))
 echo "${GREEN}Published in $duration secs${NC}"
 echo ""
 echo "run:"
-echo "pip install git+https://github.com/hpharmsen/justai@$VERSION"
-echo "of:"
-echo "python -m pip install --upgrade pip; pip install justai==$VERSION"
-echo "of:"
-echo "uv cache clean justai && uv pip install justai==$VERSION"
+echo "uv pip install justai==$VERSION"

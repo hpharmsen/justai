@@ -226,7 +226,7 @@ class Model:
             raise NotImplementedError(f"{self.model.model_name} does not support image generation")
         if images and not isinstance(images, list):
             images = [images]
-        image = self.model.generate_image(prompt, images, options=options)
+        image = self.model.generate_image(prompt, images, size=size, options=options)
         if size:
             image = crop_to_fit(image, size[0], size[1])
         return image

@@ -234,7 +234,7 @@ class GoogleModel(BaseModel):
         response = self.client.models.count_tokens(model=self.model_name, contents=text)
         return response.total_tokens
 
-    def generate_image(self, prompt, images: ImageInput, options: dict = None):
+    def generate_image(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
         images = [to_pil_image(img) for img in images] if images else []
 
         # Build config from options if provided

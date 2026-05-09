@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Build and publish**: `./publish.sh` (bumps version, builds package, uploads to PyPI, commits and tags)
 **Run tests**: Run individual test files in tests/ directory (no unified test runner)
-**Install dependencies**: `pip install -r requirements.txt`
+**Install dependencies**: `uv sync` (or `uv sync --extra llama` for local GGUF model support)
 
 ## Architecture Overview
 

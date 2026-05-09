@@ -27,8 +27,9 @@ class OpenRouterModel(OpenAICompletionsModel):
         self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=timeout)
 
         self.messages = [{"role": "system", "content": self.system_message}]
+        self.supports_image_generation = True
 
-    def generate_image(self, prompt: str, images: ImageInput = None, options: dict = None) -> Image:
+    def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int] | None = None, options: dict = None) -> Image:
         """Generate an image via OpenRouter chat completions with modalities."""
         content = [{"type": "text", "text": prompt}]
         if images:
@@ -40,20 +41,33 @@ class OpenRouterModel(OpenAICompletionsModel):
             model=self.model_name,
             messages=[{"role": "user", "content": content}],
             modalities=["image", "text"],
+            timeout=300,
         )
 
         message = resp.choices[0].message
-        # OpenRouter returns images as base64 data in content blocks
-        if hasattr(message, 'content') and message.content:
+
+        # Extract base64 image data from response
+        b64 = None
+
+        # OpenRouter returns images in message.images[]
+        if hasattr(message, 'images') and message.images:
+            img_entry = message.images[0]
+            url = img_entry['image_url']['url'] if isinstance(img_entry, dict) else img_entry.image_url.url
+            if ',' in url:
+                b64 = url.split(',', 1)[1]
+
+        # Fallback: check content blocks
+        if not b64 and hasattr(message, 'content') and message.content:
             for block in (message.content if isinstance(message.content, list) else [message.content]):
-                b64 = None
-                if isinstance(block, str):
-                    if block.startswith('data:image'):
-                        b64 = block.split(',', 1)[1]
+                if isinstance(block, str) and block.startswith('data:image'):
+                    b64 = block.split(',', 1)[1]
                 elif hasattr(block, 'type') and block.type == 'image_url':
                     url = block.image_url.url if hasattr(block, 'image_url') else None
                     if url and ',' in url:
                         b64 = url.split(',', 1)[1]
                 if b64:
-                    return Image.open(BytesIO(base64.b64decode(b64)))
+                    break
+
+        if b64:
+            return Image.open(BytesIO(base64.b64decode(b64)))
         raise ValueError(f'No image returned by {self.model_name}')
