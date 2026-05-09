@@ -215,7 +215,8 @@ class OpenAIResponsesModel(BaseModel):
     async def prompt_async(self, prompt: str, images: list[ImageInput]=None, _chat=False) -> AsyncGenerator[tuple[str, str], None]:
 
         content = self.create_content(prompt, images)
-        input_ = [{"role": "user", "content": content}]
+        input_ = [{'role': 'system', 'content': self.system_message},
+                   {"role": "user", "content": content}]
 
         last_response_id = self.last_response_id if _chat else None
 

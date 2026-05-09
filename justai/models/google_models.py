@@ -106,9 +106,11 @@ class GoogleModel(BaseModel):
         if images:
             raise NotImplementedError('google_model. ..._async does not support images. Use prompt() instead')
 
+        config = genai.types.GenerateContentConfig(system_instruction=self.system_message)
         stream = await self.client.aio.models.generate_content_stream(
             model=self.model_name,
-            contents=prompt
+            contents=prompt,
+            config=config
         )
         async for chunk in stream:
             if chunk.text:
