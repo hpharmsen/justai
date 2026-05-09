@@ -26,4 +26,5 @@ justai/saves
 /.cache.sqlite
 /.safety-project.ini
 /tests/ainewstest.py
-models/
+/models/
+*.gguf
