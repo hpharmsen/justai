@@ -2,6 +2,7 @@ import hashlib
 import os
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -90,60 +91,79 @@ def set_cache_dir(_dir: str | Path) -> None:
 
 class CacheDB:
     _instance = None
+    _singleton_lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):  # Make this class a singleton
         if cls._instance is None:
-            cls._instance = super(CacheDB, cls).__new__(cls, *args, **kwargs)
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = super(CacheDB, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
-        global cache_dir, cache_file
-        dir_ = os.getenv('CACHE_DIR', cache_dir) or Path(__file__).resolve().parent
-        self.db_path = os.path.join(dir_, cache_file)
-        self.conn = sqlite3.connect(self.db_path)
+        with type(self)._singleton_lock:
+            if getattr(self, '_initialized', False):
+                return
+            global cache_dir, cache_file
+            dir_ = os.getenv('CACHE_DIR', cache_dir) or Path(__file__).resolve().parent
+            self.db_path = os.path.join(dir_, cache_file)
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._lock = threading.Lock()
 
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''CREATE TABLE IF NOT EXISTS cache (
-                                    hashkey VARCHAR(32) PRIMARY KEY,
-                                    value TEXT,
-                                    tokens_in INT,
-                                    tokens_out INT,
-                                    valid_until DATETIME)''')
-        try:
-            self.cursor.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
-        except sqlite3.OperationalError:
-            pass
-        self.conn.commit()
+            cur = self.conn.cursor()
+            cur.execute('''CREATE TABLE IF NOT EXISTS cache (
+                                        hashkey VARCHAR(32) PRIMARY KEY,
+                                        value TEXT,
+                                        tokens_in INT,
+                                        tokens_out INT,
+                                        valid_until DATETIME)''')
+            try:
+                cur.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
+            except sqlite3.OperationalError:
+                pass
+            self.conn.commit()
+            cur.close()
+            self._initialized = True
 
-    def write(self, key: str, llm_response: tuple[str, int | None, int | None], valid_until: str = '') -> None:
+    def write(self, key: str, llm_response: tuple, valid_until: str = '') -> None:
         """Write a response to the cache."""
         if not valid_until:
             valid_until = str(Day().plus_months(1))
-        value, tokens_in, tokens_out = llm_response  # Ignore tool use
+        value, tokens_in, tokens_out, *_ = llm_response  # Ignore tool use
         try:
-            self.cursor.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until)
-                                    VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
-            self.conn.commit()
+            with self._lock:
+                cur = self.conn.cursor()
+                cur.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until)
+                                        VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
+                self.conn.commit()
+                cur.close()
         except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.IntegrityError):
             pass  # Something went wrong. Whatever, just don't add to the cache but never crash
 
     def read(self, key: str) -> tuple[str, int, int] | None:
         """Read a response from the cache by key."""
-        self.cursor.execute("SELECT value, tokens_in, tokens_out FROM cache WHERE hashkey = ?", (key,))
-        result = self.cursor.fetchone()
+        with self._lock:
+            cur = self.conn.cursor()
+            cur.execute("SELECT value, tokens_in, tokens_out FROM cache WHERE hashkey = ?", (key,))
+            result = cur.fetchone()
+            cur.close()
         return result
 
     def clear(self) -> None:
         """Clear all cached entries."""
         try:
-            self.cursor.execute('DELETE FROM cache')
-            self.conn.commit()
+            with self._lock:
+                cur = self.conn.cursor()
+                cur.execute('DELETE FROM cache')
+                self.conn.commit()
+                cur.close()
         except sqlite3.ProgrammingError:
             pass  # Something went wrong. Whatever, just don't delete the cache but never crash
 
     def close(self) -> None:
         """Close the database connection."""
-        self.conn.close()
+        with self._lock:
+            self.conn.close()
 
 
 def recursive_hash(value: Any, depth: int = 0, ignore_params: list[str] | None = None) -> str:
