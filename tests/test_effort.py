@@ -112,7 +112,7 @@ def test_anthropic_fable5_merges_effort_with_structured_format():
     class Resp(PydanticModel):
         answer: str
 
-    # Use claude-opus-4-8: matches both STRUCTURED_OUTPUT_MODELS and EFFORT_MODELS_FULL.
+    # Use claude-opus-4-8: matches both STRUCTURED_OUTPUT_MODELS and the top EFFORT_TIERS entry.
     m = Model('claude-opus-4-8', ANTHROPIC_API_KEY='k', effort='high')
     resp = _mock_anthropic_response(text='{"answer": "ok"}')
     client = _install_mock_anthropic_client(m, response=resp)

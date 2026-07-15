@@ -53,13 +53,15 @@ RESTRICTED_PARAMS: list[tuple[re.Pattern, frozenset[str]]] = [
 ]
 
 # Effort support tiers (per Anthropic docs, verified July 2026).
-EFFORT_MODELS_FULL = re.compile(r'claude-(fable-5|mythos-5|opus-4-[78]|sonnet-5)')
-EFFORT_MODELS_TIER2 = re.compile(r'claude-(opus-4-6|sonnet-4-6)')
-EFFORT_MODELS_TIER3 = re.compile(r'claude-opus-4-5')
-
-_EFFORT_MAP_FULL = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'}
-_EFFORT_MAP_TIER2 = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'max', 'max': 'max'}
-_EFFORT_MAP_TIER3 = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'high', 'max': 'high'}
+# Each entry: (pattern, effort_map). First match wins.
+EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
+    (re.compile(r'claude-(fable-5|mythos-5|opus-4-[78]|sonnet-5)'),
+     {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'}),
+    (re.compile(r'claude-(opus-4-6|sonnet-4-6)'),
+     {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'max', 'max': 'max'}),
+    (re.compile(r'claude-opus-4-5'),
+     {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'high', 'max': 'high'}),
+]
 
 
 from justai.model.message import Message
@@ -137,16 +139,11 @@ class AnthropicModel(BaseModel):
         if level is None:
             return (None, None)
         name = self.model_name
-        if EFFORT_MODELS_FULL.search(name):
-            return (_EFFORT_MAP_FULL[level], None)
-        if EFFORT_MODELS_TIER2.search(name):
-            native = _EFFORT_MAP_TIER2[level]
-            warn = None if native == level else f'effort={level!r} not supported by {name}; using {native!r}'
-            return (native, warn)
-        if EFFORT_MODELS_TIER3.search(name):
-            native = _EFFORT_MAP_TIER3[level]
-            warn = None if native == level else f'effort={level!r} not supported by {name}; using {native!r}'
-            return (native, warn)
+        for pattern, effort_map in EFFORT_TIERS:
+            if pattern.search(name):
+                native = effort_map[level]
+                warn = None if native == level else f'effort={level!r} not supported by {name}; using {native!r}'
+                return (native, warn)
         return (None, f'effort is not supported by {name}, ignoring')
 
     def _prepare_api_params(self, api_params: dict) -> dict:

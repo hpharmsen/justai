@@ -63,10 +63,10 @@ def structured_output_with_pydantic(model: Model):
 
 
 if __name__ == "__main__":
-    data = json_example(Model('claude-sonnet-4-0'))
+    data = json_example(Model('claude-sonnet-4-6'))
     print(json.dumps(data, indent=4))
 
     data = structured_output_with_pydantic(Model('gpt-5'))
-    for person in data.persons:
+    for person in data:
         print(person)
     

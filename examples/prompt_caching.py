@@ -41,6 +41,6 @@ def show_token_usage(model):
 
 
 if __name__ == '__main__':
-    model = Model('claude-3-7-sonnet-latest')
+    model = Model('claude-sonnet-4-6')
     caching_example(model)
     
