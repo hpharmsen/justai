@@ -89,6 +89,7 @@ class OpenAICompletionsModel(BaseModel):
 
         self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
         self.supports_function_calling = True
+        # Provider-specific hook for extra kwargs (e.g. OpenRouter passes reasoning via extra_body).
 
         # Only include system message if not empty (some providers reject empty system messages)
         assert self.system_message is None or isinstance(self.system_message, str), \
@@ -97,6 +98,10 @@ class OpenAICompletionsModel(BaseModel):
             self.messages = [{"role": "system", "content": self.system_message}]
         else:
             self.messages = []
+
+    def _extra_api_kwargs(self) -> dict:
+        """Provider hook: extra kwargs merged into every chat.completions call. Override in subclass."""
+        return {}
 
     def chat(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) \
             -> tuple[Any, int|None, int|None, dict|None]:
@@ -224,6 +229,7 @@ class OpenAICompletionsModel(BaseModel):
                         tools=tool_spec,
                         response_format=response_format,
                         **params,
+                        **self._extra_api_kwargs(),
                     )
                 else:
                     result = self.client.chat.completions.create(
@@ -232,6 +238,7 @@ class OpenAICompletionsModel(BaseModel):
                         tools=tool_spec,
                         stream=stream,
                         **self.api_params,
+                        **self._extra_api_kwargs(),
                     )
             except APITimeoutError as e:
                 raise ModelOverloadException(e)
@@ -412,6 +419,7 @@ class OpenAICompletionsModel(BaseModel):
                 tools=tool_spec,
                 stream=True,
                 **self.api_params,
+                **self._extra_api_kwargs(),
             )
         except APITimeoutError as e:
             raise ModelOverloadException(e)

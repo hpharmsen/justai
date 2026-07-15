@@ -119,6 +119,55 @@ model.cached_prompt = SOME_LONG_TEXT
 response = model.chat('Who is the main character?', cached=False)
 ```
 
+### Effort
+
+Control reasoning depth with a single portable setting. The library translates it to each provider's native parameter.
+
+```python
+model = Model('claude-fable-5', effort='low')
+# or
+model = Model('gpt-5.6-terra')
+model.effort = 'xhigh'
+```
+
+Valid values: `'low'`, `'medium'`, `'high'`, `'xhigh'`, `'max'`, or `None` (default — send nothing, provider default applies).
+
+**`None` vs `'none'`** — two different things:
+```python
+Model('gpt-5.6-sol', effort=None)    # default, no reasoning field sent
+Model('gpt-5.6-sol', effort='none')  # explicitly turn reasoning off (GPT-5.6 only)
+```
+`'none'` as a string is a pass-through only accepted by GPT-5.6 models. On every other provider it raises `ValueError`.
+
+| Provider | Native support |
+|---|---|
+| Anthropic (Fable 5, Mythos 5, Opus 4.7/4.8, Sonnet 5) | full set (`low`/`medium`/`high`/`xhigh`/`max`) |
+| Anthropic (Opus 4.6, Sonnet 4.6) | `xhigh` maps up to `max` with warning |
+| Anthropic (Opus 4.5) | `xhigh` and `max` map down to `high` with warning |
+| OpenAI (`gpt-5.6-*`) | full set; `max` maps to `xhigh` (SDK cap) with warning; also accepts `'none'` |
+| Google (Gemini 3.x) | `low`/`medium`/`high`; `xhigh`/`max` map to `HIGH` with warning |
+| xAI (`grok-4.5`, `grok-4.3`, `grok-4.20-multi-agent`) | `low`/`medium`/`high`; `xhigh`/`max` map to `high` with warning |
+| OpenRouter | passed through raw; OpenRouter maps server-side |
+| Older Anthropic (Sonnet 4.5, Haiku 4.5), older OpenAI (o1, o3), Gemini 2.x, DeepSeek, Perplexity, Reve, GGUF | ignored with a warning (dedup'd per Model instance) |
+
+Downmap warnings use a dedicated `EffortDownmapWarning` category so you can filter them:
+```python
+import warnings
+from justai import EffortDownmapWarning
+
+warnings.filterwarnings('ignore', category=EffortDownmapWarning)
+# or promote to an error for strict pipelines:
+warnings.filterwarnings('error', category=EffortDownmapWarning)
+```
+
+**Effort is captured at request initiation.** Mutating `model.effort` during an in-flight `chat_async` does not affect that request.
+
+**Related knobs to consider when raising effort:**
+- Anthropic reasoning tokens count against `max_tokens`. On `effort >= 'high'` justai auto-raises `max_tokens` to `4096` if you did not set it explicitly (emits a `UserWarning`). Set `max_tokens` yourself to disable.
+- For `effort='xhigh'` or `'max'` on any provider, the default `timeout=120` seconds is often insufficient. Set `timeout=300` (or higher) explicitly.
+
+Level names are **not calibrated across providers** — `'high'` on Anthropic burns different tokens than `'high'` on OpenAI. Re-test cost/latency when switching models.
+
 ## Agent
 
 JustAI includes an `Agent` class for autonomous, tool-using agent execution. The agent runs in a loop: it reads a task file, calls tools as needed, and returns a final answer.

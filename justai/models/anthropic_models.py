@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import warnings
 from typing import Any, AsyncGenerator
 
 import httpx
@@ -41,11 +42,24 @@ logger = logging.getLogger(__name__)
 # Models that support structured outputs (GA since Jan 2026)
 STRUCTURED_OUTPUT_MODELS = re.compile(r'claude-(sonnet-4|opus-4|haiku-4)')
 
-# Models that do not support the temperature parameter
-NO_TEMPERATURE_MODELS = re.compile(r'claude-opus-4-7')
-
 # Models that do not support assistant message prefill
 NO_PREFILL_MODELS = re.compile(r'claude-(opus-4-[6-9]|sonnet-4-[6-9])')
+
+# Per-model parameter restrictions: (regex, frozenset of param keys to strip on match).
+# Extend this list rather than adding more NO_X_MODELS constants.
+RESTRICTED_PARAMS: list[tuple[re.Pattern, frozenset[str]]] = [
+    (re.compile(r'claude-(opus-4-[78]|fable-5|mythos-5|sonnet-5)'),
+     frozenset({'temperature', 'top_p', 'top_k'})),
+]
+
+# Effort support tiers (per Anthropic docs, verified July 2026).
+EFFORT_MODELS_FULL = re.compile(r'claude-(fable-5|mythos-5|opus-4-[78]|sonnet-5)')
+EFFORT_MODELS_TIER2 = re.compile(r'claude-(opus-4-6|sonnet-4-6)')
+EFFORT_MODELS_TIER3 = re.compile(r'claude-opus-4-5')
+
+_EFFORT_MAP_FULL = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'}
+_EFFORT_MAP_TIER2 = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'max', 'max': 'max'}
+_EFFORT_MAP_TIER3 = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'high', 'max': 'high'}
 
 
 from justai.model.message import Message
@@ -61,6 +75,7 @@ from justai.models.basemodel import (
     RatelimitException,
     BadRequestException,
     GeneralException,
+    RefusalException,
     ImageInput,
 )
 from justai.tools.display import ERROR_COLOR, color_print
@@ -103,12 +118,58 @@ class AnthropicModel(BaseModel):
         if 'max_tokens' not in params:
             params['max_tokens'] = 800
 
-        # Temperature not supported by some newer models
-        if NO_TEMPERATURE_MODELS.search(model_name):
-            params.pop('temperature', None)
+        # Strip params that the model rejects with HTTP 400. Warn once per stripped key.
+        for pattern, restricted in RESTRICTED_PARAMS:
+            if pattern.search(model_name):
+                for key in restricted:
+                    if key in params:
+                        stripped_val = params.pop(key)
+                        warnings.warn(
+                            f'{model_name} does not accept {key!r}; dropping {key}={stripped_val!r}',
+                            UserWarning, stacklevel=3,
+                        )
 
         self.supports_cached_prompts = True
         self.messages = []
+
+    def resolve_effort(self) -> tuple[str | None, str | None]:
+        level = self.model_params.get('effort')
+        if level is None:
+            return (None, None)
+        name = self.model_name
+        if EFFORT_MODELS_FULL.search(name):
+            return (_EFFORT_MAP_FULL[level], None)
+        if EFFORT_MODELS_TIER2.search(name):
+            native = _EFFORT_MAP_TIER2[level]
+            warn = None if native == level else f'effort={level!r} not supported by {name}; using {native!r}'
+            return (native, warn)
+        if EFFORT_MODELS_TIER3.search(name):
+            native = _EFFORT_MAP_TIER3[level]
+            warn = None if native == level else f'effort={level!r} not supported by {name}; using {native!r}'
+            return (native, warn)
+        return (None, f'effort is not supported by {name}, ignoring')
+
+    def _prepare_api_params(self, api_params: dict) -> dict:
+        """Merge effort into output_config and apply max_tokens auto-raise when appropriate."""
+        native, warn = self.resolve_effort()
+        if warn:
+            self._emit_effort_warning(warn)
+        if native is not None:
+            oc = dict(api_params.get('output_config') or {})
+            oc.setdefault('effort', native)
+            api_params = {**api_params, 'output_config': oc}
+        # Auto-raise max_tokens on effort>=high when user didn't set it (reasoning tokens count against output budget).
+        effort_level = self.model_params.get('effort')
+        if effort_level in {'high', 'xhigh', 'max'} and 'max_tokens' not in self._user_supplied:
+            floor = 4096
+            if api_params.get('max_tokens', 0) < floor:
+                msg = (f'raising max_tokens to {floor} because effort={effort_level!r} '
+                       '(reasoning tokens count against output budget); set max_tokens explicitly to disable')
+                if msg not in self._effort_warned:
+                    self._effort_warned.add(msg)
+                    warnings.warn(msg, UserWarning, stacklevel=3)
+                api_params = {**api_params, 'max_tokens': floor}
+        return api_params
 
     def prompt(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
             -> tuple[Any, int|None, int|None]:
@@ -142,6 +203,10 @@ class AnthropicModel(BaseModel):
                     raise
         else:
             message = self.completion(prompt, images, tools, return_json, response_format)
+
+        # Refusal is HTTP 200 with an empty content list; catch it before content[0] IndexErrors.
+        if getattr(message, 'stop_reason', None) == 'refusal':
+            raise RefusalException(getattr(message, 'refusal_category', 'unknown'))
 
         # Text content
         response_str = message.content[0].text
@@ -236,6 +301,8 @@ class AnthropicModel(BaseModel):
             if antr_tools:
                 api_params['tools'] = antr_tools
 
+            api_params = self._prepare_api_params(api_params)
+
             # Use parse() for Pydantic models
             if response_format and hasattr(response_format, 'model_json_schema'):
                 return self.client.messages.parse(
@@ -297,13 +364,13 @@ class AnthropicModel(BaseModel):
                 if stream:
                     if tools:
                         raise NotImplementedError('Anthropic model does not support streaming and tools at the same time')
-                    return self.client.messages.create(
-                        model=self.model_name,
-                        system=system_message,
-                        messages=self.messages,
-                        stream=True,
-                        **self.api_params
-                    )
+                    stream_params = self._prepare_api_params({
+                        'model': self.model_name,
+                        'system': system_message,
+                        'messages': self.messages,
+                        **self.api_params,
+                    })
+                    return self.client.messages.create(stream=True, **stream_params)
                 
                 # Prepare messages for the API call
                 api_messages = []
@@ -349,11 +416,13 @@ class AnthropicModel(BaseModel):
                     api_messages = api_messages[:-1]
 
                 api_params['system'] = system_message
-                    
+
                 # Only add tools if we have any
                 if antr_tools:
                     api_params['tools'] = antr_tools
-                
+
+                api_params = self._prepare_api_params(api_params)
+
                 # Make the API call
                 result = self.client.messages.create(**api_params)
             except APIConnectionError as e:
@@ -374,6 +443,10 @@ class AnthropicModel(BaseModel):
             except Exception as e:
                 print("LLM call failed (Unexpected):", repr(e))
                 raise GeneralException(e)
+
+            # Refusal is deterministic; short-circuit retry loop.
+            if getattr(result, 'stop_reason', None) == 'refusal':
+                raise RefusalException(getattr(result, 'refusal_category', 'unknown'))
 
             # Check for tool use in the response
             tool_use_blocks = [block for block in result.content if hasattr(block, 'type') and block.type == "tool_use"]
@@ -466,6 +539,8 @@ class AnthropicModel(BaseModel):
         }
         if tools:
             api_params['tools'] = tools
+
+        api_params = self._prepare_api_params(api_params)
 
         try:
             response = await self.async_client.messages.create(stream=True, **api_params)
