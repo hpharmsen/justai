@@ -213,7 +213,7 @@ class OpenAICompletionsModel(BaseModel):
                 if response_format:
                     # Structured output requires enough tokens to complete the JSON.
                     # Truncated JSON is always useless, so enforce a reasonable minimum.
-                    params = {**self.model_params}
+                    params = {**self.api_params}
                     max_allowed = getattr(self, 'max_output_tokens', 16384)
                     min_structured = min(16384, max_allowed)
                     if params.get('max_tokens', 0) < min_structured:
@@ -231,7 +231,7 @@ class OpenAICompletionsModel(BaseModel):
                         messages=self.messages,
                         tools=tool_spec,
                         stream=stream,
-                        **self.model_params,
+                        **self.api_params,
                     )
             except APITimeoutError as e:
                 raise ModelOverloadException(e)
@@ -411,7 +411,7 @@ class OpenAICompletionsModel(BaseModel):
                 messages=messages,
                 tools=tool_spec,
                 stream=True,
-                **self.model_params,
+                **self.api_params,
             )
         except APITimeoutError as e:
             raise ModelOverloadException(e)
