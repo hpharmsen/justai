@@ -47,9 +47,6 @@ NO_TEMPERATURE_MODELS = re.compile(r'claude-opus-4-7')
 # Models that do not support assistant message prefill
 NO_PREFILL_MODELS = re.compile(r'claude-(opus-4-[6-9]|sonnet-4-[6-9])')
 
-# Non-API params that should not be sent to the Anthropic API
-_NON_API_PARAMS = {'timeout', 'async', 'debug'}
-
 
 from justai.model.message import Message
 from justai.models.basemodel import (
@@ -101,10 +98,6 @@ class AnthropicModel(BaseModel):
             self.client = Anthropic(api_key=api_key, http_client=http_client)
             async_http_client = httpx.AsyncClient(timeout=timeout)
             self.async_client = AsyncAnthropic(api_key=api_key, http_client=async_http_client)
-
-        # Remove non-API params so they don't leak into API calls
-        for key in _NON_API_PARAMS:
-            params.pop(key, None)
 
         # Required model parameters
         if 'max_tokens' not in params:
@@ -232,7 +225,7 @@ class AnthropicModel(BaseModel):
                 'messages': self.messages,
                 'system': system_message,
                 'output_config': output_config,
-                **self.model_params
+                **self.api_params
             }
 
             # Structured output requires enough tokens to complete the JSON.
@@ -309,7 +302,7 @@ class AnthropicModel(BaseModel):
                         system=system_message,
                         messages=self.messages,
                         stream=True,
-                        **self.model_params
+                        **self.api_params
                     )
                 
                 # Prepare messages for the API call
@@ -344,7 +337,7 @@ class AnthropicModel(BaseModel):
                 api_params = {
                     'model': self.model_name,
                     'messages': api_messages,
-                    **self.model_params
+                    **self.api_params
                 }
 
                 # JSON responses need enough tokens to avoid truncation
@@ -469,7 +462,7 @@ class AnthropicModel(BaseModel):
             'model': self.model_name,
             'messages': api_messages,
             'system': system_message,
-            **self.model_params,
+            **self.api_params,
         }
         if tools:
             api_params['tools'] = tools

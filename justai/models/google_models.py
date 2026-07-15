@@ -69,7 +69,7 @@ class GoogleModel(BaseModel):
             prompt = [prompt] + opened_images
         if tools and isinstance(tools[0], dict):
             tools = [tool['function'] for tool in tools]
-        params = {**self.model_params}
+        params = {**self.api_params}
         if response_format or return_json:
             # Structured output requires enough tokens to complete the JSON.
             # Truncated JSON is always useless, so enforce a reasonable minimum.
@@ -181,7 +181,7 @@ class GoogleModel(BaseModel):
         config = genai.types.GenerateContentConfig(
             system_instruction=system_instruction or self.system_message,
             tools=google_tools,
-            **self.model_params,
+            **self.api_params,
         )
 
         response_stream = await self.client.aio.models.generate_content_stream(

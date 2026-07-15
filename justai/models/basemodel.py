@@ -63,6 +63,10 @@ class StreamChunk:
 
 class BaseModel(ABC):
 
+    # Keys that live in model_params but must not be forwarded to provider APIs.
+    # Subclasses extend by overriding with a broader frozenset.
+    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'async', 'debug'})
+
     @abstractmethod
     def __init__(self, model_name: str, params: dict, system_message: str):
         """ Model implemention should create attributes for all supported parameters """
@@ -85,6 +89,11 @@ class BaseModel(ABC):
         # The Model class that wraps this model so this model can set attributes there like token count
         # This value will be set by the Model class itself after instantiation
         self.encapsulating_model = None
+
+    @property
+    def api_params(self) -> dict:
+        """model_params filtered down to keys safe to forward to the provider API."""
+        return {k: v for k, v in self.model_params.items() if k not in self._NON_API_PARAMS}
 
     def set(self, key: str, value):
         if not hasattr(self, key):
