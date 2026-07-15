@@ -13,6 +13,10 @@ from justai.model.message import Message
 # Type alias for cache response tuple: (value, tokens_in, tokens_out)
 CacheResponse = tuple[str | object, int | None, int | None]
 
+# Bump when any change to _NON_API_PARAMS / model_params seeding would change hashes for
+# unchanged prompts. Invalidates all cache entries on upgrade — first call per prompt hits the API.
+CACHE_NAMESPACE = 'v2'
+
 
 def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: list, return_json: bool,
                         response_format=None, use_cache: bool = True, images=None) -> CacheResponse:
@@ -29,7 +33,7 @@ def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: l
             assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
             return model.chat(prompt_or_messages, tools, return_json, response_format)
 
-    hashcode = recursive_hash(
+    hashcode = CACHE_NAMESPACE + ':' + recursive_hash(
         (
             model.model_name,
             model.model_params,
@@ -64,7 +68,7 @@ def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: l
 
 def cached_response(*args: Any) -> CacheResponse | None:
     """Retrieve a cached response by hashing the provided arguments."""
-    hashcode = recursive_hash((*args,))
+    hashcode = CACHE_NAMESPACE + ':' + recursive_hash((*args,))
     cachedb = CacheDB()
     result = cachedb.read(hashcode)
     if result:
@@ -74,7 +78,7 @@ def cached_response(*args: Any) -> CacheResponse | None:
 
 def cache_save(response: tuple[str, int | None, int | None], *args: Any) -> None:
     """Save a response to the cache using hashed arguments as key."""
-    hashcode = recursive_hash((*args,))
+    hashcode = CACHE_NAMESPACE + ':' + recursive_hash((*args,))
     cachedb = CacheDB()
     cachedb.write(hashcode, response)
 

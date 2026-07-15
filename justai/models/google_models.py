@@ -23,6 +23,7 @@ Supported parameters:
 """
 import json
 import os
+import re
 from io import BytesIO
 from typing import Any, AsyncGenerator
 
@@ -35,6 +36,18 @@ from justai.model.model import ImageInput
 from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, StreamChunk, ToolCallRequest
 from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_pil_image
+
+
+# Only Gemini 3.x uses thinking_level; older Gemini 2.x uses thinking_budget (out of scope).
+EFFORT_MODELS_GEMINI3 = re.compile(r'gemini-3')
+
+_EFFORT_MAP_GEMINI3 = {
+    'low': ('LOW', None),
+    'medium': ('MEDIUM', None),
+    'high': ('HIGH', None),
+    'xhigh': ('HIGH', 'xhigh -> HIGH (Gemini has no higher tier)'),
+    'max': ('HIGH', 'max -> HIGH (Gemini has no higher tier)'),
+}
 
 class GoogleModel(BaseModel):
 
@@ -61,6 +74,25 @@ class GoogleModel(BaseModel):
         self.supports_automatic_function_calling = True
         self.supports_image_generation = True
 
+    def resolve_effort(self) -> tuple[str | None, str | None]:
+        level = self.model_params.get('effort')
+        if level is None:
+            return (None, None)
+        if EFFORT_MODELS_GEMINI3.search(self.model_name):
+            native, warn_key = _EFFORT_MAP_GEMINI3[level]
+            warn = None if warn_key is None else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
+            return (native, warn)
+        return (None, f'effort is not supported by {self.model_name}, ignoring')
+
+    def _thinking_config_extra(self) -> dict:
+        """Return {'thinking_config': ThinkingConfig(...)} when applicable, else {}."""
+        native, warn = self.resolve_effort()
+        if warn:
+            self._emit_effort_warning(warn)
+        if native is None:
+            return {}
+        return {'thinking_config': genai.types.ThinkingConfig(thinking_level=native)}
+
     def prompt(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) -> str | object:
         if isinstance(images, str):
             images = [images]
@@ -77,7 +109,7 @@ class GoogleModel(BaseModel):
             if params.get('max_output_tokens', 0) < MIN_STRUCTURED_TOKENS:
                 params['max_output_tokens'] = MIN_STRUCTURED_TOKENS
         config = genai.types.GenerateContentConfig(system_instruction=self.system_message, tools=tools,
-                                                   **params)
+                                                   **self._thinking_config_extra(), **params)
         if return_json:
             config.response_mime_type = "application/json"
         if response_format:
@@ -106,7 +138,10 @@ class GoogleModel(BaseModel):
         if images:
             raise NotImplementedError('google_model. ..._async does not support images. Use prompt() instead')
 
-        config = genai.types.GenerateContentConfig(system_instruction=self.system_message)
+        config = genai.types.GenerateContentConfig(
+            system_instruction=self.system_message,
+            **self._thinking_config_extra(),
+        )
         stream = await self.client.aio.models.generate_content_stream(
             model=self.model_name,
             contents=prompt,
@@ -181,6 +216,7 @@ class GoogleModel(BaseModel):
         config = genai.types.GenerateContentConfig(
             system_instruction=system_instruction or self.system_message,
             tools=google_tools,
+            **self._thinking_config_extra(),
             **self.api_params,
         )
 

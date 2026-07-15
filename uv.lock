@@ -6,6 +6,10 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
 [[package]]
 name = "absl-py"
 version = "2.4.0"
@@ -1125,7 +1129,7 @@ wheels = [
 
 [[package]]
 name = "justai"
-version = "5.5.4"
+version = "5.5.7"
 source = { editable = "." }
 dependencies = [
     { name = "absl-py" },
@@ -1158,6 +1162,11 @@ llama = [
     { name = "llama-cpp-python" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "absl-py" },
@@ -1184,6 +1193,9 @@ requires-dist = [
     { name = "twine", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev", "llama"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.3" }]
 
 [[package]]
 name = "justdays"

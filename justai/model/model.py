@@ -65,8 +65,16 @@ class Model:
 
     def __setattr__(self, name, value):
         if name not in self.__dict__ and hasattr(self, 'model') and name in self.model.model_params:
-            # Not an existing property model but a model_params property. Set it in model_params
+            # Not an existing property on Model but a model_params property. Validate then set in model_params.
+            validator = self.model._VALIDATORS.get(name)
+            if validator:
+                validator(value)  # Raises before write on invalid value
             self.model.model_params[name] = value
+            if name == 'effort' and value is not None:
+                # Emit downmap/ignore warning immediately on assignment.
+                _, warn = self.model.resolve_effort()
+                if warn:
+                    self.model._emit_effort_warning(warn)
         else:
             # Update the property as intended
             super().__setattr__(name, value)

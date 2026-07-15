@@ -1,7 +1,8 @@
 import base64
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Any, Optional, Union
+from typing import Any, AsyncGenerator, Callable, Optional, Union
 
 from PIL.Image import Image
 
@@ -42,6 +43,19 @@ class TimeoutException(Exception):
 class GeneralException(Exception):
     pass
 
+class RefusalException(Exception):
+    """Raised when a model refuses to answer (e.g. Anthropic safety classifier)."""
+    def __init__(self, category: str = 'unknown', message: str = ''):
+        self.category = category
+        super().__init__(f'Model refused response: {category}. {message}'.strip())
+
+
+class EffortDownmapWarning(UserWarning):
+    """Emitted when the requested effort level is downmapped to a supported one."""
+
+
+UNIVERSAL_EFFORT_LEVELS: frozenset[str] = frozenset({'low', 'medium', 'high', 'xhigh', 'max'})
+
 
 @dataclass
 class ToolCallRequest:
@@ -65,7 +79,10 @@ class BaseModel(ABC):
 
     # Keys that live in model_params but must not be forwarded to provider APIs.
     # Subclasses extend by overriding with a broader frozenset.
-    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'async', 'debug'})
+    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'async', 'debug', 'effort'})
+
+    # Levels the user may pass as `effort=...`. Providers may extend (e.g. OpenAI adds 'none').
+    EFFORT_VALID: frozenset[str] = UNIVERSAL_EFFORT_LEVELS
 
     @abstractmethod
     def __init__(self, model_name: str, params: dict, system_message: str):
@@ -90,6 +107,19 @@ class BaseModel(ABC):
         # This value will be set by the Model class itself after instantiation
         self.encapsulating_model = None
 
+        # Effort scaffolding. Seed default so `Model.__setattr__` routes `model.effort = ...` writes here.
+        self.model_params.setdefault('effort', None)
+        self._effort_warned: set[str] = set()
+        self._VALIDATORS: dict[str, Callable[[Any], None]] = {'effort': self._validate_effort}
+        # Track which keys were user-supplied so auto-raise heuristics don't overwrite explicit values.
+        self._user_supplied: set[str] = {k for k in params.keys() if k not in {'effort'}}
+        if params.get('effort') is not None:
+            self._validate_effort(params['effort'])
+            # Emit ignore/downmap warning immediately for feedback at construction time.
+            _, warn = self.resolve_effort()
+            if warn:
+                self._emit_effort_warning(warn)
+
     @property
     def api_params(self) -> dict:
         """model_params filtered down to keys safe to forward to the provider API."""
@@ -99,6 +129,36 @@ class BaseModel(ABC):
         if not hasattr(self, key):
             raise (AttributeError(f"Model has no attribute {key}"))
         setattr(self, key, value)
+
+    def _validate_effort(self, value: Any) -> None:
+        """Raise ValueError if value is not a legal effort level for this provider."""
+        if value is None:
+            return
+        if value not in self.EFFORT_VALID:
+            valid = sorted(v for v in self.EFFORT_VALID)
+            raise ValueError(
+                f'effort must be one of {valid} or None; got {value!r}'
+            )
+
+    def resolve_effort(self) -> tuple[Any, str | None]:
+        """Translate `self.model_params['effort']` to the provider-native wire value.
+
+        Returns (native_value, warning_message).
+        - native_value=None means: send nothing to the provider.
+        - warning_message=None means: no downmap warning to emit.
+        Base implementation: no effort support at all (native=None, warn if user set effort).
+        """
+        effort = self.model_params.get('effort')
+        if effort is None:
+            return (None, None)
+        return (None, f'effort={effort!r} is not supported by {self.__class__.__name__}, ignoring')
+
+    def _emit_effort_warning(self, message: str) -> None:
+        """Emit an EffortDownmapWarning at most once per (model, message) combination."""
+        if message in self._effort_warned:
+            return
+        self._effort_warned.add(message)
+        warnings.warn(message, EffortDownmapWarning, stacklevel=3)
 
     @abstractmethod
     def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \

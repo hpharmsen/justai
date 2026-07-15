@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from io import BytesIO
 
 import httpx
@@ -32,8 +33,24 @@ from justai.model.message import Message, ToolUseMessage
 from justai.models.basemodel import ImageInput
 from justai.tools.display import color_print, ERROR_COLOR
 from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ConnectionException, AuthorizationException, \
-    ModelOverloadException, RatelimitException, BadRequestException, GeneralException, ToolCallRequest, StreamChunk
+    ModelOverloadException, RatelimitException, BadRequestException, GeneralException, ToolCallRequest, StreamChunk, \
+    UNIVERSAL_EFFORT_LEVELS
 from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
+
+
+# Models that support the reasoning parameter (GPT-5.6 series only, per current OpenAI docs).
+EFFORT_MODELS_GPT56 = re.compile(r'gpt-5\.6')
+
+# Per decision #4: cap our OpenAI vocabulary at 'xhigh' — the SDK's ReasoningEffort Literal
+# does not include 'max'. Requests with our 'max' are silently downmapped with a warning.
+_EFFORT_MAP_GPT56 = {
+    'low': ('low', None),
+    'medium': ('medium', None),
+    'high': ('high', None),
+    'xhigh': ('xhigh', None),
+    'max': ('xhigh', 'max -> xhigh (SDK caps at xhigh)'),
+    'none': ('none', None),
+}
 
 
 class OpenAIResponsesModel(BaseModel):
@@ -61,6 +78,35 @@ class OpenAIResponsesModel(BaseModel):
 
         self.last_response_id = None
 
+    def _validate_effort(self, value: Any) -> None:
+        # 'none' is a valid pass-through for GPT-5.6 only (turns reasoning off).
+        if value == 'none' and EFFORT_MODELS_GPT56.search(self.model_name):
+            return
+        super()._validate_effort(value)
+
+    def resolve_effort(self) -> tuple[str | None, str | None]:
+        level = self.model_params.get('effort')
+        if level is None:
+            return (None, None)
+        if EFFORT_MODELS_GPT56.search(self.model_name):
+            native, warn_key = _EFFORT_MAP_GPT56[level]
+            warn = None if warn_key is None else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
+            return (native, warn)
+        return (None, f'effort is not supported by {self.model_name}, ignoring')
+
+    def _reasoning_extra(self) -> dict:
+        """Return {'reasoning': {'effort': X}} when applicable, else {}. Emits warnings."""
+        native, warn = self.resolve_effort()
+        if warn:
+            self._emit_effort_warning(warn)
+        return {'reasoning': {'effort': native}} if native is not None else {}
+
+    def _responses_create(self, **kwargs):
+        return self.client.responses.create(**kwargs, **self._reasoning_extra())
+
+    def _responses_parse(self, **kwargs):
+        return self.client.responses.parse(**kwargs, **self._reasoning_extra())
+
     def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False) \
             -> tuple[Any, int|None, int|None]:
 
@@ -78,26 +124,26 @@ class OpenAIResponsesModel(BaseModel):
             try:
                 if response_format and return_json:
                     assert is_valid_json_schema(response_format), "Response format should be a valid JSON Schema"
-                    response = self.client.responses.create(model=self.model_name, input=input_list, tools=tool_spec,
-                                                            text = {"format": {
-                                                                "type": "json_schema",
-                                                                "name": "response_format",
-                                                                "strict": True,
-                                                                "schema":response_format}},
-                                                            previous_response_id=last_response_id)
+                    response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
+                                                     text={"format": {
+                                                         "type": "json_schema",
+                                                         "name": "response_format",
+                                                         "strict": True,
+                                                         "schema": response_format}},
+                                                     previous_response_id=last_response_id)
                 elif response_format:
                     assert isinstance(response_format, type) and issubclass(response_format, pydantic.BaseModel), \
                         'Response format should be a Pydantic model unless you specify return_json=True'
-                    response = self.client.responses.parse(model=self.model_name, input=input_list, tools=tool_spec,
-                                                           text_format=response_format,
-                                                           previous_response_id=last_response_id)
+                    response = self._responses_parse(model=self.model_name, input=input_list, tools=tool_spec,
+                                                    text_format=response_format,
+                                                    previous_response_id=last_response_id)
                 elif return_json:
-                    response = self.client.responses.create(model=self.model_name, input=input_list, tools=tool_spec,
-                                                            text = { "format": { "type": "json_object" } },
-                                                            previous_response_id=last_response_id)
+                    response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
+                                                     text={"format": {"type": "json_object"}},
+                                                     previous_response_id=last_response_id)
                 else:
-                    response = self.client.responses.create(model=self.model_name, input=input_list, tools=tool_spec,
-                                                            previous_response_id=last_response_id)
+                    response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
+                                                     previous_response_id=last_response_id)
             except APITimeoutError as e:
                 raise ModelOverloadException(e)
             except APIConnectionError as e:
@@ -222,8 +268,8 @@ class OpenAIResponsesModel(BaseModel):
 
         last_response_id = self.last_response_id if _chat else None
 
-        response = self.client.responses.create(model=self.model_name, input=input_, stream=True,
-                                                previous_response_id=last_response_id)
+        response = self._responses_create(model=self.model_name, input=input_, stream=True,
+                                          previous_response_id=last_response_id)
 
         # Save the response id for subsequent requests
         self.last_response_id = response.id if _chat else None
@@ -376,7 +422,7 @@ class OpenAIResponsesModel(BaseModel):
                 })
 
         try:
-            response = self.client.responses.create(
+            response = self._responses_create(
                 model=self.model_name,
                 input=input_list,
                 tools=tool_spec or [],

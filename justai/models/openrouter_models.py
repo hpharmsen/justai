@@ -29,6 +29,17 @@ class OpenRouterModel(OpenAICompletionsModel):
         self.messages = [{"role": "system", "content": self.system_message}]
         self.supports_image_generation = True
 
+    def resolve_effort(self) -> tuple[str | None, str | None]:
+        # OpenRouter maps effort levels server-side (per its docs); pass through raw.
+        level = self.model_params.get('effort')
+        return (level, None) if level is not None else (None, None)
+
+    def _extra_api_kwargs(self) -> dict:
+        native, _ = self.resolve_effort()
+        if native is None:
+            return {}
+        return {'extra_body': {'reasoning': {'effort': native}}}
+
     def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int] | None = None, options: dict = None) -> Image:
         """Generate an image via OpenRouter chat completions with modalities."""
         content = [{"type": "text", "text": prompt}]
