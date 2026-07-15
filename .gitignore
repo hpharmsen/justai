@@ -28,3 +28,5 @@ justai/saves
 /tests/ainewstest.py
 /models/
 *.gguf
+AGENTS.md
+.codex/
