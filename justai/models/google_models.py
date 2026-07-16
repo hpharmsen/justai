@@ -33,7 +33,8 @@ from google import genai
 
 from justai.model.message import Message
 from justai.model.model import ImageInput
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, StreamChunk, ToolCallRequest
+from justai.models.anthropic_models import extract_json
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, GeneralException, StreamChunk, ToolCallRequest
 from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_pil_image
 
@@ -305,5 +306,30 @@ def convert_to_justai_response(response, return_json):
     input_token_count = response.usage_metadata.prompt_token_count
     output_token_count = (response.usage_metadata.candidates_token_count or 0) + \
                          (response.usage_metadata.thoughts_token_count or 0)
-    result = response.text if not return_json else response.parsed if response.parsed else json.loads(response.text)
+    if not return_json:
+        result = response.text
+    elif response.parsed:
+        result = response.parsed
+    else:
+        result = _parse_gemini_json(response.text)
     return result, input_token_count, output_token_count
+
+
+def _parse_gemini_json(text: str) -> dict | list:
+    """Parse JSON from Gemini response, tolerating markdown fences and trailing text.
+
+    Raises GeneralException when the response contains no parseable JSON, so callers
+    can treat it as a model contract violation rather than a low-level decode crash.
+    """
+    stripped = text.strip()
+    if stripped.startswith('```'):
+        stripped = re.sub(r'^```(?:json)?\s*\n?', '', stripped)
+        stripped = re.sub(r'\n?```\s*$', '', stripped).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+    try:
+        return extract_json(stripped)
+    except json.JSONDecodeError as e:
+        raise GeneralException(f'Gemini returned non-JSON response: {stripped[:200]}') from e
