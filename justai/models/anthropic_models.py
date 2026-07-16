@@ -205,8 +205,14 @@ class AnthropicModel(BaseModel):
         if getattr(message, 'stop_reason', None) == 'refusal':
             raise RefusalException(getattr(message, 'refusal_category', 'unknown'))
 
-        # Text content
-        response_str = message.content[0].text
+        # Text content — skip thinking/tool blocks that can precede the text block on reasoning models.
+        response_str = next(
+            (b.text for b in message.content if getattr(b, 'type', None) == 'text'),
+            None,
+        )
+        if response_str is None:
+            block_types = [getattr(b, 'type', '?') for b in message.content]
+            raise BadRequestException(f'No text block in response (blocks: {block_types})')
         if return_json or response_format:
             if use_structured_outputs:
                 # Structured outputs guarantees valid JSON
@@ -247,7 +253,7 @@ class AnthropicModel(BaseModel):
             try:
                 return extract_json(response_str)
             except json.decoder.JSONDecodeError as e:
-                raise ValueError(f'Expected JSON but got: {response_str[:200]}') from e
+                raise BadRequestException(f'Expected JSON but got: {response_str[:200]}') from e
 
     def _completion_with_structured_output(self, prompt: str, images: ImageInput = None,
                                            tools: list = None, response_format=None):
