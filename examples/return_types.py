@@ -67,6 +67,6 @@ if __name__ == "__main__":
     print(json.dumps(data, indent=4))
 
     data = structured_output_with_pydantic(Model('gpt-5'))
-    for person in data:
+    for person in data.persons:
         print(person)
     

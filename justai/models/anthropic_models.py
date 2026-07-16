@@ -33,8 +33,8 @@ import warnings
 from typing import Any, AsyncGenerator
 
 import httpx
-from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, AuthenticationError, PermissionDeniedError, \
-    APITimeoutError, RateLimitError, BadRequestError, InternalServerError
+from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, APIStatusError, AuthenticationError, \
+    PermissionDeniedError, APITimeoutError, RateLimitError, BadRequestError, InternalServerError
 from dotenv import dotenv_values
 
 logger = logging.getLogger(__name__)
@@ -331,6 +331,13 @@ class AnthropicModel(BaseModel):
                 raise
             logger.error(f'LLM call failed (BadRequest): {e!r}')
             raise BadRequestException(e)
+        except APIStatusError as e:
+            # Catches OverloadedError (529) and any other unmapped status errors.
+            if getattr(e, 'status_code', None) in (503, 529):
+                logger.error(f'LLM call failed (Overloaded {e.status_code}): {e!r}')
+                raise ModelOverloadException(e)
+            logger.error(f'LLM call failed (APIStatusError {getattr(e, "status_code", "?")}): {e!r}')
+            raise GeneralException(e)
         except Exception as e:
             logger.error(f'LLM call failed (Unexpected): {e!r}')
             raise GeneralException(e)
@@ -437,6 +444,13 @@ class AnthropicModel(BaseModel):
             except BadRequestError as e:
                 print("LLM call failed (BadRequest):", repr(e))
                 raise BadRequestException(e)
+            except APIStatusError as e:
+                # Catches OverloadedError (529) and any other unmapped status errors.
+                if getattr(e, 'status_code', None) in (503, 529):
+                    print(f"LLM call failed (Overloaded {e.status_code}):", repr(e))
+                    raise ModelOverloadException(e)
+                print(f"LLM call failed (APIStatusError {getattr(e, 'status_code', '?')}):", repr(e))
+                raise GeneralException(e)
             except Exception as e:
                 print("LLM call failed (Unexpected):", repr(e))
                 raise GeneralException(e)
@@ -551,6 +565,11 @@ class AnthropicModel(BaseModel):
             raise RatelimitException(e)
         except BadRequestError as e:
             raise BadRequestException(e)
+        except APIStatusError as e:
+            # Catches OverloadedError (529) and any other unmapped status errors.
+            if getattr(e, 'status_code', None) in (503, 529):
+                raise ModelOverloadException(e)
+            raise GeneralException(e)
         except Exception as e:
             raise GeneralException(e)
 

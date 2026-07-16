@@ -120,10 +120,20 @@ class OpenAIResponsesModel(BaseModel):
 
         last_response_id = self.last_response_id if _chat else None
 
+        is_pydantic = bool(response_format) and isinstance(response_format, type) \
+            and issubclass(response_format, pydantic.BaseModel)
+
         for run in range(3):  # Max 3 function calls to prevent infinite loop
             try:
-                if response_format and return_json:
-                    assert is_valid_json_schema(response_format), "Response format should be a valid JSON Schema"
+                if is_pydantic:
+                    # Pydantic model: use native structured output via responses.parse.
+                    # The return_json flag is ignored here; the caller gets a Pydantic instance.
+                    response = self._responses_parse(model=self.model_name, input=input_list, tools=tool_spec,
+                                                    text_format=response_format,
+                                                    previous_response_id=last_response_id)
+                elif response_format:
+                    ok, errors = is_valid_json_schema(response_format)
+                    assert ok, f"Response format should be a valid JSON Schema or Pydantic model: {errors}"
                     response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
                                                      text={"format": {
                                                          "type": "json_schema",
@@ -131,12 +141,6 @@ class OpenAIResponsesModel(BaseModel):
                                                          "strict": True,
                                                          "schema": response_format}},
                                                      previous_response_id=last_response_id)
-                elif response_format:
-                    assert isinstance(response_format, type) and issubclass(response_format, pydantic.BaseModel), \
-                        'Response format should be a Pydantic model unless you specify return_json=True'
-                    response = self._responses_parse(model=self.model_name, input=input_list, tools=tool_spec,
-                                                    text_format=response_format,
-                                                    previous_response_id=last_response_id)
                 elif return_json:
                     response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
                                                      text={"format": {"type": "json_object"}},
@@ -171,9 +175,8 @@ class OpenAIResponsesModel(BaseModel):
                     function_call_arguments = json.loads(item.arguments)
 
             if not function_call or run == 2:
-                if response_format and isinstance(response_format, type) and issubclass(response_format, pydantic.BaseModel):
-                    field = list(response.output_parsed.model_fields_set)[0]
-                    output = getattr(response.output_parsed, field)
+                if is_pydantic:
+                    output = response.output_parsed
                 elif return_json:
                     output = json.loads(response.output_text)
                 else:
