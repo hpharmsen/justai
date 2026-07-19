@@ -33,5 +33,8 @@ class ModelFactory:
         elif model_name.startswith("reve"):
             from justai.models.reve_models import ReveModel
             return ReveModel(model_name, params=kwargs)
+        elif model_name.startswith("kimi") or model_name.startswith("moonshot"):
+            from justai.models.kimi_models import KimiModel
+            return KimiModel(model_name, params=kwargs)
         else:
             raise ValueError(f"Model {model_name} not supported")

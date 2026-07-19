@@ -30,6 +30,7 @@ JustAI is a Python package that provides a unified interface for working with mu
 - `sonar*` → Perplexity
 - `reve*` → Reve
 - `openrouter/*` → OpenRouter
+- `kimi*`, `moonshot*` → Moonshot
 - `*.gguf` → Local GGUF models
 
 **Base Model Pattern**: All provider implementations inherit from `BaseModel` in basemodel.py which defines the common interface.

@@ -25,6 +25,7 @@ ALL_MODELS = [
     'grok-4.20-non-reasoning',
     'deepseek-chat',
     'sonar',
+    'kimi-k2.6',
 ]
 
 
