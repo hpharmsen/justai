@@ -16,10 +16,18 @@ ImageInput = Optional[Union[
 ]]
 
 
-from justai.model.message import Message
-
 # Default timeout in seconds for all API calls
 DEFAULT_TIMEOUT = 120.0
+
+# Python type -> JSON Schema type, shared by every provider's tool-spec builder.
+JSON_TYPE_MAP: dict[type, str] = {
+    str: 'string',
+    int: 'integer',
+    float: 'number',
+    bool: 'boolean',
+    list: 'array',
+    dict: 'object',
+}
 
 
 class ConnectionException(Exception):
@@ -112,7 +120,7 @@ class BaseModel(ABC):
         self._effort_warned: set[str] = set()
         self._VALIDATORS: dict[str, Callable[[Any], None]] = {'effort': self._validate_effort}
         # Track which keys were user-supplied so auto-raise heuristics don't overwrite explicit values.
-        self._user_supplied: set[str] = {k for k in params.keys() if k not in {'effort'}}
+        self._user_supplied: set[str] = {k for k in params if k not in {'effort'}}
         if params.get('effort') is not None:
             self._validate_effort(params['effort'])
             # Emit ignore/downmap warning immediately for feedback at construction time.
@@ -204,25 +212,8 @@ class BaseModel(ABC):
 
 def identify_image_format_from_base64(encoded_data: str) -> str:
     """Identify image format from base64 data. Returns MIME type supported by LLM APIs."""
-    raw_data = base64.b64decode(encoded_data)[:12]  # Need 12 bytes for WebP detection
+    from justai.tools.images import detect_mime_type  # Local import: images.py imports nothing from here
 
-    # Magic numbers and corresponding mime types for each image format
-    # Ordered by specificity (longer magic bytes first)
-    formats = [
-        (b'\x89PNG\r\n\x1a\n', 'image/png'),   # PNG files
-        (b'GIF87a', 'image/gif'),              # GIF files (version 87a)
-        (b'GIF89a', 'image/gif'),              # GIF files (version 89a)
-        (b'\xff\xd8\xff', 'image/jpeg'),       # JPEG files
-    ]
-
-    # Check the raw data against known magic numbers
-    for magic, mime_type in formats:
-        if raw_data.startswith(magic):
-            return mime_type
-
-    # WebP files: RIFF....WEBP (bytes 0-3: RIFF, bytes 8-11: WEBP)
-    if raw_data[:4] == b'RIFF' and len(raw_data) >= 12 and raw_data[8:12] == b'WEBP':
-        return 'image/webp'
-
-    # Default to JPEG for unknown formats (most widely supported)
-    return 'image/jpeg'
+    mime_type = detect_mime_type(base64.b64decode(encoded_data)[:12])  # Need 12 bytes for WebP detection
+    # detect_mime_type also recognises BMP, which no LLM API accepts. Fall back to its own default.
+    return mime_type if mime_type != 'image/bmp' else 'image/jpeg'

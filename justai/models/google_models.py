@@ -31,7 +31,6 @@ from PIL import Image
 from dotenv import dotenv_values
 from google import genai
 
-from justai.model.message import Message
 from justai.model.model import ImageInput
 from justai.models.anthropic_models import extract_json
 from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, GeneralException, StreamChunk, ToolCallRequest

@@ -1,10 +1,8 @@
 import os
-from typing import Any
 
 from dotenv import dotenv_values
 from openai import OpenAI
 
-from justai.model.message import Message
 from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.display import color_print, ERROR_COLOR

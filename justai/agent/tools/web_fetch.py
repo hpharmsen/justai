@@ -61,9 +61,6 @@ def _is_private_ip(hostname: str) -> bool:
 
 
 class WebFetchTool:
-    def __init__(self):
-        pass
-
     def fetch_url(self, url: str, raw: bool = False) -> str:
         """Fetch a URL and return its content. Returns cleaned text by default, raw HTML if raw=True."""
         parsed = urlparse(url)

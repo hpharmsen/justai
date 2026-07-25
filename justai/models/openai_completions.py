@@ -57,7 +57,6 @@ from dotenv import dotenv_values
 from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
     RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
 
-from justai.model.message import Message, ToolUseMessage
 from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR2
 from justai.models.basemodel import (
     BaseModel,
@@ -69,6 +68,7 @@ from justai.models.basemodel import (
     BadRequestException,
     GeneralException,
     ImageInput,
+    JSON_TYPE_MAP,
     ToolCallRequest,
     StreamChunk,
 )
@@ -120,12 +120,6 @@ class OpenAICompletionsModel(BaseModel):
             self.messages = []
 
         completion = self.completion(prompt, images, tools, return_json, response_format)
-
-        # if response_format:
-        #     # Intended behavior bij OpenAI. When response_format is specified, the raw response is alreay
-        #     # deserialized into the requested format.
-        #     # Disadvantage: the raw response is not available so no token count or tool use
-        #     return completion, None, None
 
         message = completion.choices[0].message
         message_text = message.content
@@ -213,7 +207,7 @@ class OpenAICompletionsModel(BaseModel):
         # Create the completion with streaming
         tool_spec = NOT_GIVEN if tools is NOT_GIVEN else self.create_tool_spec(tools)
 
-        for _ in range(3):
+        for _ in range(3):  # Max 3 function calls to prevent infinite loop
             try:
                 if response_format:
                     # Structured output requires enough tokens to complete the JSON.
@@ -292,57 +286,6 @@ class OpenAICompletionsModel(BaseModel):
                 )
 
 
-    @staticmethod
-    def transform_messages(messages: list[Message]) -> list[dict]:
-        transformed_messages = []
-
-        for message in messages:
-            msg = {"role": message.role}
-
-            # Handle tool messages (function calls and their results)
-            # Todo: tool use is geen onderdeel meer van message maar staat in de Model class.
-            if isinstance(message, ToolUseMessage):
-                if message.role == 'assistant' and 'function_to_call' in message.tool_use:
-                    # This is a function call from the assistant
-                    msg["content"] = None
-                    msg["tool_calls"] = [{
-                        "id": message.tool_use.get('call_id', 'call_' + str(hash(str(message.tool_use)))),
-                        "type": "function",
-                        "function": {
-                            "name": message.tool_use['function_to_call'],
-                            "arguments": json.dumps(message.tool_use['function_parameters'])
-                        }
-                    }]
-                elif message.role == 'tool':
-                    # This is a function result
-                    function_result = message.tool_use.get('function_result', '')
-                    if not isinstance(function_result, str):
-                        function_result = json.dumps(function_result)
-                    msg["content"] = function_result
-                    msg["tool_call_id"] = message.tool_use.get('call_id', '')
-                    msg["name"] = message.tool_use.get('function_to_call', '')
-            # Handle regular messages
-            else:
-                if message.images:
-                    content = [{"type": "text", "text": message.content or ""}]
-                    for image in message.images:
-                        content.append({
-                            "type": "image_url",
-                            "image_url": {'url': f"data:image/jpeg;base64,{to_base64_image(image)}"}
-                        })
-                    msg["content"] = content
-                else:
-                    msg["content"] = message.content or ""
-
-            transformed_messages.append(msg)
-
-        return transformed_messages
-
-    # @staticmethod
-    # def tool_use_message(tool_use) -> Message:
-    #     """ Creates a message with the result of a tool use. """
-    #     return ToolUseMessage(tool_use=tool_use)
-
     def token_count(self, text: str) -> int:
         """ Returns the number of tokens in a string. """
         try:
@@ -357,14 +300,6 @@ class OpenAICompletionsModel(BaseModel):
         if not tools:
             return []
 
-        type_mapping = {
-            int: "integer",
-            str: "string",
-            float: "number",
-            bool: "boolean",
-            list: "array",
-            dict: "object"
-        }
         tool_spec = []
         for tool in tools:
             if 'function' in tool and callable(tool['function']):
@@ -384,7 +319,7 @@ class OpenAICompletionsModel(BaseModel):
                         "type": "object",
                         "properties": {
                             param_name: {
-                                "type": type_mapping.get(_type, "string"),
+                                "type": JSON_TYPE_MAP.get(_type, "string"),
                                 "description": param_name,
                             }
                             for param_name, _type in tool.get('parameters', {}).items()

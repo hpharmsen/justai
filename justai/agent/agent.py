@@ -1,9 +1,6 @@
 """Agent class for autonomous agent execution with streaming events."""
 import inspect
-import json
 import logging
-import os
-import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable
@@ -11,7 +8,7 @@ from typing import Any, AsyncGenerator, Callable
 from justai.agent.skills import load_skills
 from justai.model.model import Model
 from justai.models.basemodel import (
-    StreamChunk, ToolCallRequest,
+    JSON_TYPE_MAP, ToolCallRequest,
     RatelimitException, AuthorizationException,
 )
 
@@ -61,7 +58,6 @@ class AgentEvent:
 def _build_tool_schema(func: Callable) -> dict:
     """Build a tool schema from a callable's type hints and docstring."""
     sig = inspect.signature(func)
-    type_map = {str: 'string', int: 'integer', float: 'number', bool: 'boolean', list: 'array', dict: 'object'}
 
     properties = {}
     required = []
@@ -69,7 +65,7 @@ def _build_tool_schema(func: Callable) -> dict:
         if name in ('self', 'ctx'):
             continue
         annotation = param.annotation
-        json_type = type_map.get(annotation, 'string') if annotation != inspect.Parameter.empty else 'string'
+        json_type = JSON_TYPE_MAP.get(annotation, 'string') if annotation != inspect.Parameter.empty else 'string'
         properties[name] = {'type': json_type, 'description': name}
         if param.default is inspect.Parameter.empty:
             required.append(name)
@@ -125,7 +121,7 @@ class Agent:
                     schema = {
                         'name': name,
                         'description': desc,
-                        'parameters': {k: {'type': _python_type_to_json(v)} for k, v in params.items()},
+                        'parameters': {k: {'type': JSON_TYPE_MAP.get(v, 'string')} for k, v in params.items()},
                         'required': list(params.keys()),
                     }
                     self._tools[name] = (func, schema, False)
@@ -210,10 +206,7 @@ class Agent:
         func, schema, needs_ctx = self._tools[tc.name]
         start = time.time()
         try:
-            if needs_ctx:
-                result = func(ctx, **tc.arguments)
-            else:
-                result = func(**tc.arguments)
+            result = func(ctx, **tc.arguments) if needs_ctx else func(**tc.arguments)
             result_str = str(result) if not isinstance(result, str) else result
             success = True
         except Exception as e:
@@ -238,18 +231,6 @@ class Agent:
             return open(tasks_file).read()
         except FileNotFoundError:
             return ''
-
-    def _write_tasks(self, tasks_file: str, content: str):
-        """Atomically write tasks file."""
-        dir_name = os.path.dirname(os.path.abspath(tasks_file))
-        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
-        try:
-            with os.fdopen(fd, 'w') as f:
-                f.write(content)
-            os.replace(tmp_path, tasks_file)
-        except Exception:
-            os.unlink(tmp_path)
-            raise
 
     def _build_result(self, tasks_content: str, iterations: int) -> AgentResult:
         """Build the final AgentResult."""
@@ -374,9 +355,3 @@ class Agent:
                 result = event.result
         assert result is not None, 'Agent did not produce a result'
         return result
-
-
-def _python_type_to_json(t: type) -> str:
-    """Map Python types to JSON Schema types."""
-    mapping = {str: 'string', int: 'integer', float: 'number', bool: 'boolean', list: 'array', dict: 'object'}
-    return mapping.get(t, 'string')

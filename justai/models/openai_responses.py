@@ -18,9 +18,8 @@ import re
 from io import BytesIO
 
 import httpx
-from typing import Any, AsyncGenerator
 import pydantic
-from typing import Any, List, Tuple
+from typing import Any, AsyncGenerator, List, Tuple
 
 from jsonschema import exceptions, validators, Draft202012Validator
 import tiktoken
@@ -29,12 +28,10 @@ from dotenv import dotenv_values
 from openai import OpenAI, APIConnectionError, \
     RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
 
-from justai.model.message import Message, ToolUseMessage
-from justai.models.basemodel import ImageInput
 from justai.tools.display import color_print, ERROR_COLOR
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ConnectionException, AuthorizationException, \
-    ModelOverloadException, RatelimitException, BadRequestException, GeneralException, ToolCallRequest, StreamChunk, \
-    UNIVERSAL_EFFORT_LEVELS
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ImageInput, ConnectionException, \
+    AuthorizationException, ModelOverloadException, RatelimitException, BadRequestException, GeneralException, \
+    JSON_TYPE_MAP, ToolCallRequest, StreamChunk
 from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
 
 
@@ -65,11 +62,6 @@ class OpenAIResponsesModel(BaseModel):
             color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
                         "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
 
-        # instructor.patch makes the OpenAI client compatible with structured output via response_model="
-        # Works only for OpenAI models
-
-        # Not sure if this works, or is needed, for the Responses API
-        # self.client = instructor.patch(OpenAI(api_key=api_key))
         self.client = OpenAI(timeout=params.get('timeout', DEFAULT_TIMEOUT))
 
         # Diversions from the features that are supported or not supported by default
@@ -109,9 +101,6 @@ class OpenAIResponsesModel(BaseModel):
 
     def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False) \
             -> tuple[Any, int|None, int|None]:
-
-        # if response_format and not issubclass(response_format, pydantic.BaseModel):
-        #     raise NotImplementedError("OpenAI Responses API requires response_format to be a Pydantic model.")
 
         content = self.create_content(prompt, images)
         input_list = [{'role': 'system', 'content': self.system_message},
@@ -204,64 +193,6 @@ class OpenAIResponsesModel(BaseModel):
                     "output": json.dumps(result),
                 }
             )
-        # Response looks like this:
-        # [{
-        #   "id": "resp_67ccd2bed1ec8190b14f964abc0542670bb6a6b452d3795b",
-        #   "object": "response",
-        #   "created_at": 1741476542,
-        #   "status": "completed",
-        #   "error": null,
-        #   "incomplete_details": null,
-        #   "instructions": null,
-        #   "max_output_tokens": null,
-        #   "model": "gpt-4.1-2025-04-14",
-        #   "output": [
-        #     {
-        #       "type": "message",
-        #       "id": "msg_67ccd2bf17f0819081ff3bb2cf6508e60bb6a6b452d3795b",
-        #       "status": "completed",
-        #       "role": "assistant",
-        #       "content": [
-        #         {
-        #           "type": "output_text",
-        #           "text": "In a peaceful grove beneath a silver moon, a unicorn named Lumina discovered a hidden pool that reflected the stars. As she dipped her horn into the water, the pool began to shimmer, revealing a pathway to a magical realm of endless night skies. Filled with wonder, Lumina whispered a wish for all who dream to find their own hidden magic, and as she glanced back, her hoofprints sparkled like stardust.",
-        #           "annotations": []
-        #         }
-        #       ]
-        #     }
-        #   ],
-        #   "parallel_tool_calls": true,
-        #   "previous_response_id": null,
-        #   "reasoning": {
-        #     "effort": null,
-        #     "summary": null
-        #   },
-        #   "store": true,
-        #   "temperature": 1.0,
-        #   "text": {
-        #     "format": {
-        #       "type": "text"
-        #     }
-        #   },
-        #   "tool_choice": "auto",
-        #   "tools": [],
-        #   "top_p": 1.0,
-        #   "truncation": "disabled",
-        #   "usage": {
-        #     "input_tokens": 36,
-        #     "input_tokens_details": {
-        #       "cached_tokens": 0
-        #     },
-        #     "output_tokens": 87,
-        #     "output_tokens_details": {
-        #       "reasoning_tokens": 0
-        #     },
-        #     "total_tokens": 123
-        #   },
-        #   "user": null,
-        #   "metadata": {}
-        # }]
-
 
     async def prompt_async(self, prompt: str, images: list[ImageInput]=None, _chat=False) -> AsyncGenerator[tuple[str, str], None]:
 
@@ -280,115 +211,6 @@ class OpenAIResponsesModel(BaseModel):
         for event in response:
             if hasattr(event, 'delta'):
                 yield event.delta, ''  # Second value is reasoning (not available for OpenAI)
-        # Events can have different types:
-        # event: response.created
-        # data: {
-        #     "type":"response.created",
-        #     "response":{
-        #         "id":"resp_67c9fdcecf488190bdd9a0409de3a1ec07b8b0ad4e5eb654",
-        #         "object":"response",
-        #         "created_at":1741290958,
-        #         "status":"in_progress",
-        #         "error":null,
-        #         "incomplete_details":null,
-        #         "instructions":"You are a helpful assistant.",
-        #         "max_output_tokens":null,
-        #         "model":"gpt-4.1-2025-04-14","
-        #         output":[],"p
-        #         arallel_tool_calls":true,
-        #         "previous_response_id":null,
-        #         "reasoning":{
-        #             "effort":null,
-        #             "summary":null},
-        #         "store":true,
-        #         "temperature":1.0,
-        #         "text":{
-        #             "format":{
-        #                 "type":"text"}},
-        #         "tool_choice":"auto",
-        #         "tools":[],
-        #         "top_p":1.0,
-        #         "truncation":
-        #         "disabled",
-        #         "usage":null,
-        #         "user":null,
-        #         "metadata":{}}}
-        #
-        # event: response.in_progress
-        # data: {
-        #     "type":"response.in_progress",
-        #     "response":{"
-        #         id":"resp_67c9fdcecf488190bdd9a0409de3a1ec07b8b0ad4e5eb654",
-        #         "object":"response",
-        #         "created_at":1741290958,
-        #         "status":"in_progress",
-        #         "error":null,
-        #         "incomplete_details":null,
-        #         "instructions":"You are a helpful assistant.",
-        #         "max_output_tokens":null,
-        #         "model":"gpt-4.1-2025-04-14",
-        #         "output":[],
-        #         "parallel_tool_calls":true,
-        #         "previous_response_id":null,
-        #         "reasoning":{
-        #             "effort":null,
-        #             "summary":null},
-        #         "store":true,
-        #         "temperature":1.0,
-        #         "text":{
-        #             "format":{
-        #                 "type":"text"}},
-        #         "tool_choice":"auto",
-        #         "tools":[],
-        #         "top_p":1.0,
-        #         "truncation":"disabled",
-        #         "usage":null,
-        #         "user":null,
-        #         "metadata":{}}}
-        #
-        # event: response.output_item.added
-        # data: {
-        #     "type":"response.output_item.added",
-        #     "output_index":0,
-        #     "item":{
-        #         "id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654",
-        #         "type":"message","status":"
-        #         in_progress","
-        #         role":"assistant",
-        #         "content":[]}}
-        #
-        # event: response.content_part.added
-        # data: {
-        #     "type":"response.content_part.added",
-        #     "item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654",
-        #     "output_index":0,
-        #     "content_index":0,
-        #     "part":{
-        #         "type":"output_text",
-        #         "text":"",
-        #         "annotations":[]}}
-        #
-        # event: response.output_text.delta
-        # data: {
-        #     "type":"response.output_text.delta",
-        #     "item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654",
-        #     "output_index":0,
-        #     "content_index":0,
-        #     "delta":"Hi"}
-        #
-        # ...
-        #
-        # event: response.output_text.done
-        # data: {"type":"response.output_text.done","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"text":"Hi there! How can I assist you today?"}
-        #
-        # event: response.content_part.done
-        # data: {"type":"response.content_part.done","item_id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","output_index":0,"content_index":0,"part":{"type":"output_text","text":"Hi there! How can I assist you today?","annotations":[]}}
-        #
-        # event: response.output_item.done
-        # data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hi there! How can I assist you today?","annotations":[]}]}}
-        #
-        # event: response.completed
-        # data: {"type":"response.completed","response":{"id":"resp_67c9fdcecf488190bdd9a0409de3a1ec07b8b0ad4e5eb654","object":"response","created_at":1741290958,"status":"completed","error":null,"incomplete_details":null,"instructions":"You are a helpful assistant.","max_output_tokens":null,"model":"gpt-4.1-2025-04-14","output":[{"id":"msg_67c9fdcf37fc8190ba82116e33fb28c507b8b0ad4e5eb654","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hi there! How can I assist you today?","annotations":[]}]}],"parallel_tool_calls":true,"previous_response_id":null,"reasoning":{"effort":null,"summary":null},"store":true,"temperature":1.0,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":37,"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":48},"user":null,"metadata":{}}}
 
     def chat(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
              -> tuple[Any, int|None, int|None]:
@@ -521,14 +343,6 @@ class OpenAIResponsesModel(BaseModel):
         if not tools:
             return []
 
-        type_mapping = {
-            int: "integer",
-            str: "string",
-            float: "number",
-            bool: "boolean",
-            list: "array",
-            dict: "object"
-        }
         tool_spec = []
         for tool in tools:
             tool_spec += [{
@@ -539,7 +353,7 @@ class OpenAIResponsesModel(BaseModel):
                     "type": "object",
                     "properties": {
                         param_name: {
-                            "type": type_mapping.get(_type, "string"),  # Default to string if type not in map
+                            "type": JSON_TYPE_MAP.get(_type, "string"),  # Default to string if type not in map
                             "description": param_name,  # Or a more descriptive text if available
                         }
                         for param_name, _type in tool['parameters'].items()
@@ -548,52 +362,6 @@ class OpenAIResponsesModel(BaseModel):
                 }
             }]
         return tool_spec
-
-    @staticmethod
-    def transform_messages(messages: list[Message]) -> list[dict]:
-        transformed_messages = []
-
-        for message in messages:
-            msg = {"role": message.role}
-
-            # Handle tool messages (function calls and their results)
-            # Todo: tool use is geen onderdeel meer van message maar staat in de Model class.
-            if isinstance(message, ToolUseMessage):
-                if message.role == 'assistant' and 'function_to_call' in message.tool_use:
-                    # This is a function call from the assistant
-                    msg["content"] = None
-                    msg["tool_calls"] = [{
-                        "id": message.tool_use.get('call_id', 'call_' + str(hash(str(message.tool_use)))),
-                        "type": "function",
-                        "function": {
-                            "name": message.tool_use['function_to_call'],
-                            "arguments": json.dumps(message.tool_use['function_parameters'])
-                        }
-                    }]
-                elif message.role == 'tool':
-                    # This is a function result
-                    function_result = message.tool_use.get('function_result', '')
-                    if not isinstance(function_result, str):
-                        function_result = json.dumps(function_result)
-                    msg["content"] = function_result
-                    msg["tool_call_id"] = message.tool_use.get('call_id', '')
-                    msg["name"] = message.tool_use.get('function_to_call', '')
-            # Handle regular messages
-            else:
-                if message.images:
-                    content = [{"type": "text", "text": message.content or ""}]
-                    for image in message.images:
-                        content.append({
-                            "type": "image_url",
-                            "image_url": {'url': to_base64_data_uri(image)}
-                        })
-                    msg["content"] = content
-                else:
-                    msg["content"] = message.content or ""
-
-            transformed_messages.append(msg)
-
-        return transformed_messages
 
     def token_count(self, text: str) -> int:
         """ Returns the number of tokens in a string. """
@@ -670,20 +438,6 @@ class OpenAIResponsesModel(BaseModel):
 
         w, h = fit_size(size)
         return f'{w}x{h}'
-
-        """Pick the smallest Images API size that covers the target dimensions."""
-        if not size:
-            return 'auto'
-        w, h = size
-        # 1024x1024 covers any target up to 1024 in either dimension
-        if w <= 1024 and h <= 1024:
-            return '1024x1024'
-        ratio = w / h
-        if ratio > 1.2:
-            return '1536x1024'
-        elif ratio < 0.8:
-            return '1024x1536'
-        return '1024x1024'
 
     def _generate_image_api(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
         """Generate image via OpenAI Images API (gpt-image-2)."""

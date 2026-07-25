@@ -18,26 +18,42 @@ from justai.agent.tools import FileSystemTool, ShellTool, WebFetchTool
 from justai.tools.prompts import get_prompt, set_prompt_file, add_prompt_file
 
 
-def _get_version():
+def _get_version() -> str:
     try:
-        __version__ = version(__name__)
+        return version(__name__)
     except PackageNotFoundError:
-        with open(Path(__file__).parent / "pyproject.toml", "r") as f:
+        # Running from a source checkout: read the version straight out of pyproject.toml
+        with open(Path(__file__).parent / 'pyproject.toml') as f:
             for line in f:
-                if line.startswith("version ="):
+                if line.startswith('version ='):
                     return line.split('"')[1]
-            raise RuntimeError("Unable to find version")
+        raise RuntimeError('Unable to find version')
 
 
 __version__ = _get_version()
 
-# Use like this
-# from importlib.metadata import version
-# print(version("justai"))
-
-if __name__ == '__main__':
-    # Onderstaande om de voorkomen dat import optimizer ze leeg gooit
-    a = Model
-    g = get_prompt
-    s = set_prompt_file
-    apf = add_prompt_file
+# Explicit public API. Without this, every re-export above reads as an unused import.
+__all__ = [
+    '__version__',
+    'Model',
+    'ConnectionException',
+    'AuthorizationException',
+    'ModelOverloadException',
+    'RatelimitException',
+    'BadRequestException',
+    'TimeoutException',
+    'GeneralException',
+    'RefusalException',
+    'EffortDownmapWarning',
+    'Agent',
+    'AgentEvent',
+    'AgentResult',
+    'AuditEntry',
+    'AgentContext',
+    'FileSystemTool',
+    'ShellTool',
+    'WebFetchTool',
+    'get_prompt',
+    'set_prompt_file',
+    'add_prompt_file',
+]

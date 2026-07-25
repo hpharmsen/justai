@@ -1,14 +1,12 @@
 """ Handles the GPT API and the conversation state. """
-import json
 import time
 from pathlib import Path
-from typing import Optional, Union, List, Callable
+from typing import Callable
 
 from PIL.Image import Image
 
 from justai.models.basemodel import ImageInput
 from justai.tools.cache import cached_response, cache_save
-from justai.model.message import Message
 from justai.models.modelfactory import ModelFactory
 from justai.tools.images import crop_to_fit
 

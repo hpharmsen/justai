@@ -1,9 +1,5 @@
 import json
 
-from PIL import Image
-
-from justai.tools.images import is_image_url
-
 
 class Message:
     """

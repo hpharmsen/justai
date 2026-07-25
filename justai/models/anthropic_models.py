@@ -34,7 +34,7 @@ from typing import Any, AsyncGenerator
 
 import httpx
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, APIStatusError, AuthenticationError, \
-    PermissionDeniedError, APITimeoutError, RateLimitError, BadRequestError, InternalServerError
+    PermissionDeniedError, RateLimitError, BadRequestError, InternalServerError
 from dotenv import dotenv_values
 
 logger = logging.getLogger(__name__)
@@ -64,13 +64,13 @@ EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
 ]
 
 
-from justai.model.message import Message
 from justai.models.basemodel import (
     BaseModel,
     DEFAULT_TIMEOUT,
     ToolCallRequest,
     StreamChunk,
     identify_image_format_from_base64,
+    JSON_TYPE_MAP,
     ConnectionException,
     AuthorizationException,
     ModelOverloadException,
@@ -369,7 +369,7 @@ class AnthropicModel(BaseModel):
         
         antr_tools = transform_tools(tools or []) if tools is not None else None
 
-        for _ in range(3):
+        for _ in range(3):  # Max 3 function calls to prevent infinite loop
             try:
                 if stream:
                     if tools:
@@ -612,9 +612,8 @@ class AnthropicModel(BaseModel):
                             arguments=arguments,
                         ))
                         current_tool = None
-                elif event.type == 'message_delta':
-                    if hasattr(event.usage, 'output_tokens'):
-                        output_tokens = event.usage.output_tokens or 0
+                elif event.type == 'message_delta' and hasattr(event.usage, 'output_tokens'):
+                    output_tokens = event.usage.output_tokens or 0
 
         if tool_calls:
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
@@ -662,15 +661,6 @@ def transform_tools(tools: list[dict]) -> list[dict]:
     if not tools:
         return None
         
-    type_mapping = {
-        int: "integer",
-        str: "string",
-        float: "number",
-        bool: "boolean",
-        list: "array",
-        dict: "object",
-    }
-    
     transformed_tools = []
     
     for tool in tools:
@@ -689,7 +679,7 @@ def transform_tools(tools: list[dict]) -> list[dict]:
             # Add parameters to input_schema
             for param_name, param_type in tool.get("parameters", {}).items():
                 tool_def["input_schema"]["properties"][param_name] = {
-                    "type": type_mapping.get(param_type, "string"),
+                    "type": JSON_TYPE_MAP.get(param_type, "string"),
                     "description": param_name
                 }
                 

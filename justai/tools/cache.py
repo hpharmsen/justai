@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import os
 import json
@@ -121,10 +122,8 @@ class CacheDB:
                                         tokens_in INT,
                                         tokens_out INT,
                                         valid_until DATETIME)''')
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 cur.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
-            except sqlite3.OperationalError:
-                pass
             self.conn.commit()
             cur.close()
             self._initialized = True

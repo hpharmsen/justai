@@ -21,8 +21,7 @@ def extract_images(response):
 
         # a) Message met content -> zoek 'output_image' of 'image'
         if itype == "message":
-            for part in getattr(item, "content", []) or []: # Hier komt ie
-                ptype = getattr(part, "type", None)
+            for part in getattr(item, "content", []) or []:
                 img = getattr(part, "image", None)
                 # part.image.base64
                 if img is not None and hasattr(img, "base64"):
@@ -35,10 +34,9 @@ def extract_images(response):
                 images_b64.append(img.base64)
 
         # c) Sommige versies leveren een 'image_generation_call' met 'result'
-        if itype == "image_generation_call":
-            if hasattr(item, "result") and item.result: # Hier komt ie ook
-                # Kan al base64 string zijn
-                images_b64.append(item.result)
+        # Kan al base64 string zijn
+        if itype == "image_generation_call" and hasattr(item, "result") and item.result:
+            images_b64.append(item.result)
 
     # 2) Fallback: oudere voorbeelden met response.output[0].content[0].image.base64
     if not images_b64:
@@ -73,20 +71,22 @@ def get_image_type(image):
         raise ValueError("Unknown content type in message. Must be image url or PIL image or image data.")
 
 
-def to_base64_image(image) -> str:
-    """Convert image to base64 string."""
-    image_type = get_image_type(image)
-    match image_type:
+def _to_bytes(image) -> tuple[bytes, str | None]:
+    """Convert image to raw bytes. Returns (data, mime_type) where mime_type is None if unknown."""
+    match get_image_type(image):  # Raises ValueError on anything but the three known types
         case 'image_url':
-            img = httpx.get(image, headers=_HTTP_HEADERS).content
+            return httpx.get(image, headers=_HTTP_HEADERS).content, None
         case 'image_data':
-            img = image
-        case 'pil_image':
+            return image, None
+        case _:  # pil_image
             buffered = io.BytesIO()
             image.save(buffered, format="jpeg")
-            img = buffered.getvalue()
-        case _:
-            raise ValueError(f"Unknown image type: {image_type}")
+            return buffered.getvalue(), 'image/jpeg'
+
+
+def to_base64_image(image) -> str:
+    """Convert image to base64 string."""
+    img, _ = _to_bytes(image)
     return base64.b64encode(img).decode("utf-8")
 
 
@@ -107,36 +107,19 @@ def detect_mime_type(data: bytes) -> str:
 
 def to_base64_data_uri(image) -> str:
     """Convert image to base64 data URI with proper MIME type detection."""
-    image_type = get_image_type(image)
-    match image_type:
-        case 'image_url':
-            img_data = httpx.get(image, headers=_HTTP_HEADERS).content
-            mime_type = detect_mime_type(img_data)
-        case 'image_data':
-            img_data = image
-            mime_type = detect_mime_type(img_data)
-        case 'pil_image':
-            buffered = io.BytesIO()
-            image.save(buffered, format="jpeg")
-            img_data = buffered.getvalue()
-            mime_type = 'image/jpeg'
-        case _:
-            raise ValueError(f"Unknown image type: {image_type}")
+    img_data, mime_type = _to_bytes(image)
     b64 = base64.b64encode(img_data).decode("utf-8")
-    return f"data:{mime_type};base64,{b64}"
+    return f"data:{mime_type or detect_mime_type(img_data)};base64,{b64}"
 
 
 def to_pil_image(image):
-    image_type = get_image_type(image)
-    match image_type:
+    match get_image_type(image):  # Raises ValueError on anything but the three known types
         case 'image_url':
             return Image.open(io.BytesIO(httpx.get(image, headers=_HTTP_HEADERS).content))
         case 'image_data':
             return Image.open(io.BytesIO(image))
-        case 'pil_image':
+        case _:  # pil_image: return as-is, a JPEG roundtrip would lose quality and alpha
             return image
-        case _:
-            raise ValueError(f"Unknown image type: {image_type}")
 
 
 def is_image_url(url):
@@ -150,10 +133,7 @@ def is_image_url(url):
         r'(?::\d+)?'  # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-    if re.match(url_pattern, url):
-        if url.lower().endswith(image_extensions):
-            return True
-    return False
+    return bool(re.match(url_pattern, url)) and url.lower().endswith(image_extensions)
 
 
 def crop_to_fit(image: Image.Image, target_w: int, target_h: int) -> Image.Image:
@@ -172,5 +152,4 @@ def crop_to_fit(image: Image.Image, target_w: int, target_h: int) -> Image.Image
         top = (src_h - new_h) // 2
         box = (0, top, src_w, top + new_h)
 
-    cropped = image.crop(box)
-    return cropped.resize((target_w, target_h), Image.LANCZOS)
+    return image.crop(box).resize((target_w, target_h), Image.LANCZOS)

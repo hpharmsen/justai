@@ -10,11 +10,4 @@ def load_skills(skills_dir: str | Path) -> str:
     if not path.is_dir():
         raise ValueError(f'Skills path is not a directory: {skills_dir}')
 
-    md_files = sorted(path.glob('*.md'))
-    if not md_files:
-        return ''
-
-    parts = []
-    for f in md_files:
-        parts.append(f.read_text().strip())
-    return '\n\n'.join(parts)
+    return '\n\n'.join(f.read_text().strip() for f in sorted(path.glob('*.md')))
