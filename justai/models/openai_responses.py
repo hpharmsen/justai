@@ -13,25 +13,20 @@ Feature table:
 from __future__ import annotations
 import base64
 import json
-import os
 import re
 from io import BytesIO
 
 import httpx
 import pydantic
-from typing import Any, AsyncGenerator, List, Tuple
+from typing import Any, AsyncGenerator
 
 from jsonschema import exceptions, validators, Draft202012Validator
-import tiktoken
 from PIL import Image
-from dotenv import dotenv_values
-from openai import OpenAI, APIConnectionError, \
-    RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
+from openai import OpenAI
 
-from justai.tools.display import color_print, ERROR_COLOR
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ImageInput, ConnectionException, \
-    AuthorizationException, ModelOverloadException, RatelimitException, BadRequestException, GeneralException, \
-    JSON_TYPE_MAP, ToolCallRequest, StreamChunk
+from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ImageInput, get_api_key, JSON_TYPE_MAP, \
+    ToolCallRequest, StreamChunk
+from justai.models.openai_completions import map_openai_error, tiktoken_token_count
 from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
 
 
@@ -50,6 +45,16 @@ _EFFORT_MAP_GPT56 = {
 }
 
 
+def _validate_json_schema(schema: Any) -> None:
+    """Raise ValueError if schema is not a valid JSON Schema. Honours $schema when present."""
+    validator_cls = validators.validator_for(schema, default=Draft202012Validator)
+    try:
+        validator_cls.check_schema(schema)
+    except exceptions.SchemaError as e:
+        path = '/' + '/'.join(map(str, e.path)) if e.path else '(root)'
+        raise ValueError(f'response_format is not a valid JSON Schema [at {path}]: {e.message}') from e
+
+
 class OpenAIResponsesModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
@@ -57,12 +62,10 @@ class OpenAIResponsesModel(BaseModel):
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        api_key = params.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or dotenv_values()["OPENAI_API_KEY"]
-        if not api_key:
-            color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
-                        "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
+        api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI',
+                              'https://platform.openai.com/account/api-keys')
 
-        self.client = OpenAI(timeout=params.get('timeout', DEFAULT_TIMEOUT))
+        self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
 
         # Diversions from the features that are supported or not supported by default
         self.supports_function_calling = True
@@ -121,8 +124,7 @@ class OpenAIResponsesModel(BaseModel):
                                                     text_format=response_format,
                                                     previous_response_id=last_response_id)
                 elif response_format:
-                    ok, errors = is_valid_json_schema(response_format)
-                    assert ok, f"Response format should be a valid JSON Schema or Pydantic model: {errors}"
+                    _validate_json_schema(response_format)
                     response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
                                                      text={"format": {
                                                          "type": "json_schema",
@@ -137,18 +139,8 @@ class OpenAIResponsesModel(BaseModel):
                 else:
                     response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
                                                      previous_response_id=last_response_id)
-            except APITimeoutError as e:
-                raise ModelOverloadException(e)
-            except APIConnectionError as e:
-                raise ConnectionException(e)
-            except (AuthenticationError, PermissionDeniedError) as e:
-                raise AuthorizationException(e)
-            except RateLimitError as e:
-                raise RatelimitException(e)
-            except BadRequestError as e:
-                raise BadRequestException(e)
             except Exception as e:
-                raise GeneralException(e)
+                raise map_openai_error(e)
 
             # Save the response id for subsequent requests
             self.last_response_id = response.id if _chat else None
@@ -253,18 +245,8 @@ class OpenAIResponsesModel(BaseModel):
                 tools=tool_spec or [],
                 stream=True,
             )
-        except APITimeoutError as e:
-            raise ModelOverloadException(e)
-        except APIConnectionError as e:
-            raise ConnectionException(e)
-        except (AuthenticationError, PermissionDeniedError) as e:
-            raise AuthorizationException(e)
-        except RateLimitError as e:
-            raise RatelimitException(e)
-        except BadRequestError as e:
-            raise BadRequestException(e)
         except Exception as e:
-            raise GeneralException(e)
+            raise map_openai_error(e)
 
         # Track function calls: {output_index: {call_id, name, arguments_str}}
         pending_calls = {}
@@ -365,12 +347,7 @@ class OpenAIResponsesModel(BaseModel):
 
     def token_count(self, text: str) -> int:
         """ Returns the number of tokens in a string. """
-        try:
-            encoding = tiktoken.encoding_for_model(self.model_name)
-        except KeyError:
-            # Fall back to cl100k_base encoding for newer models not yet in tiktoken
-            encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
+        return tiktoken_token_count(self.model_name, text)
 
 
     def generate_image(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
@@ -380,6 +357,10 @@ class OpenAIResponsesModel(BaseModel):
 
     def _pick_image_api_size(self, size: tuple[int, int] | None) -> str:
         from math import sqrt
+
+        if not size:
+            raise ValueError(f'{self.model_name} requires an explicit size=(width, height) '
+                             'for image generation')
 
         def fit_size(size: tuple[int, int]) -> tuple[int, int]:
             """ OpenAI Size constraints:
@@ -521,75 +502,3 @@ class OpenAIResponsesModel(BaseModel):
         raw = base64.b64decode(images_b64[0])
         img = Image.open(BytesIO(raw))
         return img
-
-
-def is_valid_json_schema(schema: Any) -> Tuple[bool, List[str]]:
-    """
-    Check whether a Python object is a *valid JSON Schema* (meta-schema validation).
-
-    It auto-detects the draft via `$schema` when present and falls back to Draft 2020-12.
-    Returns (is_valid, errors) where errors is a list of human-readable messages.
-
-    Parameters
-    ----------
-    schema : Any
-        The candidate JSON Schema as a Python dict (or JSON-loaded structure).
-
-    Returns
-    -------
-    Tuple[bool, List[str]]
-        - True and [] when the input is a valid JSON Schema.
-        - False and a list of error messages when invalid.
-
-    Notes
-    -----
-    - This validates the *schema itself* against the appropriate meta-schema.
-    - It does not validate an instance/document *against* the schema.
-    """
-
-    def _format_iter_error(err: exceptions.ValidationError) -> str:
-        """Human-friendly error message for iter_errors results."""
-        # Build a JSON Pointer–like path for clarity
-        path = "/" + "/".join(map(str, err.path)) if err.path else "(root)"
-        schema_path = "#/" + "/".join(map(str, err.schema_path)) if err.schema_path else "#"
-        return f"[at {path}] {err.message}  (schema path: {schema_path})"
-
-
-    def _format_schema_error(err: exceptions.SchemaError) -> str:
-        """Format SchemaError raised by check_schema()."""
-        path = "/" + "/".join(map(str, err.path)) if getattr(err, "path", None) else "(root)"
-        schema_path = "#/" + "/".join(map(str, err.schema_path)) if getattr(err, "schema_path", None) else "#"
-        base = f"[at {path}] {err.message}  (schema path: {schema_path})"
-        if err.context:
-            # Include nested context messages (useful for 'oneOf', 'anyOf' diagnostics)
-            ctx = "; ".join(_format_iter_error(c) for c in err.context)  # type: ignore[arg-type]
-            return f"{base} | context: {ctx}"
-        return base
-
-    error_messages: List[str] = []
-
-    # 1) Pick the best validator class for the provided schema (uses `$schema` if present)
-    try:
-        ValidatorClass = validators.validator_for(schema, default=Draft202012Validator)  # type: ignore[attr-defined]
-    except Exception as e:
-        return False, [f"Unable to choose validator for schema (is it a dict?): {e!r}"]
-
-    # 2) Fast sanity check (raises on the first structural problem)
-    try:
-        ValidatorClass.check_schema(schema)
-    except exceptions.SchemaError as e:
-        # We still continue to collect *all* errors below for a complete report
-        error_messages.append(_format_schema_error(e))
-
-    # 3) Full meta-schema validation to gather all issues
-    try:
-        meta_validator = ValidatorClass(ValidatorClass.META_SCHEMA)  # type: ignore[arg-type]
-        errors = sorted(meta_validator.iter_errors(schema), key=lambda err: (list(err.path), err.message))
-        if errors:
-            for err in errors:
-                error_messages.append(_format_iter_error(err))
-    except Exception as e:
-        # If meta-validation itself fails, report that clearly
-        error_messages.append(f"Meta-validation failed: {e!r}")
-
-    return (len(error_messages) == 0), error_messages

@@ -1,14 +1,11 @@
 import base64
-import os
 from io import BytesIO
 
-from dotenv import dotenv_values
 from openai import OpenAI
 from PIL import Image
 
-from justai.models.basemodel import BaseModel, ImageInput, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, ImageInput, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
-from justai.tools.display import color_print, ERROR_COLOR
 from justai.tools.images import to_base64_data_uri
 
 
@@ -18,11 +15,8 @@ class OpenRouterModel(OpenAICompletionsModel):
         BaseModel.__init__(self, model_name, params, system_message)
 
         # Authentication
-        keyname = "OPENROUTER_API_KEY"
-        api_key = params.get(keyname) or os.getenv(keyname) or dotenv_values()[keyname]
-        if not api_key:
-            color_print("No OpenRouter API key found. Create one at https://openrouter.ai/settings/keys and " +
-                        f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
+        api_key = get_api_key(params, 'OPENROUTER_API_KEY', 'OpenRouter',
+                              'https://openrouter.ai/settings/keys')
         timeout = params.get('timeout', DEFAULT_TIMEOUT)
         self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=timeout)
 

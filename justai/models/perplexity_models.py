@@ -1,11 +1,8 @@
-import os
 
-from dotenv import dotenv_values
 from openai import OpenAI
 
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
-from justai.tools.display import color_print, ERROR_COLOR
 
 
 class PerplexityModel(OpenAICompletionsModel):
@@ -14,11 +11,8 @@ class PerplexityModel(OpenAICompletionsModel):
         BaseModel.__init__(self, model_name, params, system_message)
 
         # Authentication
-        keyname = "PERPLEXITY_API_KEY"
-        api_key = params.get(keyname) or os.getenv(keyname) or dotenv_values()[keyname]
-        if not api_key:
-            color_print(f"No {keyname} found. Create one at https://www.perplexity.ai/settings/api and " +
-                        f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
+        api_key = get_api_key(params, 'PERPLEXITY_API_KEY', 'Perplexity',
+                              'https://www.perplexity.ai/settings/api')
         timeout = params.get('timeout', DEFAULT_TIMEOUT)
         self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", timeout=timeout)
 

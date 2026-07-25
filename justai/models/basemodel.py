@@ -1,10 +1,15 @@
 import base64
+import inspect
+import os
 import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable, Optional, Union
 
+from dotenv import dotenv_values
 from PIL.Image import Image
+
+from justai.tools.display import ERROR_COLOR, color_print
 
 ImageInput = Optional[Union[
     list[str],
@@ -138,6 +143,16 @@ class BaseModel(ABC):
             raise (AttributeError(f"Model has no attribute {key}"))
         setattr(self, key, value)
 
+    def close(self) -> None:
+        """Close the provider's HTTP client. No-op for providers that don't hold one.
+
+        Async-only clients (AsyncAnthropic) are skipped: closing them needs a running
+        event loop, which a synchronous __exit__ cannot provide.
+        """
+        close = getattr(getattr(self, 'client', None), 'close', None)
+        if close and not inspect.iscoroutinefunction(close):
+            close()
+
     def _validate_effort(self, value: Any) -> None:
         """Raise ValueError if value is not a legal effort level for this provider."""
         if value is None:
@@ -208,6 +223,26 @@ class BaseModel(ABC):
     @abstractmethod
     def token_count(self, text: str) -> int:
         ...
+
+
+def get_api_key(params: dict, keynames: str | tuple[str, ...], provider: str, url: str) -> str:
+    """Resolve an API key from params, the environment or .env, in that order.
+
+    Pops the key out of `params` so it never leaks into the provider API call.
+    Raises AuthorizationException when no key is found, so a missing key surfaces at
+    construction time rather than as an opaque 401 on the first call.
+    """
+    names = (keynames,) if isinstance(keynames, str) else keynames
+    from_params = [params.pop(name, None) for name in names]  # Pop all, so none leak into api_params
+    env = dotenv_values()
+    for name, supplied in zip(names, from_params):
+        key = supplied or os.getenv(name) or env.get(name)
+        if key:
+            return key
+    keyname = names[0]
+    color_print(f'No {provider} API key found. Create one at {url} and '
+                f'set it in the .env file like {keyname}=here_comes_your_key.', color=ERROR_COLOR)
+    raise AuthorizationException(f'No {keyname} found')
 
 
 def identify_image_format_from_base64(encoded_data: str) -> str:

@@ -22,19 +22,16 @@ Supported parameters:
 
 """
 import json
-import os
 import re
 from io import BytesIO
 from typing import Any, AsyncGenerator
 
 from PIL import Image
-from dotenv import dotenv_values
 from google import genai
 
 from justai.model.model import ImageInput
 from justai.models.anthropic_models import extract_json
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, GeneralException, StreamChunk, ToolCallRequest
-from justai.tools.display import ERROR_COLOR, color_print
+from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT, GeneralException, StreamChunk, ToolCallRequest
 from justai.tools.images import to_pil_image
 
 
@@ -57,11 +54,8 @@ class GoogleModel(BaseModel):
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        api_key = params.get("GEMINI_API_KEY") or params.get("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or \
-                  os.getenv("GOOGLE_API_KEY") or dotenv_values()["GEMINI_API_KEY"] or dotenv_values()["GOOGLE_API_KEY"]
-        if not api_key:
-            color_print("No Google API key found. Create one at https://aistudio.google.com/app/apikey and " +
-                        "set it in the .env file like GOOGLE_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
+        api_key = get_api_key(params, ('GEMINI_API_KEY', 'GOOGLE_API_KEY'), 'Google',
+                              'https://aistudio.google.com/app/apikey')
 
         # Client (Google uses milliseconds for timeout)
         timeout_ms = int(params.get('timeout', DEFAULT_TIMEOUT) * 1000)

@@ -14,7 +14,6 @@ Supported parameters:
 
 import base64
 import json
-import os
 import sys
 from io import BytesIO
 
@@ -22,8 +21,7 @@ import httpx
 from PIL import Image
 
 from justai.model.model import ImageInput
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, GeneralException, BadRequestException
-from justai.tools.display import ERROR_COLOR, color_print
+from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT, GeneralException, BadRequestException
 from justai.tools.images import to_base64_image
 
 
@@ -35,10 +33,7 @@ class ReveModel(BaseModel):
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        self.api_key = params.get("REVE_API_KEY") or os.getenv("REVE_API_KEY")
-        if not self.api_key:
-            color_print("No REVE_API_KEY found. Create one at https://api.reve.com and " +
-                        "set it in the .env file like REVE_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
+        self.api_key = get_api_key(params, 'REVE_API_KEY', 'Reve', 'https://api.reve.com')
 
         # Diversions from the features that are supported or not supported by default
         self.supports_image_generation = True

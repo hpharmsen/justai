@@ -49,15 +49,13 @@ Supported parameters:
 
 import asyncio
 import json
-import os
 from typing import Any, AsyncGenerator
 
 import tiktoken
-from dotenv import dotenv_values
 from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
     RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
 
-from justai.tools.display import color_print, ERROR_COLOR, DEBUG_COLOR2
+from justai.tools.display import color_print, DEBUG_COLOR2
 from justai.models.basemodel import (
     BaseModel,
     DEFAULT_TIMEOUT,
@@ -68,11 +66,39 @@ from justai.models.basemodel import (
     BadRequestException,
     GeneralException,
     ImageInput,
+    get_api_key,
     JSON_TYPE_MAP,
     ToolCallRequest,
     StreamChunk,
 )
 from justai.tools.images import to_base64_image
+
+
+def map_openai_error(e: Exception) -> Exception:
+    """Translate an OpenAI SDK exception to the matching justai exception.
+
+    Order matters: APITimeoutError subclasses APIConnectionError, so it must come first.
+    """
+    if isinstance(e, APITimeoutError):
+        return ModelOverloadException(e)
+    if isinstance(e, APIConnectionError):
+        return ConnectionException(e)
+    if isinstance(e, (AuthenticationError, PermissionDeniedError)):
+        return AuthorizationException(e)
+    if isinstance(e, RateLimitError):
+        return RatelimitException(e)
+    if isinstance(e, BadRequestError):
+        return BadRequestException(e)
+    return GeneralException(e)
+
+
+def tiktoken_token_count(model_name: str, text: str) -> int:
+    """Count tokens with tiktoken, falling back to cl100k_base for models it doesn't know."""
+    try:
+        encoding = tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        encoding = tiktoken.get_encoding('cl100k_base')
+    return len(encoding.encode(text))
 
 
 class OpenAICompletionsModel(BaseModel):
@@ -82,10 +108,8 @@ class OpenAICompletionsModel(BaseModel):
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        api_key = params.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or dotenv_values()["OPENAI_API_KEY"]
-        if not api_key:
-            color_print("No OpenAI API key found. Create one at https://platform.openai.com/account/api-keys and " +
-                        "set it in the .env file like OPENAI_API_KEY=here_comes_your_key.", color=ERROR_COLOR)
+        api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI',
+                              'https://platform.openai.com/account/api-keys')
 
         self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
         self.supports_function_calling = True
@@ -234,20 +258,10 @@ class OpenAICompletionsModel(BaseModel):
                         **self.api_params,
                         **self._extra_api_kwargs(),
                     )
-            except APITimeoutError as e:
-                raise ModelOverloadException(e)
-            except APIConnectionError as e:
-                raise ConnectionException(e)
-            except (AuthenticationError, PermissionDeniedError) as e:
-                raise AuthorizationException(e)
-            except RateLimitError as e:
-                raise RatelimitException(e)
-            except BadRequestError as e:
-                raise BadRequestException(e)
             except NotImplementedError:
-                raise
+                raise  # Raised deliberately above; not an API failure
             except Exception as e:
-                raise GeneralException(e)
+                raise map_openai_error(e)
 
             # For streaming, return the stream directly
             if stream:
@@ -288,12 +302,7 @@ class OpenAICompletionsModel(BaseModel):
 
     def token_count(self, text: str) -> int:
         """ Returns the number of tokens in a string. """
-        try:
-            encoding = tiktoken.encoding_for_model(self.model_name)
-        except KeyError:
-            # Fall back to cl100k_base encoding for newer models not yet in tiktoken
-            encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
+        return tiktoken_token_count(self.model_name, text)
 
     @staticmethod
     def create_tool_spec(tools: list[dict]) -> list[dict]:
@@ -356,18 +365,8 @@ class OpenAICompletionsModel(BaseModel):
                 **self.api_params,
                 **self._extra_api_kwargs(),
             )
-        except APITimeoutError as e:
-            raise ModelOverloadException(e)
-        except APIConnectionError as e:
-            raise ConnectionException(e)
-        except (AuthenticationError, PermissionDeniedError) as e:
-            raise AuthorizationException(e)
-        except RateLimitError as e:
-            raise RatelimitException(e)
-        except BadRequestError as e:
-            raise BadRequestException(e)
         except Exception as e:
-            raise GeneralException(e)
+            raise map_openai_error(e)
 
         # Accumulate tool calls from streaming deltas
         pending_tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}

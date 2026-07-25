@@ -58,8 +58,7 @@ class Model:
 
     def close(self):
         """ Closes any open connections in the underlying model. """
-        if hasattr(self.model, 'close'):
-            self.model.close()
+        self.model.close()
 
     def __setattr__(self, name, value):
         if name not in self.__dict__ and hasattr(self, 'model') and name in self.model.model_params:
@@ -135,7 +134,7 @@ class Model:
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
     def prompt(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
-        self.raise_for_unsupported()
+        self.raise_for_unsupported(images, return_json)
 
         start_time = time.time()
         if images and not isinstance(images, list):
@@ -163,7 +162,7 @@ class Model:
         return _to_pydantic(result, response_format)
 
     def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=False):
-        self.raise_for_unsupported()
+        self.raise_for_unsupported(images, return_json)
         if cached:
             raise NotImplementedError("Model.chat does not support cached=True. Use prompt instead.")
 
@@ -180,7 +179,9 @@ class Model:
     
     async def prompt_async(self, prompt, *, images: ImageInput = None):
         # Using 'async for' to properly yield from the chat_async generator
-        async for content, reasoning in self.model.prompt_async(prompt=prompt):
+        if images and not isinstance(images, list):
+            images = [images]
+        async for content, reasoning in self.model.prompt_async(prompt=prompt, images=images):
             yield content, reasoning
 
     async def chat_async(self, prompt, *, images: ImageInput = None):

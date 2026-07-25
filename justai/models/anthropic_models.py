@@ -27,7 +27,6 @@ temperature: float (default 0.8)
 
 import json
 import logging
-import os
 import re
 import warnings
 from typing import Any, AsyncGenerator
@@ -35,7 +34,6 @@ from typing import Any, AsyncGenerator
 import httpx
 from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, APIStatusError, AuthenticationError, \
     PermissionDeniedError, RateLimitError, BadRequestError, InternalServerError
-from dotenv import dotenv_values
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +68,7 @@ from justai.models.basemodel import (
     ToolCallRequest,
     StreamChunk,
     identify_image_format_from_base64,
+    get_api_key,
     JSON_TYPE_MAP,
     ConnectionException,
     AuthorizationException,
@@ -80,8 +79,35 @@ from justai.models.basemodel import (
     RefusalException,
     ImageInput,
 )
-from justai.tools.display import ERROR_COLOR, color_print
 from justai.tools.images import to_base64_image
+
+
+def _map_anthropic_error(e: Exception) -> Exception:
+    """Translate an Anthropic SDK exception to the matching justai exception, logging at ERROR.
+
+    Order matters: RateLimitError, BadRequestError and InternalServerError are all
+    subclasses of APIStatusError, so the specific cases must be tested first.
+    """
+    if isinstance(e, APIConnectionError):
+        exc, label = ConnectionException(e), 'APIConnectionError'
+    elif isinstance(e, (AuthenticationError, PermissionDeniedError)):
+        exc, label = AuthorizationException(e), 'Auth'
+    elif isinstance(e, InternalServerError):
+        exc, label = ModelOverloadException(e), '500'
+    elif isinstance(e, RateLimitError):
+        exc, label = RatelimitException(e), 'RateLimit'
+    elif isinstance(e, BadRequestError):
+        exc, label = BadRequestException(e), 'BadRequest'
+    elif isinstance(e, APIStatusError):
+        status = getattr(e, 'status_code', None)
+        if status in (503, 529):  # Catches OverloadedError and any other unmapped status errors
+            exc, label = ModelOverloadException(e), f'Overloaded {status}'
+        else:
+            exc, label = GeneralException(e), f'APIStatusError {status or "?"}'
+    else:
+        exc, label = GeneralException(e), 'Unexpected'
+    logger.error(f'LLM call failed ({label}): {e!r}')
+    return exc
 
 
 class AnthropicModel(BaseModel):
@@ -92,17 +118,8 @@ class AnthropicModel(BaseModel):
         self.cached_prompt = None
 
         # Authentication
-        if "ANTHROPIC_API_KEY" in params:
-            api_key = params["ANTHROPIC_API_KEY"]
-            del params["ANTHROPIC_API_KEY"]
-        else:
-            api_key = os.getenv("ANTHROPIC_API_KEY") or dotenv_values()["ANTHROPIC_API_KEY"]
-        if not api_key:
-            color_print(
-                "No Anthropic API key found. Create one at https://console.anthropic.com/settings/keys and "
-                + "set it in the .env file like ANTHROPIC_API_KEY=here_comes_your_key.",
-                color=ERROR_COLOR,
-            )
+        api_key = get_api_key(params, 'ANTHROPIC_API_KEY', 'Anthropic',
+                              'https://console.anthropic.com/settings/keys')
 
         # Client — always create both sync and async clients
         timeout = httpx.Timeout(params.get('timeout', DEFAULT_TIMEOUT))
@@ -319,34 +336,13 @@ class AnthropicModel(BaseModel):
             # Re-raise directly for fallback handling in chat()
             # This happens when SDK doesn't support output_format/parse
             raise
-        except APIConnectionError as e:
-            logger.error(f'LLM call failed (APIConnectionError): {e!r}')
-            raise ConnectionException(e)
-        except (AuthenticationError, PermissionDeniedError) as e:
-            logger.error(f'LLM call failed (Auth): {e!r}')
-            raise AuthorizationException(e)
-        except InternalServerError as e:
-            logger.error(f'LLM call failed (500): {e!r}')
-            raise ModelOverloadException(e)
-        except RateLimitError as e:
-            logger.error(f'LLM call failed (RateLimit): {e!r}')
-            raise RatelimitException(e)
         except BadRequestError as e:
             # Re-raise "does not support output format" errors for fallback handling in chat()
             if 'does not support output format' in str(e):
                 raise
-            logger.error(f'LLM call failed (BadRequest): {e!r}')
-            raise BadRequestException(e)
-        except APIStatusError as e:
-            # Catches OverloadedError (529) and any other unmapped status errors.
-            if getattr(e, 'status_code', None) in (503, 529):
-                logger.error(f'LLM call failed (Overloaded {e.status_code}): {e!r}')
-                raise ModelOverloadException(e)
-            logger.error(f'LLM call failed (APIStatusError {getattr(e, "status_code", "?")}): {e!r}')
-            raise GeneralException(e)
+            raise _map_anthropic_error(e)
         except Exception as e:
-            logger.error(f'LLM call failed (Unexpected): {e!r}')
-            raise GeneralException(e)
+            raise _map_anthropic_error(e)
 
     async def prompt_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
         async for content, reasoning in self.chat_async(prompt, images):
@@ -423,7 +419,7 @@ class AnthropicModel(BaseModel):
                 
                 # Strip trailing assistant message for models that don't support prefill
                 if api_messages and api_messages[-1]['role'] == 'assistant' and NO_PREFILL_MODELS.search(self.model_name):
-                    api_messages = api_messages[:-1]
+                    api_params['messages'] = api_messages[:-1]
 
                 api_params['system'] = system_message
 
@@ -435,31 +431,10 @@ class AnthropicModel(BaseModel):
 
                 # Make the API call
                 result = self.client.messages.create(**api_params)
-            except APIConnectionError as e:
-                print("LLM call failed (APIConnectionError):", repr(e))
-                raise ConnectionException(e)
-            except (AuthenticationError, PermissionDeniedError) as e:
-                print("LLM call failed (Auth):", repr(e))
-                raise AuthorizationException(e)
-            except InternalServerError as e:
-                print("LLM call failed (500):", repr(e))
-                raise ModelOverloadException(e)
-            except RateLimitError as e:
-                print("LLM call failed (RateLimit):", repr(e))
-                raise RatelimitException(e)
-            except BadRequestError as e:
-                print("LLM call failed (BadRequest):", repr(e))
-                raise BadRequestException(e)
-            except APIStatusError as e:
-                # Catches OverloadedError (529) and any other unmapped status errors.
-                if getattr(e, 'status_code', None) in (503, 529):
-                    print(f"LLM call failed (Overloaded {e.status_code}):", repr(e))
-                    raise ModelOverloadException(e)
-                print(f"LLM call failed (APIStatusError {getattr(e, 'status_code', '?')}):", repr(e))
-                raise GeneralException(e)
+            except NotImplementedError:
+                raise  # Raised deliberately above for streaming+tools; not an API failure
             except Exception as e:
-                print("LLM call failed (Unexpected):", repr(e))
-                raise GeneralException(e)
+                raise _map_anthropic_error(e)
 
             # Refusal is deterministic; short-circuit retry loop.
             if getattr(result, 'stop_reason', None) == 'refusal':
@@ -561,23 +536,8 @@ class AnthropicModel(BaseModel):
 
         try:
             response = await self.async_client.messages.create(stream=True, **api_params)
-        except APIConnectionError as e:
-            raise ConnectionException(e)
-        except (AuthenticationError, PermissionDeniedError) as e:
-            raise AuthorizationException(e)
-        except InternalServerError as e:
-            raise ModelOverloadException(e)
-        except RateLimitError as e:
-            raise RatelimitException(e)
-        except BadRequestError as e:
-            raise BadRequestException(e)
-        except APIStatusError as e:
-            # Catches OverloadedError (529) and any other unmapped status errors.
-            if getattr(e, 'status_code', None) in (503, 529):
-                raise ModelOverloadException(e)
-            raise GeneralException(e)
         except Exception as e:
-            raise GeneralException(e)
+            raise _map_anthropic_error(e)
 
         input_tokens = 0
         output_tokens = 0

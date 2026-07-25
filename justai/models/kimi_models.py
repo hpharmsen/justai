@@ -1,11 +1,8 @@
-import os
 
-from dotenv import dotenv_values
 from openai import OpenAI
 
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
-from justai.tools.display import color_print, ERROR_COLOR
 
 
 class KimiModel(OpenAICompletionsModel):
@@ -14,14 +11,7 @@ class KimiModel(OpenAICompletionsModel):
         system_message = f'You are {model_name}, a large language model trained by Moonshot AI.'
         BaseModel.__init__(self, model_name, params, system_message)
 
-        keyname = 'MOONSHOT_API_KEY'
-        api_key = params.get(keyname) or os.getenv(keyname) or dotenv_values().get(keyname)
-        if not api_key:
-            color_print(
-                'No Moonshot API key found. Create one at https://platform.moonshot.ai/ and '
-                f'set it in the .env file like {keyname}=here_comes_your_key.',
-                color=ERROR_COLOR,
-            )
+        api_key = get_api_key(params, 'MOONSHOT_API_KEY', 'Moonshot', 'https://platform.moonshot.ai/')
         timeout = params.get('timeout', DEFAULT_TIMEOUT)
         self.client = OpenAI(api_key=api_key, base_url='https://api.moonshot.ai/v1', timeout=timeout)
 

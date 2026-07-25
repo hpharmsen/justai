@@ -1,11 +1,8 @@
-import os
 
-from dotenv import dotenv_values
 from openai import OpenAI
 
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT
 from justai.models.openai_completions import OpenAICompletionsModel
-from justai.tools.display import color_print, ERROR_COLOR
 
 
 class DeepSeekModel(OpenAICompletionsModel):
@@ -14,11 +11,8 @@ class DeepSeekModel(OpenAICompletionsModel):
         BaseModel.__init__(self, model_name, params, system_message)
 
         # Authentication
-        keyname = "DEEPSEEK_API_KEY"
-        api_key = params.get(keyname) or os.getenv(keyname) or dotenv_values()[keyname]
-        if not api_key:
-            color_print("No DEEPSEEK API key found. Create one at https://platform.deepseek.com/api_keys and " +
-                        f"set it in the .env file like {keyname}=here_comes_your_key.", color=ERROR_COLOR)
+        api_key = get_api_key(params, 'DEEPSEEK_API_KEY', 'DeepSeek',
+                              'https://platform.deepseek.com/api_keys')
         timeout = params.get('timeout', DEFAULT_TIMEOUT)
         self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=timeout)
 

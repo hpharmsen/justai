@@ -21,13 +21,6 @@ class Message:
                 raise ValueError("Invalid content type in message. Must be str or json serializable data.")
         self.images = images
 
-    @classmethod
-    def from_dict(cls, data: dict):
-        message = cls()
-        for key, value in data.items():
-            setattr(message, key, value)
-        return message
-
     def __bool__(self):
         return bool(self.content)
 
@@ -37,13 +30,6 @@ class Message:
         if self.images:
             res += f' [{len(self.images)} images]'
         return res
-
-    def to_dict(self):
-        dictionary = {}
-        for key, value in self.__dict__.items():
-            if value is not None:
-                dictionary[key] = value
-        return dictionary
 
 
 class ToolUseMessage(Message):
