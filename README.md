@@ -4,7 +4,7 @@ Package to make working with Large Language Models in Python super easy.
 Supports OpenAI, Anthropic Claude, Google Gemini, X Grok, DeepSeek, Perplexity, Reve, OpenRouter, Kimi (Moonshot) and local GGUF models.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
-Current version: 5.6.4
+Current version: 5.6.5
 
 ## Installation
 1. Install the package:
