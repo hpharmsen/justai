@@ -36,5 +36,9 @@ class ModelFactory:
         elif model_name.startswith("kimi") or model_name.startswith("moonshot"):
             from justai.models.kimi_models import KimiModel
             return KimiModel(model_name, params=kwargs)
+        elif model_name.lower().startswith("minimax"):
+            # Lowercased: MiniMax's own model ids are mixed case (MiniMax-M3) and the API is case-sensitive.
+            from justai.models.minimax_models import MiniMaxModel
+            return MiniMaxModel(model_name, params=kwargs)
         else:
             raise ValueError(f"Model {model_name} not supported")

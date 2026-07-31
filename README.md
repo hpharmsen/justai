@@ -1,7 +1,7 @@
 # JustAI
 
 Package to make working with Large Language Models in Python super easy.
-Supports OpenAI, Anthropic Claude, Google Gemini, X Grok, DeepSeek, Perplexity, Reve, OpenRouter, Kimi (Moonshot) and local GGUF models.
+Supports OpenAI, Anthropic Claude, Google Gemini, X Grok, DeepSeek, Perplexity, Reve, OpenRouter, Kimi (Moonshot), MiniMax and local GGUF models.
 
 Author: Hans-Peter Harmsen (hp@harmsen.nl) \
 Current version: 5.6.5
@@ -18,6 +18,7 @@ pip install justai
    - X AI: [console.x.ai](https://console.x.ai)
    - DeepSeek: [platform.deepseek.com](https://platform.deepseek.com)
    - Moonshot: [platform.moonshot.ai](https://platform.moonshot.ai/)
+   - MiniMax: [platform.minimax.io](https://platform.minimax.io/)
 
 3. Create a `.env` file with the relevant keys:
 ```bash
@@ -28,6 +29,7 @@ X_API_KEY=your-x-ai-api-key
 DEEPSEEK_API_KEY=your-deepseek-api-key
 PERPLEXITY_API_KEY=your-perplexity-api-key
 MOONSHOT_API_KEY=your-moonshot-api-key
+MINIMAX_API_KEY=your-minimax-api-key
 ```
 
 ## Basic usage
@@ -59,6 +61,7 @@ The provider is chosen automatically based on the model name prefix:
 | `reve*` | Reve |
 | `openrouter/*` | OpenRouter |
 | `kimi*`, `moonshot*` | Moonshot |
+| `minimax*` (case-insensitive) | MiniMax |
 | `*.gguf` | Local GGUF |
 
 ## Features
