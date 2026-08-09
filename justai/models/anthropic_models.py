@@ -64,7 +64,9 @@ EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
 
 from justai.models.basemodel import (
     BaseModel,
-    DEFAULT_TIMEOUT,
+    client_retry_kwargs,
+    client_timeout,
+    stream_timeout,
     ToolCallRequest,
     StreamChunk,
     identify_image_format_from_base64,
@@ -83,13 +85,22 @@ from justai.tools.images import to_base64_image
 
 
 def _map_anthropic_error(e: Exception) -> Exception:
-    """Translate an Anthropic SDK exception to the matching justai exception, logging at ERROR.
+    """Translate an Anthropic SDK exception to the matching justai exception, logging at WARNING.
+
+    WARNING, not ERROR: this runs on every failed attempt, and the caller may well
+    retry successfully. Only whoever gives up knows the failure is final, so the
+    ERROR (and with it the alert) belongs to the application, not to this library.
 
     Order matters: RateLimitError, BadRequestError and InternalServerError are all
     subclasses of APIStatusError, so the specific cases must be tested first.
     """
     if isinstance(e, APIConnectionError):
         exc, label = ConnectionException(e), 'APIConnectionError'
+    elif isinstance(e, httpx.TransportError):
+        # Mid-stream read failures (ReadError, ReadTimeout, RemoteProtocolError)
+        # surface as raw httpx errors: the SDK only wraps the request it issues
+        # itself, not the bytes we pull off an already-established stream.
+        exc, label = ConnectionException(e), f'httpx {type(e).__name__}'
     elif isinstance(e, (AuthenticationError, PermissionDeniedError)):
         exc, label = AuthorizationException(e), 'Auth'
     elif isinstance(e, InternalServerError):
@@ -106,7 +117,7 @@ def _map_anthropic_error(e: Exception) -> Exception:
             exc, label = GeneralException(e), f'APIStatusError {status or "?"}'
     else:
         exc, label = GeneralException(e), 'Unexpected'
-    logger.error(f'LLM call failed ({label}): {e!r}')
+    logger.warning(f'LLM call failed ({label}): {e!r}')
     return exc
 
 
@@ -122,16 +133,18 @@ class AnthropicModel(BaseModel):
                               'https://console.anthropic.com/settings/keys')
 
         # Client — always create both sync and async clients
-        timeout = httpx.Timeout(params.get('timeout', DEFAULT_TIMEOUT))
+        timeout = client_timeout(params)
+        retries = client_retry_kwargs(params)
         if params.get('async'):
             http_client = httpx.AsyncClient(timeout=timeout)
-            self.client = AsyncAnthropic(api_key=api_key, http_client=http_client)
+            self.client = AsyncAnthropic(api_key=api_key, http_client=http_client, **retries)
             self.async_client = self.client
         else:
             http_client = httpx.Client(timeout=timeout)
-            self.client = Anthropic(api_key=api_key, http_client=http_client)
+            self.client = Anthropic(api_key=api_key, http_client=http_client, **retries)
             async_http_client = httpx.AsyncClient(timeout=timeout)
-            self.async_client = AsyncAnthropic(api_key=api_key, http_client=async_http_client)
+            self.async_client = AsyncAnthropic(
+                api_key=api_key, http_client=async_http_client, **retries)
 
         # Required model parameters
         if 'max_tokens' not in params:
@@ -266,7 +279,9 @@ class AnthropicModel(BaseModel):
         try:
             return json.loads(response_str, strict=False)
         except json.decoder.JSONDecodeError:
-            logger.error(f'Error decoding JSON: {response_str[:200]}')
+            # WARNING: extract_json below recovers from this in most cases. The
+            # BadRequestException is the real failure, and the caller owns that.
+            logger.warning(f'Error decoding JSON: {response_str[:200]}')
             try:
                 return extract_json(response_str)
             except json.decoder.JSONDecodeError as e:
@@ -376,7 +391,8 @@ class AnthropicModel(BaseModel):
                         'messages': self.messages,
                         **self.api_params,
                     })
-                    return self.client.messages.create(stream=True, **stream_params)
+                    return self.client.messages.create(
+                        stream=True, timeout=stream_timeout(self.model_params), **stream_params)
                 
                 # Prepare messages for the API call
                 api_messages = []
@@ -535,7 +551,8 @@ class AnthropicModel(BaseModel):
         api_params = self._prepare_api_params(api_params)
 
         try:
-            response = await self.async_client.messages.create(stream=True, **api_params)
+            response = await self.async_client.messages.create(
+                stream=True, timeout=stream_timeout(self.model_params), **api_params)
         except Exception as e:
             raise _map_anthropic_error(e)
 
@@ -545,35 +562,41 @@ class AnthropicModel(BaseModel):
         current_tool = None  # {id, name, json_str}
         tool_calls = []
 
-        async with response as stream:
-            async for event in stream:
-                if event.type == 'message_start':
-                    if hasattr(event.message, 'usage') and event.message.usage:
-                        input_tokens = event.message.usage.input_tokens or 0
-                elif event.type == 'content_block_start':
-                    if hasattr(event.content_block, 'type') and event.content_block.type == 'tool_use':
-                        current_tool = {
-                            'id': event.content_block.id,
-                            'name': event.content_block.name,
-                            'json_str': '',
-                        }
-                elif event.type == 'content_block_delta':
-                    if hasattr(event.delta, 'type'):
-                        if event.delta.type == 'text_delta':
-                            yield StreamChunk(type='text', content=event.delta.text)
-                        elif event.delta.type == 'input_json_delta' and current_tool is not None:
-                            current_tool['json_str'] += event.delta.partial_json
-                elif event.type == 'content_block_stop':
-                    if current_tool is not None:
-                        arguments = json.loads(current_tool['json_str']) if current_tool['json_str'] else {}
-                        tool_calls.append(ToolCallRequest(
-                            id=current_tool['id'],
-                            name=current_tool['name'],
-                            arguments=arguments,
-                        ))
-                        current_tool = None
-                elif event.type == 'message_delta' and hasattr(event.usage, 'output_tokens'):
-                    output_tokens = event.usage.output_tokens or 0
+        # The stream can also fail while it is being read, not just while it is
+        # being opened. Those failures need the same mapping, otherwise raw httpx
+        # exceptions escape past every `except ConnectionException` the caller has.
+        try:
+            async with response as stream:
+                async for event in stream:
+                    if event.type == 'message_start':
+                        if hasattr(event.message, 'usage') and event.message.usage:
+                            input_tokens = event.message.usage.input_tokens or 0
+                    elif event.type == 'content_block_start':
+                        if hasattr(event.content_block, 'type') and event.content_block.type == 'tool_use':
+                            current_tool = {
+                                'id': event.content_block.id,
+                                'name': event.content_block.name,
+                                'json_str': '',
+                            }
+                    elif event.type == 'content_block_delta':
+                        if hasattr(event.delta, 'type'):
+                            if event.delta.type == 'text_delta':
+                                yield StreamChunk(type='text', content=event.delta.text)
+                            elif event.delta.type == 'input_json_delta' and current_tool is not None:
+                                current_tool['json_str'] += event.delta.partial_json
+                    elif event.type == 'content_block_stop':
+                        if current_tool is not None:
+                            arguments = json.loads(current_tool['json_str']) if current_tool['json_str'] else {}
+                            tool_calls.append(ToolCallRequest(
+                                id=current_tool['id'],
+                                name=current_tool['name'],
+                                arguments=arguments,
+                            ))
+                            current_tool = None
+                    elif event.type == 'message_delta' and hasattr(event.usage, 'output_tokens'):
+                        output_tokens = event.usage.output_tokens or 0
+        except Exception as e:
+            raise _map_anthropic_error(e)
 
         if tool_calls:
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)

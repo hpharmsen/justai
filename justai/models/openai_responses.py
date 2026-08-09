@@ -24,8 +24,8 @@ from jsonschema import exceptions, validators, Draft202012Validator
 from PIL import Image
 from openai import OpenAI
 
-from justai.models.basemodel import BaseModel, DEFAULT_TIMEOUT, ImageInput, get_api_key, JSON_TYPE_MAP, \
-    ToolCallRequest, StreamChunk
+from justai.models.basemodel import BaseModel, ImageInput, get_api_key, JSON_TYPE_MAP, \
+    ToolCallRequest, StreamChunk, client_retry_kwargs, client_timeout
 from justai.models.openai_completions import map_openai_error, tiktoken_token_count
 from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
 
@@ -65,7 +65,7 @@ class OpenAIResponsesModel(BaseModel):
         api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI',
                               'https://platform.openai.com/account/api-keys')
 
-        self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
+        self.client = OpenAI(api_key=api_key, timeout=client_timeout(params), **client_retry_kwargs(params))
 
         # Diversions from the features that are supported or not supported by default
         self.supports_function_calling = True

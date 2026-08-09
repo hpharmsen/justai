@@ -30,3 +30,4 @@ justai/saves
 *.gguf
 AGENTS.md
 .codex/
+models

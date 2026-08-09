@@ -51,6 +51,7 @@ import asyncio
 import json
 from typing import Any, AsyncGenerator
 
+import httpx
 import tiktoken
 from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
     RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
@@ -58,7 +59,9 @@ from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
 from justai.tools.display import color_print, DEBUG_COLOR2
 from justai.models.basemodel import (
     BaseModel,
-    DEFAULT_TIMEOUT,
+    client_retry_kwargs,
+    client_timeout,
+    stream_timeout,
     ConnectionException,
     AuthorizationException,
     ModelOverloadException,
@@ -82,6 +85,11 @@ def map_openai_error(e: Exception) -> Exception:
     if isinstance(e, APITimeoutError):
         return ModelOverloadException(e)
     if isinstance(e, APIConnectionError):
+        return ConnectionException(e)
+    if isinstance(e, httpx.TransportError):
+        # Mid-stream read failures (ReadError, ReadTimeout, RemoteProtocolError)
+        # surface as raw httpx errors: the SDK only wraps the request it issues
+        # itself, not the bytes we pull off an already-established stream.
         return ConnectionException(e)
     if isinstance(e, (AuthenticationError, PermissionDeniedError)):
         return AuthorizationException(e)
@@ -111,7 +119,7 @@ class OpenAICompletionsModel(BaseModel):
         api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI',
                               'https://platform.openai.com/account/api-keys')
 
-        self.client = OpenAI(api_key=api_key, timeout=params.get('timeout', DEFAULT_TIMEOUT))
+        self.client = OpenAI(api_key=api_key, timeout=client_timeout(params), **client_retry_kwargs(params))
         self.supports_function_calling = True
         # Provider-specific hook for extra kwargs (e.g. OpenRouter passes reasoning via extra_body).
 
@@ -362,6 +370,7 @@ class OpenAICompletionsModel(BaseModel):
                 messages=messages,
                 tools=tool_spec,
                 stream=True,
+                timeout=stream_timeout(self.model_params),
                 **self.api_params,
                 **self._extra_api_kwargs(),
             )
@@ -373,44 +382,50 @@ class OpenAICompletionsModel(BaseModel):
         input_tokens = 0
         output_tokens = 0
 
-        for chunk in response:
-            if not chunk.choices:
-                # Usage chunk (some providers send usage in a separate chunk)
+        # The stream can also fail while it is being read, not just while it is
+        # being opened. Those failures need the same mapping, otherwise raw httpx
+        # exceptions escape past every `except ConnectionException` the caller has.
+        try:
+            for chunk in response:
+                if not chunk.choices:
+                    # Usage chunk (some providers send usage in a separate chunk)
+                    if chunk.usage:
+                        input_tokens = chunk.usage.prompt_tokens or 0
+                        output_tokens = chunk.usage.completion_tokens or 0
+                    continue
+
+                delta = chunk.choices[0].delta
+                if not delta:
+                    continue
+
+                # Text content
+                if delta.content:
+                    yield StreamChunk(type='text', content=delta.content)
+
+                # Tool call deltas
+                if delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in pending_tool_calls:
+                            pending_tool_calls[idx] = {
+                                'id': tc_delta.id or '',
+                                'name': tc_delta.function.name if tc_delta.function and tc_delta.function.name else '',
+                                'arguments': '',
+                            }
+                        else:
+                            if tc_delta.id:
+                                pending_tool_calls[idx]['id'] = tc_delta.id
+                            if tc_delta.function and tc_delta.function.name:
+                                pending_tool_calls[idx]['name'] = tc_delta.function.name
+                        if tc_delta.function and tc_delta.function.arguments:
+                            pending_tool_calls[idx]['arguments'] += tc_delta.function.arguments
+
+                # Usage from chunk
                 if chunk.usage:
                     input_tokens = chunk.usage.prompt_tokens or 0
                     output_tokens = chunk.usage.completion_tokens or 0
-                continue
-
-            delta = chunk.choices[0].delta
-            if not delta:
-                continue
-
-            # Text content
-            if delta.content:
-                yield StreamChunk(type='text', content=delta.content)
-
-            # Tool call deltas
-            if delta.tool_calls:
-                for tc_delta in delta.tool_calls:
-                    idx = tc_delta.index
-                    if idx not in pending_tool_calls:
-                        pending_tool_calls[idx] = {
-                            'id': tc_delta.id or '',
-                            'name': tc_delta.function.name if tc_delta.function and tc_delta.function.name else '',
-                            'arguments': '',
-                        }
-                    else:
-                        if tc_delta.id:
-                            pending_tool_calls[idx]['id'] = tc_delta.id
-                        if tc_delta.function and tc_delta.function.name:
-                            pending_tool_calls[idx]['name'] = tc_delta.function.name
-                    if tc_delta.function and tc_delta.function.arguments:
-                        pending_tool_calls[idx]['arguments'] += tc_delta.function.arguments
-
-            # Usage from chunk
-            if chunk.usage:
-                input_tokens = chunk.usage.prompt_tokens or 0
-                output_tokens = chunk.usage.completion_tokens or 0
+        except Exception as e:
+            raise map_openai_error(e)
 
         # Emit accumulated tool calls
         if pending_tool_calls:

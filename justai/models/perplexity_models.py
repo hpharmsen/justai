@@ -1,7 +1,7 @@
 
 from openai import OpenAI
 
-from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, client_retry_kwargs, client_timeout
 from justai.models.openai_completions import OpenAICompletionsModel
 
 
@@ -13,8 +13,7 @@ class PerplexityModel(OpenAICompletionsModel):
         # Authentication
         api_key = get_api_key(params, 'PERPLEXITY_API_KEY', 'Perplexity',
                               'https://www.perplexity.ai/settings/api')
-        timeout = params.get('timeout', DEFAULT_TIMEOUT)
-        self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", timeout=timeout)
+        self.client = OpenAI(api_key=api_key, base_url="https://api.perplexity.ai", timeout=client_timeout(params), **client_retry_kwargs(params))
 
         self.messages = [{"role": "system", "content": self.system_message}]
 

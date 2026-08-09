@@ -8,8 +8,8 @@ from typing import Any, AsyncGenerator, Callable
 from justai.agent.skills import load_skills
 from justai.model.model import Model
 from justai.models.basemodel import (
-    JSON_TYPE_MAP, ToolCallRequest,
-    RatelimitException, AuthorizationException,
+    JSON_TYPE_MAP, ToolCallRequest, DEFAULT_AGENT_RETRIES,
+    RatelimitException, AuthorizationException, ConnectionException,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class Agent:
         goal: str = '',
         skills_dir: str | None = None,
         tools: list | None = None,
-        max_retries: int = 3,
+        max_retries: int | None = None,
         max_iterations: int = 50,
         verbose: bool = True,
         **model_kwargs,
@@ -99,6 +99,10 @@ class Agent:
         self.role = role
         self.goal = goal
         self.skills_dir = skills_dir
+        # One knob for both layers: Model(..., max_retries=0) has to switch off the
+        # agent's retries too, otherwise a caller under a deadline still gets three.
+        if max_retries is None:
+            max_retries = self.model.model.model_params.get('max_retries', DEFAULT_AGENT_RETRIES)
         self.max_retries = max_retries
         self.max_iterations = max_iterations
         self.verbose = verbose
@@ -293,6 +297,22 @@ class Agent:
                         yield AgentEvent(type='done', result=self._build_result(tasks_content, iteration + 1))
                         return
                     yield AgentEvent(type='status', message=f'Rate limited, retrying ({retry_count}/{self.max_retries})...')
+                    import asyncio
+                    await asyncio.sleep(2 ** retry_count)
+                except ConnectionException:
+                    # A dropped stream is only safe to replay while nothing has
+                    # left this step yet. Once text has streamed to the caller or
+                    # a tool call is pending, a retry would duplicate output or
+                    # re-run side effects, so the failure has to surface.
+                    if response_text or tool_calls:
+                        raise
+                    retry_count += 1
+                    if retry_count > self.max_retries:
+                        raise
+                    yield AgentEvent(
+                        type='status',
+                        message=f'Connection lost, retrying ({retry_count}/{self.max_retries})...',
+                    )
                     import asyncio
                     await asyncio.sleep(2 ** retry_count)
                 except AuthorizationException as e:

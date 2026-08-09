@@ -4,7 +4,7 @@ from io import BytesIO
 from openai import OpenAI
 from PIL import Image
 
-from justai.models.basemodel import get_api_key, BaseModel, ImageInput, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, ImageInput, client_retry_kwargs, client_timeout
 from justai.models.openai_completions import OpenAICompletionsModel
 from justai.tools.images import to_base64_data_uri
 
@@ -17,8 +17,7 @@ class OpenRouterModel(OpenAICompletionsModel):
         # Authentication
         api_key = get_api_key(params, 'OPENROUTER_API_KEY', 'OpenRouter',
                               'https://openrouter.ai/settings/keys')
-        timeout = params.get('timeout', DEFAULT_TIMEOUT)
-        self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=timeout)
+        self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=client_timeout(params), **client_retry_kwargs(params))
 
         self.messages = [{"role": "system", "content": self.system_message}]
         self.supports_image_generation = True

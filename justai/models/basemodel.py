@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable, Optional, Union
 
+import httpx
 from dotenv import dotenv_values
 from PIL.Image import Image
 
@@ -23,6 +24,50 @@ ImageInput = Optional[Union[
 
 # Default timeout in seconds for all API calls
 DEFAULT_TIMEOUT = 120.0
+
+# Retries performed by the provider SDK itself. None means "leave the SDK default"
+# (2 for both the Anthropic and OpenAI clients). Pass max_retries=0 when the call
+# runs under a hard deadline, e.g. inside a web request: an LLM call takes 5-20s,
+# so a single blind retry already blows a 30s budget.
+DEFAULT_MAX_RETRIES = None
+
+# Retries the agent loop performs itself, when max_retries is not given anywhere.
+DEFAULT_AGENT_RETRIES = 3
+
+# Connecting, writing and pool-waiting never legitimately take long; only reading
+# can. One flat timeout for all four means a dead connection hangs for the full
+# read budget before anyone notices.
+CONNECT_TIMEOUT = 10.0
+
+# Silence *between* two chunks of a stream. A healthy stream emits every few
+# hundred ms, so 30s of nothing means the connection is gone. This does not cap
+# the total length of a response, only the gaps in it.
+STREAM_READ_TIMEOUT = 30.0
+
+
+def client_retry_kwargs(params: dict) -> dict:
+    """max_retries kwarg for a provider SDK client; empty dict keeps the SDK default."""
+    max_retries = params.get('max_retries', DEFAULT_MAX_RETRIES)
+    return {} if max_retries is None else {'max_retries': max_retries}
+
+
+def client_timeout(params: dict) -> httpx.Timeout:
+    """Timeout for the SDK client. Read stays generous: a non-streaming call waits
+    for the entire answer in one read, so tightening it would break long generations."""
+    return httpx.Timeout(
+        params.get('timeout', DEFAULT_TIMEOUT),
+        connect=CONNECT_TIMEOUT, write=CONNECT_TIMEOUT, pool=CONNECT_TIMEOUT,
+    )
+
+
+def stream_timeout(params: dict) -> httpx.Timeout:
+    """Timeout for one streaming request. Read applies per chunk here, so it can be
+    far tighter than the client default without capping the total response."""
+    read = min(params.get('timeout', DEFAULT_TIMEOUT), STREAM_READ_TIMEOUT)
+    return httpx.Timeout(
+        read, connect=CONNECT_TIMEOUT, write=CONNECT_TIMEOUT, pool=CONNECT_TIMEOUT,
+    )
+
 
 # Python type -> JSON Schema type, shared by every provider's tool-spec builder.
 JSON_TYPE_MAP: dict[type, str] = {
@@ -92,7 +137,7 @@ class BaseModel(ABC):
 
     # Keys that live in model_params but must not be forwarded to provider APIs.
     # Subclasses extend by overriding with a broader frozenset.
-    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'async', 'debug', 'effort'})
+    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'max_retries', 'async', 'debug', 'effort'})
 
     # Levels the user may pass as `effort=...`. Providers may extend (e.g. OpenAI adds 'none').
     EFFORT_VALID: frozenset[str] = UNIVERSAL_EFFORT_LEVELS

@@ -3,7 +3,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT
+from justai.models.basemodel import get_api_key, BaseModel, client_retry_kwargs, client_timeout
 from justai.models.openai_responses import OpenAIResponsesModel
 
 
@@ -27,8 +27,7 @@ class XAIModel(OpenAIResponsesModel):
 
         # Authentication
         api_key = get_api_key(params, 'X_API_KEY', 'X AI', 'https://console.x.ai')
-        timeout = params.get('timeout', DEFAULT_TIMEOUT)
-        self.client = OpenAI(api_key=api_key, base_url='https://api.x.ai/v1', timeout=timeout)
+        self.client = OpenAI(api_key=api_key, base_url='https://api.x.ai/v1', timeout=client_timeout(params), **client_retry_kwargs(params))
 
         self.supports_image_generation = False
         self.last_response_id = None
