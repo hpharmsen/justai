@@ -175,6 +175,32 @@ def test_cache_key_includes_system_prompt():
     print('  OK: system prompt is part of the cache key')
 
 
+def test_json_prompt_hits_the_cache_on_the_second_call():
+    """A dict result must survive the cache; without serialisation cached=True was a no-op."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _reset_cachedb_singleton()
+        set_cache_dir(tmpdir)
+        try:
+            calls = []
+            model = Model('gemini-2.5-flash', GEMINI_API_KEY='k')
+            answer = {'name': 'HP', 'days': [1, 2, 3]}
+
+            def fake_prompt(prompt, images=None, tools=None, return_json=False, response_format=None):
+                calls.append(prompt)
+                return (answer, 1, 2)
+
+            model.model.prompt = fake_prompt
+
+            assert model.prompt('give me json', return_json=True) == answer
+            assert model.prompt('give me json', return_json=True) == answer
+            assert len(calls) == 1, 'second JSON call should hit the cache'
+        finally:
+            _reset_cachedb_singleton()
+            set_cache_dir('')
+
+    print('  OK: a JSON prompt is served from the cache on the second call')
+
+
 def test_failed_cache_write_logs_a_warning():
     """A value sqlite cannot bind must not crash, but must not be silent either."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -207,5 +233,6 @@ if __name__ == '__main__':
     test_parallel_cached_llm_response_single_chat_call()
     test_parallel_writes_distinct_keys_no_errors()
     test_cache_key_includes_system_prompt()
+    test_json_prompt_hits_the_cache_on_the_second_call()
     test_failed_cache_write_logs_a_warning()
     print('\nAll cache tests passed!')

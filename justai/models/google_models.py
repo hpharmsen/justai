@@ -34,7 +34,7 @@ from google.genai.errors import APIError
 from justai.model.model import ImageInput
 from justai.models.anthropic_models import extract_json
 from justai.models.basemodel import (
-    get_api_key, BaseModel, DEFAULT_TIMEOUT, StreamChunk, ToolCallRequest,
+    get_api_key, BaseModel, DEFAULT_TIMEOUT, StreamChunk, ToolCallRequest, client_retry_attempts,
     AuthorizationException, BadRequestException, ConnectionException, GeneralException,
     ModelOverloadException, RatelimitException, TimeoutException, TruncatedResponseException,
 )
@@ -98,7 +98,12 @@ class GoogleModel(BaseModel):
 
         # Client (Google uses milliseconds for timeout)
         timeout_ms = int(params.get('timeout', DEFAULT_TIMEOUT) * 1000)
-        http_options = genai.types.HttpOptions(timeout=timeout_ms)
+        # google-genai counts attempts, not retries, and never retries when retry_options is
+        # absent. Leave it absent unless max_retries was given, so the kwarg means the same
+        # here as at Anthropic and OpenAI instead of vanishing.
+        attempts = client_retry_attempts(params)
+        retries = {} if attempts is None else {'retry_options': genai.types.HttpRetryOptions(attempts=attempts)}
+        http_options = genai.types.HttpOptions(timeout=timeout_ms, **retries)
         self.client = genai.Client(api_key=api_key, http_options=http_options)
         self.chat_session = None  # Google uses this to keep track of the chat
 

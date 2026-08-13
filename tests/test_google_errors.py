@@ -173,3 +173,26 @@ def test_non_api_kwargs_are_accepted():
     """timeout/max_retries/debug/effort are consumed elsewhere, not by the Google API."""
     m = Model('gemini-2.5-flash', GEMINI_API_KEY='k', timeout=5, max_retries=3, debug=True)
     assert m.model.api_params == {}
+
+
+# ---------------------------------------------------------------------------
+# 5. max_retries reaches the Google client instead of vanishing
+# ---------------------------------------------------------------------------
+
+def _retry_options(model: Model):
+    return model.model.client._api_client._http_options.retry_options
+
+
+def test_max_retries_reaches_the_google_client():
+    """max_retries counts retries; google-genai counts attempts, so 3 becomes 4."""
+    assert _retry_options(Model('gemini-2.5-flash', GEMINI_API_KEY='k', max_retries=3)).attempts == 4
+
+
+def test_max_retries_zero_means_one_attempt():
+    """0 must not fall through to the SDK default of 5 attempts."""
+    assert _retry_options(Model('gemini-2.5-flash', GEMINI_API_KEY='k', max_retries=0)).attempts == 1
+
+
+def test_without_max_retries_the_sdk_default_stands():
+    """No kwarg, no retry_options: nothing is stacked on a caller's own retry layer."""
+    assert _retry_options(Model('gemini-2.5-flash', GEMINI_API_KEY='k')) is None

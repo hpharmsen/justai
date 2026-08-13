@@ -51,6 +51,12 @@ def client_retry_kwargs(params: dict) -> dict:
     return {} if max_retries is None else {'max_retries': max_retries}
 
 
+def client_retry_attempts(params: dict) -> int | None:
+    """max_retries as an attempt count (initial call included); None keeps the SDK default."""
+    max_retries = params.get('max_retries', DEFAULT_MAX_RETRIES)
+    return None if max_retries is None else max_retries + 1
+
+
 def client_timeout(params: dict) -> httpx.Timeout:
     """Timeout for the SDK client. Read stays generous: a non-streaming call waits
     for the entire answer in one read, so tightening it would break long generations."""

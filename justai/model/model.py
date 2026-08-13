@@ -1,4 +1,5 @@
 """ Handles the GPT API and the conversation state. """
+import json
 import time
 from pathlib import Path
 from typing import Callable
@@ -9,6 +10,12 @@ from justai.models.basemodel import ImageInput
 from justai.tools.cache import cached_response, cache_save
 from justai.models.modelfactory import ModelFactory
 from justai.tools.images import crop_to_fit
+
+
+def _cache_encode(result) -> str:
+    """Serialise a structured result so sqlite can bind it; pydantic objects dump themselves."""
+    dump = getattr(result, 'model_dump_json', None)
+    return dump() if dump else json.dumps(result)
 
 
 def _to_pydantic(result, response_format):
@@ -140,6 +147,9 @@ class Model:
         if images and not isinstance(images, list):
             images = [images]
 
+        # sqlite binds strings, not dicts, so a structured result is stored serialised and
+        # parsed back on a hit. Without this every write failed and cached=True was a no-op.
+        structured = bool(return_json or response_format)
         response = None
 
         if cached:
@@ -149,12 +159,15 @@ class Model:
 
         if response:
             result, _, _ = response
+            if structured:
+                result = json.loads(result)
             self.input_token_count = self.output_token_count = 0
         else:
             response = self.model.prompt(prompt, images=images, tools=self.tools, return_json=return_json,
                                          response_format=response_format)
             if cached:
-                cache_save(response, self.model.model_name, self.model.model_params,
+                stored = (_cache_encode(response[0]), *response[1:]) if structured else response
+                cache_save(stored, self.model.model_name, self.model.model_params,
                            self.model.system_message, prompt, images, self.tools,
                            return_json, response_format)
 
