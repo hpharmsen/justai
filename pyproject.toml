@@ -45,3 +45,12 @@ build-backend = "hatchling.build"
 dev = [
     "pytest>=9.0.3",
 ]
+
+# Legt de projectstijl uit CLAUDE.md vast, zodat ruff format hem niet terugdraait.
+# Gemeten op deze repo: zonder sectie 4837 diffregels, met alleen line-length 3794,
+# met enkele quotes erbij 1922.
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "single"
