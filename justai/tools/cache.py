@@ -1,5 +1,6 @@
 import contextlib
 import hashlib
+import logging
 import os
 import json
 import sqlite3
@@ -10,6 +11,8 @@ from typing import Any
 from justdays import Day
 
 from justai.model.message import Message
+
+logger = logging.getLogger(__name__)
 
 # Type alias for cache response tuple: (value, tokens_in, tokens_out)
 CacheResponse = tuple[str | object, int | None, int | None]
@@ -140,8 +143,10 @@ class CacheDB:
                                         VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
                 self.conn.commit()
                 cur.close()
-        except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.IntegrityError):
-            pass  # Something went wrong. Whatever, just don't add to the cache but never crash
+        except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.IntegrityError) as e:
+            # Never crash over a cache write, but never do it silently either: an unbindable
+            # value type makes every call of that kind miss the cache, forever, unnoticed.
+            logger.warning(f'Cache write failed for {key}: {e!r}')
 
     def read(self, key: str) -> tuple[str, int, int] | None:
         """Read a response from the cache by key."""

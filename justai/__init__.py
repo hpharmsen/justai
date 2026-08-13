@@ -10,6 +10,7 @@ from justai.models.basemodel import (
     BadRequestException,
     TimeoutException,
     GeneralException,
+    TruncatedResponseException,
     RefusalException,
     EffortDownmapWarning,
 )
@@ -43,6 +44,7 @@ __all__ = [
     'BadRequestException',
     'TimeoutException',
     'GeneralException',
+    'TruncatedResponseException',
     'RefusalException',
     'EffortDownmapWarning',
     'Agent',

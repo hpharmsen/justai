@@ -22,17 +22,25 @@ Supported parameters:
 
 """
 import json
+import logging
 import re
 from io import BytesIO
 from typing import Any, AsyncGenerator
 
 from PIL import Image
 from google import genai
+from google.genai.errors import APIError
 
 from justai.model.model import ImageInput
 from justai.models.anthropic_models import extract_json
-from justai.models.basemodel import get_api_key, BaseModel, DEFAULT_TIMEOUT, GeneralException, StreamChunk, ToolCallRequest
+from justai.models.basemodel import (
+    get_api_key, BaseModel, DEFAULT_TIMEOUT, StreamChunk, ToolCallRequest,
+    AuthorizationException, BadRequestException, ConnectionException, GeneralException,
+    ModelOverloadException, RatelimitException, TimeoutException, TruncatedResponseException,
+)
 from justai.tools.images import to_pil_image
+
+logger = logging.getLogger(__name__)
 
 
 # Only Gemini 3.x uses thinking_level; older Gemini 2.x uses thinking_budget (out of scope).
@@ -45,6 +53,37 @@ _EFFORT_MAP_GEMINI3 = {
     'xhigh': ('HIGH', 'xhigh -> HIGH (Gemini has no higher tier)'),
     'max': ('HIGH', 'max -> HIGH (Gemini has no higher tier)'),
 }
+
+
+def _map_google_error(e: APIError) -> Exception:
+    """Translate a google-genai APIError to the matching justai exception, logging at WARNING.
+
+    WARNING, not ERROR: this fires on every failed attempt and the caller may still
+    retry successfully. Only whoever gives up knows the failure is final.
+
+    `code` and `details` stay reachable on the result: Gemini puts its retryDelay in
+    details, and a caller that backs off needs it.
+    """
+    code = getattr(e, 'code', None) or 0
+    if code in (401, 403):
+        exc, label = AuthorizationException(e), 'Auth'
+    elif code == 408:
+        exc, label = TimeoutException(e), 'Timeout'
+    elif code == 429:
+        exc, label = RatelimitException(e), 'RateLimit'
+    elif code == 503:
+        exc, label = ModelOverloadException(e), 'Overloaded'
+    elif 400 <= code < 500:
+        exc, label = BadRequestException(e), f'BadRequest {code}'
+    elif 500 <= code < 600:
+        exc, label = ConnectionException(e), f'ServerError {code}'
+    else:
+        exc, label = GeneralException(e), f'APIError {code or "?"}'
+    exc.code = code or None
+    exc.details = getattr(e, 'details', None)
+    logger.warning(f'LLM call failed ({label}): {e!r}')
+    return exc
+
 
 class GoogleModel(BaseModel):
 
@@ -67,6 +106,12 @@ class GoogleModel(BaseModel):
         self.supports_function_calling = True
         self.supports_automatic_function_calling = True
         self.supports_image_generation = True
+
+        # GenerateContentConfig forbids extras, so an unsupported kwarg either crashes deep
+        # inside pydantic on the first call or, worse, is never noticed. Say so right here.
+        unknown = sorted(set(self.api_params) - set(genai.types.GenerateContentConfig.model_fields))
+        if unknown:
+            raise ValueError(f'{model_name} does not accept parameter(s): {", ".join(unknown)}')
 
     def resolve_effort(self) -> tuple[str | None, str | None]:
         level = self.model_params.get('effort')
@@ -97,10 +142,13 @@ class GoogleModel(BaseModel):
             tools = [tool['function'] for tool in tools]
         params = {**self.api_params}
         if response_format or return_json:
-            # Structured output requires enough tokens to complete the JSON.
-            # Truncated JSON is always useless, so enforce a reasonable minimum.
+            # Structured output requires enough tokens to complete the JSON, so raise a
+            # ceiling that is too low to finish. Only a ceiling the caller set themselves:
+            # without one the API default is the model maximum, which beats any number
+            # invented here.
             MIN_STRUCTURED_TOKENS = 16384
-            if params.get('max_output_tokens', 0) < MIN_STRUCTURED_TOKENS:
+            ceiling = params.get('max_output_tokens') or 0
+            if 0 < ceiling < MIN_STRUCTURED_TOKENS:
                 params['max_output_tokens'] = MIN_STRUCTURED_TOKENS
         config = genai.types.GenerateContentConfig(system_instruction=self.system_message, tools=tools,
                                                    **self._thinking_config_extra(), **params)
@@ -109,8 +157,11 @@ class GoogleModel(BaseModel):
         if response_format:
             config.response_mime_type = "application/json"
             config.response_schema = response_format
-        response = self.client.models.generate_content(model=self.model_name, contents=prompt,
-                                                       config=config)
+        try:
+            response = self.client.models.generate_content(model=self.model_name, contents=prompt,
+                                                           config=config)
+        except APIError as e:
+            raise _map_google_error(e) from e
         return convert_to_justai_response(response, return_json or response_format)
 
     def chat(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) \
@@ -125,7 +176,10 @@ class GoogleModel(BaseModel):
 
         if not self.chat_session:
             self.chat_session = self.client.chats.create(model=self.model_name)
-        response = self.chat_session.send_message(message=prompt)
+        try:
+            response = self.chat_session.send_message(message=prompt)
+        except APIError as e:
+            raise _map_google_error(e) from e
         return convert_to_justai_response(response, return_json)
 
     async def prompt_async(self, prompt: str, images: list[ImageInput] = None) -> AsyncGenerator[tuple[str, str], None]:
@@ -136,12 +190,7 @@ class GoogleModel(BaseModel):
             system_instruction=self.system_message,
             **self._thinking_config_extra(),
         )
-        stream = await self.client.aio.models.generate_content_stream(
-            model=self.model_name,
-            contents=prompt,
-            config=config
-        )
-        async for chunk in stream:
+        async for chunk in self._stream_chunks(contents=prompt, config=config):
             if chunk.text:
                 yield chunk.text, ''
 
@@ -214,11 +263,7 @@ class GoogleModel(BaseModel):
             **self.api_params,
         )
 
-        response_stream = await self.client.aio.models.generate_content_stream(
-            model=self.model_name,
-            contents=contents,
-            config=config,
-        )
+        response_stream = self._stream_chunks(contents=contents, config=config)
 
         input_tokens = 0
         output_tokens = 0
@@ -243,6 +288,16 @@ class GoogleModel(BaseModel):
         if tool_calls:
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
         yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+
+    async def _stream_chunks(self, contents, config) -> AsyncGenerator[Any, None]:
+        """Yield stream chunks, translating provider errors on both setup and mid-stream."""
+        try:
+            stream = await self.client.aio.models.generate_content_stream(
+                model=self.model_name, contents=contents, config=config)
+            async for chunk in stream:
+                yield chunk
+        except APIError as e:
+            raise _map_google_error(e) from e
 
     def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
         """Format a tool result message for Google."""
@@ -303,9 +358,19 @@ def convert_to_justai_response(response, return_json):
         result = response.text
     elif response.parsed:
         result = response.parsed
+    elif _hit_output_limit(response):
+        raise TruncatedResponseException(
+            f'Gemini hit its output limit after {output_token_count} tokens, JSON is incomplete')
     else:
         result = _parse_gemini_json(response.text)
     return result, input_token_count, output_token_count
+
+
+def _hit_output_limit(response) -> bool:
+    """True when generation stopped on max_output_tokens instead of finishing its answer."""
+    candidate = next(iter(response.candidates or []), None)
+    reason = getattr(candidate, 'finish_reason', None)
+    return getattr(reason, 'name', reason) == 'MAX_TOKENS'
 
 
 def _parse_gemini_json(text: str) -> dict | list:

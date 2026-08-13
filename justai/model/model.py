@@ -143,7 +143,8 @@ class Model:
         response = None
 
         if cached:
-            response = cached_response(self.model.model_name, self.model.model_params, prompt, images, self.tools,
+            response = cached_response(self.model.model_name, self.model.model_params,
+                                       self.model.system_message, prompt, images, self.tools,
                                        return_json, response_format)
 
         if response:
@@ -153,7 +154,8 @@ class Model:
             response = self.model.prompt(prompt, images=images, tools=self.tools, return_json=return_json,
                                          response_format=response_format)
             if cached:
-                cache_save(response, self.model.model_name, self.model.model_params, prompt, images, self.tools,
+                cache_save(response, self.model.model_name, self.model.model_params,
+                           self.model.system_message, prompt, images, self.tools,
                            return_json, response_format)
 
             result, self.input_token_count, self.output_token_count = response

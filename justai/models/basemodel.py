@@ -101,6 +101,14 @@ class TimeoutException(Exception):
 class GeneralException(Exception):
     pass
 
+class TruncatedResponseException(GeneralException):
+    """Raised when the model stopped on its output limit, so the answer is incomplete.
+
+    Subclasses GeneralException so existing handlers keep catching it. A separate type
+    lets the caller split on size (retry smaller, raise the ceiling) instead of guessing
+    whether an unparseable answer was cut off or simply not JSON.
+    """
+
 class RefusalException(Exception):
     """Raised when a model refuses to answer (e.g. Anthropic safety classifier)."""
     def __init__(self, category: str = 'unknown', message: str = ''):

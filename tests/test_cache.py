@@ -3,6 +3,7 @@
 Usage:
     python tests/test_cache.py
 """
+import logging
 import os
 import sqlite3
 import tempfile
@@ -10,6 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import justai.tools.cache as cache_mod
+from justai import Model
 from justai.model.message import Message
 from justai.tools.cache import CacheDB, cached_llm_response, set_cache_dir
 
@@ -142,10 +144,68 @@ def test_parallel_writes_distinct_keys_no_errors():
     print('  OK: parallel writes with distinct keys all persisted')
 
 
+
+def test_cache_key_includes_system_prompt():
+    """Same prompt with a different system message is a different question."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _reset_cachedb_singleton()
+        set_cache_dir(tmpdir)
+        try:
+            calls = []
+            model = Model('gemini-2.5-flash', GEMINI_API_KEY='k')
+
+            def fake_prompt(prompt, images=None, tools=None, return_json=False, response_format=None):
+                calls.append(model.model.system_message)
+                return ('ok', 1, 2)
+
+            model.model.prompt = fake_prompt
+
+            model.system = 'You are a pirate'
+            assert model.prompt('hello') == 'ok'
+            assert model.prompt('hello') == 'ok'
+            assert len(calls) == 1, 'identical system prompt should hit the cache'
+
+            model.system = 'You are a poet'
+            assert model.prompt('hello') == 'ok'
+            assert len(calls) == 2, 'different system prompt should miss the cache'
+        finally:
+            _reset_cachedb_singleton()
+            set_cache_dir('')
+
+    print('  OK: system prompt is part of the cache key')
+
+
+def test_failed_cache_write_logs_a_warning():
+    """A value sqlite cannot bind must not crash, but must not be silent either."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _reset_cachedb_singleton()
+        set_cache_dir(tmpdir)
+        records = []
+        handler = logging.Handler()
+        handler.emit = records.append
+        logger = logging.getLogger('justai.tools.cache')
+        logger.addHandler(handler)
+        try:
+            db = CacheDB()
+            db.write('unbindable', ({'a dict': 'sqlite cannot bind'}, 1, 2))
+            assert db.read('unbindable') is None
+            assert len(records) == 1, f'expected one warning, got {len(records)}'
+            assert records[0].levelno == logging.WARNING
+            assert 'unbindable' in records[0].getMessage()
+        finally:
+            logger.removeHandler(handler)
+            _reset_cachedb_singleton()
+            set_cache_dir('')
+
+    print('  OK: failed cache write logs a WARNING instead of passing silently')
+
+
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     print('Cache tests:')
     test_init_is_idempotent()
     test_parallel_cached_llm_response_single_chat_call()
     test_parallel_writes_distinct_keys_no_errors()
+    test_cache_key_includes_system_prompt()
+    test_failed_cache_write_logs_a_warning()
     print('\nAll cache tests passed!')
