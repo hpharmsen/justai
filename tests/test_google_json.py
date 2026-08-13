@@ -3,6 +3,7 @@
 Reproduces bug: Gemini returned JSON followed by extra data, causing
 json.decoder.JSONDecodeError: Extra data at line 5 column 1.
 """
+
 import pytest
 
 from justai.models.basemodel import GeneralException

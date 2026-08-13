@@ -22,9 +22,16 @@ CacheResponse = tuple[str | object, int | None, int | None]
 CACHE_NAMESPACE = 'v2'
 
 
-def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: list, return_json: bool,
-                        response_format=None, use_cache: bool = True, images=None) -> CacheResponse:
-    """ Double use function.
+def cached_llm_response(
+    model,
+    prompt_or_messages: str | list[Message],
+    tools: list,
+    return_json: bool,
+    response_format=None,
+    use_cache: bool = True,
+    images=None,
+) -> CacheResponse:
+    """Double use function.
     It can be called with
     A: A list of Messages. This is used in chat(). images parameter is ignored.
     B: A string. This is used in prompt(). It uses the images parameter to add images to the prompt
@@ -34,16 +41,20 @@ def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: l
         if isinstance(prompt_or_messages, str):
             return model.prompt(prompt_or_messages, images, tools, return_json, response_format)
         else:
-            assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
+            assert images is None, 'When calling cached_llm_response with a string prompt, images should be None'
             return model.chat(prompt_or_messages, tools, return_json, response_format)
 
-    hashcode = CACHE_NAMESPACE + ':' + recursive_hash(
-        (
-            model.model_name,
-            model.model_params,
-            model.system_message,
-            prompt_or_messages,
-            return_json,
+    hashcode = (
+        CACHE_NAMESPACE
+        + ':'
+        + recursive_hash(
+            (
+                model.model_name,
+                model.model_params,
+                model.system_message,
+                prompt_or_messages,
+                return_json,
+            )
         )
     )
 
@@ -58,7 +69,7 @@ def cached_llm_response(model, prompt_or_messages: str | list[Message], tools: l
         assert hasattr(model, 'prompt')
         result = model.prompt(prompt_or_messages, images, tools, return_json, response_format)
     else:
-        assert images is None, "When calling cached_llm_response with a string prompt, images should be None"
+        assert images is None, 'When calling cached_llm_response with a string prompt, images should be None'
         result = model.chat(prompt_or_messages, images, tools, return_json, response_format)
     try:
         if return_json:
@@ -119,12 +130,12 @@ class CacheDB:
             self._lock = threading.Lock()
 
             cur = self.conn.cursor()
-            cur.execute('''CREATE TABLE IF NOT EXISTS cache (
+            cur.execute("""CREATE TABLE IF NOT EXISTS cache (
                                         hashkey VARCHAR(32) PRIMARY KEY,
                                         value TEXT,
                                         tokens_in INT,
                                         tokens_out INT,
-                                        valid_until DATETIME)''')
+                                        valid_until DATETIME)""")
             with contextlib.suppress(sqlite3.OperationalError):
                 cur.execute('DELETE FROM cache WHERE valid_until < ?', (str(Day()),))
             self.conn.commit()
@@ -139,8 +150,11 @@ class CacheDB:
         try:
             with self._lock:
                 cur = self.conn.cursor()
-                cur.execute('''INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until)
-                                        VALUES (?, ?, ?, ?, ?)''', (key, value, tokens_in, tokens_out, valid_until))
+                cur.execute(
+                    """INSERT OR REPLACE INTO cache (hashkey, value, tokens_in, tokens_out, valid_until)
+                                        VALUES (?, ?, ?, ?, ?)""",
+                    (key, value, tokens_in, tokens_out, valid_until),
+                )
                 self.conn.commit()
                 cur.close()
         except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.IntegrityError) as e:
@@ -152,7 +166,7 @@ class CacheDB:
         """Read a response from the cache by key."""
         with self._lock:
             cur = self.conn.cursor()
-            cur.execute("SELECT value, tokens_in, tokens_out FROM cache WHERE hashkey = ?", (key,))
+            cur.execute('SELECT value, tokens_in, tokens_out FROM cache WHERE hashkey = ?', (key,))
             result = cur.fetchone()
             cur.close()
         return result
@@ -179,24 +193,24 @@ def recursive_hash(value: Any, depth: int = 0, ignore_params: list[str] | None =
     if ignore_params is None:
         ignore_params = []
     if depth > 6:
-        return hash_code("max_depth_reached")
+        return hash_code('max_depth_reached')
     if isinstance(value, (int, float, str, bool, bytes)):
         return hash_code(str(value))
     if isinstance(value, (list, tuple)):
-        return hash_code("".join([recursive_hash(item, depth + 1, ignore_params) for item in value]))
+        return hash_code(''.join([recursive_hash(item, depth + 1, ignore_params) for item in value]))
     if isinstance(value, dict):
         return hash_code(
-            "".join(
+            ''.join(
                 [
-                    recursive_hash(key, depth + 1, ignore_params)
-                    + recursive_hash(val, depth + 1, ignore_params)
+                    recursive_hash(key, depth + 1, ignore_params) + recursive_hash(val, depth + 1, ignore_params)
                     for key, val in value.items()
                     if key not in ignore_params
                 ]
-            ))
-    if hasattr(value, "__dict__") and value.__class__.__name__ not in ignore_params:
+            )
+        )
+    if hasattr(value, '__dict__') and value.__class__.__name__ not in ignore_params:
         return recursive_hash(value.__dict__, depth + 1, ignore_params)
-    return hash_code("unknown")
+    return hash_code('unknown')
 
 
 def hash_code(code: str) -> str:

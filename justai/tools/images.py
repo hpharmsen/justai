@@ -6,9 +6,7 @@ import httpx
 from PIL import Image
 
 # Standard headers for fetching images from URLs
-_HTTP_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (compatible; JustAI/1.0; +https://github.com/justai)'
-}
+_HTTP_HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; JustAI/1.0; +https://github.com/justai)'}
 
 
 # --- Robuuste extractie van base64 PNG uit verschillende SDK-vormen ---
@@ -16,26 +14,26 @@ def extract_images(response):
     images_b64 = []
 
     # 1) Nieuwere SDK's plaatsen vaak "message" items met content entries
-    for item in getattr(response, "output", []) or []:
-        itype = getattr(item, "type", None)
+    for item in getattr(response, 'output', []) or []:
+        itype = getattr(item, 'type', None)
 
         # a) Message met content -> zoek 'output_image' of 'image'
-        if itype == "message":
-            for part in getattr(item, "content", []) or []:
-                img = getattr(part, "image", None)
+        if itype == 'message':
+            for part in getattr(item, 'content', []) or []:
+                img = getattr(part, 'image', None)
                 # part.image.base64
-                if img is not None and hasattr(img, "base64"):
+                if img is not None and hasattr(img, 'base64'):
                     images_b64.append(img.base64)
 
         # b) Direct image item
-        if itype in {"image", "output_image"}:
-            img = getattr(item, "image", None)
-            if img is not None and hasattr(img, "base64"):
+        if itype in {'image', 'output_image'}:
+            img = getattr(item, 'image', None)
+            if img is not None and hasattr(img, 'base64'):
                 images_b64.append(img.base64)
 
         # c) Sommige versies leveren een 'image_generation_call' met 'result'
         # Kan al base64 string zijn
-        if itype == "image_generation_call" and hasattr(item, "result") and item.result:
+        if itype == 'image_generation_call' and hasattr(item, 'result') and item.result:
             images_b64.append(item.result)
 
     # 2) Fallback: oudere voorbeelden met response.output[0].content[0].image.base64
@@ -49,13 +47,8 @@ def extract_images(response):
 
     if not images_b64:
         # Handige debug: laat zien welke output-types we kregen
-        types = [
-            getattr(x, "type", type(x).__name__)
-            for x in (getattr(response, "output", []) or [])
-        ]
-        raise RuntimeError(
-            f"Geen afbeelding gevonden in response. Output types: {types}"
-        )
+        types = [getattr(x, 'type', type(x).__name__) for x in (getattr(response, 'output', []) or [])]
+        raise RuntimeError(f'Geen afbeelding gevonden in response. Output types: {types}')
 
     return images_b64
 
@@ -68,7 +61,7 @@ def get_image_type(image):
     elif isinstance(image, Image.Image):
         return 'pil_image'
     else:
-        raise ValueError("Unknown content type in message. Must be image url or PIL image or image data.")
+        raise ValueError('Unknown content type in message. Must be image url or PIL image or image data.')
 
 
 def _to_bytes(image) -> tuple[bytes, str | None]:
@@ -80,14 +73,14 @@ def _to_bytes(image) -> tuple[bytes, str | None]:
             return image, None
         case _:  # pil_image
             buffered = io.BytesIO()
-            image.save(buffered, format="jpeg")
+            image.save(buffered, format='jpeg')
             return buffered.getvalue(), 'image/jpeg'
 
 
 def to_base64_image(image) -> str:
     """Convert image to base64 string."""
     img, _ = _to_bytes(image)
-    return base64.b64encode(img).decode("utf-8")
+    return base64.b64encode(img).decode('utf-8')
 
 
 def detect_mime_type(data: bytes) -> str:
@@ -108,8 +101,8 @@ def detect_mime_type(data: bytes) -> str:
 def to_base64_data_uri(image) -> str:
     """Convert image to base64 data URI with proper MIME type detection."""
     img_data, mime_type = _to_bytes(image)
-    b64 = base64.b64encode(img_data).decode("utf-8")
-    return f"data:{mime_type or detect_mime_type(img_data)};base64,{b64}"
+    b64 = base64.b64encode(img_data).decode('utf-8')
+    return f'data:{mime_type or detect_mime_type(img_data)};base64,{b64}'
 
 
 def to_pil_image(image):
@@ -131,7 +124,9 @@ def is_image_url(url):
         r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|'  # ...or ipv4
         r'\[?[A-F0-9]*:[A-F0-9:]+\]?)'  # ...or ipv6
         r'(?::\d+)?'  # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        r'(?:/?|[/?]\S+)$',
+        re.IGNORECASE,
+    )
 
     return bool(re.match(url_pattern, url)) and url.lower().endswith(image_extensions)
 

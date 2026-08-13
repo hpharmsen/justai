@@ -3,6 +3,7 @@
 Usage:
     python tests/test_agent.py
 """
+
 import asyncio
 import logging
 import os
@@ -19,6 +20,7 @@ from justai.models.basemodel import ToolCallRequest, StreamChunk
 # ──────────────────────────────────────────────
 # Unit tests (no API calls)
 # ──────────────────────────────────────────────
+
 
 def test_filesystem_tool_read_write():
     """Test FileSystemTool read/write with path traversal prevention."""
@@ -331,8 +333,7 @@ def test_agent_tool_decorator_with_context():
 
 def test_agent_build_tool_specs():
     """Test tool spec generation format."""
-    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test',
-                  tools=[FileSystemTool(read=['/tmp'])])
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test', tools=[FileSystemTool(read=['/tmp'])])
     specs = agent._build_tool_specs()
     names = {s['name'] for s in specs}
     assert 'final_answer' in names
@@ -420,6 +421,7 @@ def test_web_fetch_tool_blocked_schemes():
 # Integration test (requires API key)
 # ──────────────────────────────────────────────
 
+
 def test_agent_run_live():
     """Integration test: run agent with a simple task."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -429,9 +431,7 @@ def test_agent_run_live():
 
         tasks_file = Path(tmpdir) / 'tasks.md'
         tasks_file.write_text(
-            '# Tasks\n\n'
-            f'- [ ] Read the file {src_dir}/hello.py\n'
-            '- [ ] Report what functions are in it\n'
+            f'# Tasks\n\n- [ ] Read the file {src_dir}/hello.py\n- [ ] Report what functions are in it\n'
         )
 
         agent = Agent(

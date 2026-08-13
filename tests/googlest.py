@@ -13,7 +13,7 @@ from justai import Model
 if __name__ == '__main__':
     load_dotenv()
     models = [
-        Model("gpt-5"),
+        Model('gpt-5'),
         # Model('claude-3-7-sonnet-latest', temperature=1),
         # Model("gemini-2.5-flash", temperature=1),
         # Model("grok-4", temperature=0),
@@ -57,7 +57,7 @@ if __name__ == '__main__':
 
     # Return types
     for model in models:
-        print('\n',model.model_name)
+        print('\n', model.model_name)
 
         # print("json schema")
         # try:
@@ -84,7 +84,6 @@ if __name__ == '__main__':
     # Async
     # see asycest.py
 
-
     # Token count beforehand
     prompt = 'Hoeveel is twee plus twee?'
     for model in models:
@@ -92,7 +91,6 @@ if __name__ == '__main__':
 
     # Configuration
     # Done
-
 
     # Tool use
     def ergobam(x: int, y: int) -> int:
@@ -104,30 +102,37 @@ if __name__ == '__main__':
         return x // 3
 
     for model in models:
-        print("\n", model.model.model_name)
+        print('\n', model.model.model_name)
         try:
             if model.model.supports_automatic_function_calling:
                 model.add_tool(ergobam)
                 model.add_tool(kwaroot)
             else:
-                model.add_tool(ergobam, description="Calculates the ergobam of two numbers",
-                               parameters={"x": int, "y": int}, required_parameters=["x", "y"])
-                model.add_tool(kwaroot, description="Calculates the kwaroot of an integer",
-                               parameters={"x": int}, required_parameters=["x"])
+                model.add_tool(
+                    ergobam,
+                    description='Calculates the ergobam of two numbers',
+                    parameters={'x': int, 'y': int},
+                    required_parameters=['x', 'y'],
+                )
+                model.add_tool(
+                    kwaroot,
+                    description='Calculates the kwaroot of an integer',
+                    parameters={'x': int},
+                    required_parameters=['x'],
+                )
         except NotImplementedError as e:
             print(e)
             continue
         try:
-            print(model.prompt("Give me the kwaroot of the ergobam of 3 and 4.", cached=False))
+            print(model.prompt('Give me the kwaroot of the ergobam of 3 and 4.', cached=False))
         except NotImplementedError as e:
             print(e)
         pass
 
     # Content caching
     for model in models:
-        if  model.model.supports_cached_prompts:
-            print("\n", model.model.model_name)
+        if model.model.supports_cached_prompts:
+            print('\n', model.model.model_name)
             caching_example(model)
 
     # Generate images
-

@@ -1,4 +1,4 @@
-""" Implementation of the Anthropic models.
+"""Implementation of the Anthropic models.
 
 Feature table:
     - Async chat:       YES (1)
@@ -32,8 +32,17 @@ import warnings
 from typing import Any, AsyncGenerator
 
 import httpx
-from anthropic import Anthropic, AsyncAnthropic, APIConnectionError, APIStatusError, AuthenticationError, \
-    PermissionDeniedError, RateLimitError, BadRequestError, InternalServerError
+from anthropic import (
+    Anthropic,
+    AsyncAnthropic,
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    PermissionDeniedError,
+    RateLimitError,
+    BadRequestError,
+    InternalServerError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,19 +55,24 @@ NO_PREFILL_MODELS = re.compile(r'claude-(opus-4-[6-9]|sonnet-4-[6-9])')
 # Per-model parameter restrictions: (regex, frozenset of param keys to strip on match).
 # Extend this list rather than adding more NO_X_MODELS constants.
 RESTRICTED_PARAMS: list[tuple[re.Pattern, frozenset[str]]] = [
-    (re.compile(r'claude-(opus-4-[78]|fable-5|mythos-5|sonnet-5)'),
-     frozenset({'temperature', 'top_p', 'top_k'})),
+    (re.compile(r'claude-(opus-4-[78]|fable-5|mythos-5|sonnet-5)'), frozenset({'temperature', 'top_p', 'top_k'})),
 ]
 
 # Effort support tiers (per Anthropic docs, verified July 2026).
 # Each entry: (pattern, effort_map). First match wins.
 EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
-    (re.compile(r'claude-(fable-5|mythos-5|opus-4-[78]|sonnet-5)'),
-     {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'}),
-    (re.compile(r'claude-(opus-4-6|sonnet-4-6)'),
-     {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'max', 'max': 'max'}),
-    (re.compile(r'claude-opus-4-5'),
-     {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'high', 'max': 'high'}),
+    (
+        re.compile(r'claude-(fable-5|mythos-5|opus-4-[78]|sonnet-5)'),
+        {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'},
+    ),
+    (
+        re.compile(r'claude-(opus-4-6|sonnet-4-6)'),
+        {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'max', 'max': 'max'},
+    ),
+    (
+        re.compile(r'claude-opus-4-5'),
+        {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'high', 'max': 'high'},
+    ),
 ]
 
 
@@ -124,13 +138,12 @@ def _map_anthropic_error(e: Exception) -> Exception:
 class AnthropicModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
-        system_message = f"You are {model_name}, a large language model trained by Anthropic."
+        system_message = f'You are {model_name}, a large language model trained by Anthropic.'
         super().__init__(model_name, params, system_message)
         self.cached_prompt = None
 
         # Authentication
-        api_key = get_api_key(params, 'ANTHROPIC_API_KEY', 'Anthropic',
-                              'https://console.anthropic.com/settings/keys')
+        api_key = get_api_key(params, 'ANTHROPIC_API_KEY', 'Anthropic', 'https://console.anthropic.com/settings/keys')
 
         # Client — always create both sync and async clients
         timeout = client_timeout(params)
@@ -143,8 +156,7 @@ class AnthropicModel(BaseModel):
             http_client = httpx.Client(timeout=timeout)
             self.client = Anthropic(api_key=api_key, http_client=http_client, **retries)
             async_http_client = httpx.AsyncClient(timeout=timeout)
-            self.async_client = AsyncAnthropic(
-                api_key=api_key, http_client=async_http_client, **retries)
+            self.async_client = AsyncAnthropic(api_key=api_key, http_client=async_http_client, **retries)
 
         # Required model parameters
         if 'max_tokens' not in params:
@@ -158,7 +170,8 @@ class AnthropicModel(BaseModel):
                         stripped_val = params.pop(key)
                         warnings.warn(
                             f'{model_name} does not accept {key!r}; dropping {key}={stripped_val!r}',
-                            UserWarning, stacklevel=3,
+                            UserWarning,
+                            stacklevel=3,
                         )
 
         self.supports_cached_prompts = True
@@ -190,23 +203,36 @@ class AnthropicModel(BaseModel):
         if effort_level in {'high', 'xhigh', 'max'} and 'max_tokens' not in self._user_supplied:
             floor = 4096
             if api_params.get('max_tokens', 0) < floor:
-                msg = (f'raising max_tokens to {floor} because effort={effort_level!r} '
-                       '(reasoning tokens count against output budget); set max_tokens explicitly to disable')
+                msg = (
+                    f'raising max_tokens to {floor} because effort={effort_level!r} '
+                    '(reasoning tokens count against output budget); set max_tokens explicitly to disable'
+                )
                 if msg not in self._effort_warned:
                     self._effort_warned.add(msg)
                     warnings.warn(msg, UserWarning, stacklevel=3)
                 api_params = {**api_params, 'max_tokens': floor}
         return api_params
 
-    def prompt(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
-            -> tuple[Any, int|None, int|None]:
+    def prompt(
+        self,
+        prompt: str,
+        images: ImageInput = None,
+        tools: list = None,
+        return_json: bool = False,
+        response_format=None,
+    ) -> tuple[Any, int | None, int | None]:
         # Reset messages
         self.messages = []
         return self.chat(prompt, images, tools, return_json, response_format)
 
-
-    def chat(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None) \
-            -> tuple[Any, int|None, int|None]:
+    def chat(
+        self,
+        prompt: str,
+        images: ImageInput = None,
+        tools: list = None,
+        return_json: bool = False,
+        response_format=None,
+    ) -> tuple[Any, int | None, int | None]:
         # Only use structured outputs when response_format is explicitly provided,
         # because Anthropic requires additionalProperties: false which needs a complete schema.
         # For plain return_json=True, use the regular completion path.
@@ -217,13 +243,14 @@ class AnthropicModel(BaseModel):
                 message = self._completion_with_structured_output(prompt, images, tools, response_format)
             except (TypeError, AttributeError) as e:
                 raise RuntimeError(
-                    'Structured outputs require a recent Anthropic SDK. '
-                    'Upgrade with: pip install --upgrade anthropic'
+                    'Structured outputs require a recent Anthropic SDK. Upgrade with: pip install --upgrade anthropic'
                 ) from e
             except BadRequestError as e:
                 # Fall back to legacy path if model doesn't support structured outputs
                 if 'does not support output format' in str(e):
-                    logger.warning(f'Model {self.model_name} does not support structured outputs. Falling back to legacy JSON parsing.')
+                    logger.warning(
+                        f'Model {self.model_name} does not support structured outputs. Falling back to legacy JSON parsing.'
+                    )
                     use_structured_outputs = False
                     message = self.completion(prompt, images, tools, return_json, response_format)
                 else:
@@ -287,8 +314,9 @@ class AnthropicModel(BaseModel):
             except json.decoder.JSONDecodeError as e:
                 raise BadRequestException(f'Expected JSON but got: {response_str[:200]}') from e
 
-    def _completion_with_structured_output(self, prompt: str, images: ImageInput = None,
-                                           tools: list = None, response_format=None):
+    def _completion_with_structured_output(
+        self, prompt: str, images: ImageInput = None, tools: list = None, response_format=None
+    ):
         """Use GA structured outputs API for guaranteed JSON responses."""
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message
 
@@ -310,12 +338,7 @@ class AnthropicModel(BaseModel):
         if response_format and schema.get('type') == 'object' and 'additionalProperties' not in schema:
             schema['additionalProperties'] = False
 
-        output_config = {
-            'format': {
-                'type': 'json_schema',
-                'schema': schema
-            }
-        }
+        output_config = {'format': {'type': 'json_schema', 'schema': schema}}
 
         antr_tools = transform_tools(tools or []) if tools is not None else None
 
@@ -325,7 +348,7 @@ class AnthropicModel(BaseModel):
                 'messages': self.messages,
                 'system': system_message,
                 'output_config': output_config,
-                **self.api_params
+                **self.api_params,
             }
 
             # Structured output requires enough tokens to complete the JSON.
@@ -340,10 +363,7 @@ class AnthropicModel(BaseModel):
 
             # Use parse() for Pydantic models
             if response_format and hasattr(response_format, 'model_json_schema'):
-                return self.client.messages.parse(
-                    output_format=response_format,
-                    **api_params
-                )
+                return self.client.messages.parse(output_format=response_format, **api_params)
             else:
                 return self.client.messages.create(**api_params)
 
@@ -367,37 +387,50 @@ class AnthropicModel(BaseModel):
     async def chat_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
         stream = self.completion(prompt, images, stream=True)
         for event in stream:
-            if hasattr(event, "delta") and hasattr(event.delta, "text"):
+            if hasattr(event, 'delta') and hasattr(event.delta, 'text'):
                 yield event.delta.text, None  # 2nd parameter is reasoning_content. Not available yet for Anthropic
 
-    def completion(self, prompt: str, images: ImageInput = None, tools: list = None, return_json: bool = False, response_format=None, stream=False):
+    def completion(
+        self,
+        prompt: str,
+        images: ImageInput = None,
+        tools: list = None,
+        return_json: bool = False,
+        response_format=None,
+        stream=False,
+    ):
         system_message = self.cached_system_message() if self.cached_prompt else self.system_message
-        
+
         # Add user message to conversation history if it's a new message
         if prompt or images:
             user_message = create_anthropic_message('user', prompt, images)
             self.messages.append(user_message)
-        
+
         antr_tools = transform_tools(tools or []) if tools is not None else None
 
         for _ in range(3):  # Max 3 function calls to prevent infinite loop
             try:
                 if stream:
                     if tools:
-                        raise NotImplementedError('Anthropic model does not support streaming and tools at the same time')
-                    stream_params = self._prepare_api_params({
-                        'model': self.model_name,
-                        'system': system_message,
-                        'messages': self.messages,
-                        **self.api_params,
-                    })
+                        raise NotImplementedError(
+                            'Anthropic model does not support streaming and tools at the same time'
+                        )
+                    stream_params = self._prepare_api_params(
+                        {
+                            'model': self.model_name,
+                            'system': system_message,
+                            'messages': self.messages,
+                            **self.api_params,
+                        }
+                    )
                     return self.client.messages.create(
-                        stream=True, timeout=stream_timeout(self.model_params), **stream_params)
-                
+                        stream=True, timeout=stream_timeout(self.model_params), **stream_params
+                    )
+
                 # Prepare messages for the API call
                 api_messages = []
                 tool_use_context = {}
-                
+
                 for msg in self.messages:
                     if msg['role'] == 'user':
                         # For user messages, include them as-is
@@ -414,27 +447,27 @@ class AnthropicModel(BaseModel):
                                 elif item.get('type') == 'text':
                                     content.append(item)
                             elif isinstance(item, str):
-                                content.append({"type": "text", "text": item})
-                        
+                                content.append({'type': 'text', 'text': item})
+
                         if content:
-                            api_messages.append({"role": "assistant", "content": content})
-                    
+                            api_messages.append({'role': 'assistant', 'content': content})
+
                     # Tool results are handled as part of the next user message
                     # So we don't need to add them to api_messages
-                
+
                 # Prepare the API call parameters
-                api_params = {
-                    'model': self.model_name,
-                    'messages': api_messages,
-                    **self.api_params
-                }
+                api_params = {'model': self.model_name, 'messages': api_messages, **self.api_params}
 
                 # JSON responses need enough tokens to avoid truncation
                 if return_json and api_params.get('max_tokens', 0) < 16384:
                     api_params['max_tokens'] = 16384
-                
+
                 # Strip trailing assistant message for models that don't support prefill
-                if api_messages and api_messages[-1]['role'] == 'assistant' and NO_PREFILL_MODELS.search(self.model_name):
+                if (
+                    api_messages
+                    and api_messages[-1]['role'] == 'assistant'
+                    and NO_PREFILL_MODELS.search(self.model_name)
+                ):
                     api_params['messages'] = api_messages[:-1]
 
                 api_params['system'] = system_message
@@ -457,75 +490,69 @@ class AnthropicModel(BaseModel):
                 raise RefusalException(getattr(result, 'refusal_category', 'unknown'))
 
             # Check for tool use in the response
-            tool_use_blocks = [block for block in result.content if hasattr(block, 'type') and block.type == "tool_use"]
-            
+            tool_use_blocks = [block for block in result.content if hasattr(block, 'type') and block.type == 'tool_use']
+
             if tool_use_blocks:
                 # Create a new assistant message with the tool use blocks
                 assistant_content = []
                 tool_results = []
-                
+
                 for block in result.content:
                     if hasattr(block, 'type') and block.type == 'tool_use':
                         # Add tool use to the assistant's message
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input
-                        })
-                        
+                        assistant_content.append(
+                            {'type': 'tool_use', 'id': block.id, 'name': block.name, 'input': block.input}
+                        )
+
                         # Execute the function
                         function = self.encapsulating_model.functions.get(block.name)
                         if not function:
                             raise ValueError(f"Function {block.name} not found in model's functions")
-                        
+
                         function_result = function(**block.input)
-                        
+
                         # Prepare tool result for the next user message
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(function_result) if not isinstance(function_result, (str, int, float, bool)) else str(function_result)
-                        })
+                        tool_results.append(
+                            {
+                                'type': 'tool_result',
+                                'tool_use_id': block.id,
+                                'content': json.dumps(function_result)
+                                if not isinstance(function_result, (str, int, float, bool))
+                                else str(function_result),
+                            }
+                        )
                     elif hasattr(block, 'text'):
-                        assistant_content.append({"type": "text", "text": block.text})
-                
+                        assistant_content.append({'type': 'text', 'text': block.text})
+
                 # Add the assistant's message with tool use to history
-                self.messages.append({
-                    "role": "assistant",
-                    "content": assistant_content
-                })
-                
+                self.messages.append({'role': 'assistant', 'content': assistant_content})
+
                 # Add tool results as a new user message if there are any
                 if tool_results:
-                    self.messages.append({
-                        "role": "user",
-                        "content": tool_results
-                    })
-                
+                    self.messages.append({'role': 'user', 'content': tool_results})
+
                 # Continue the conversation with the tool results
                 continue
-            
+
             # If we get here, we have a final response with no tool use
             # Add the assistant's response to conversation history
             assistant_content = []
             for block in result.content:
                 if hasattr(block, 'text'):
-                    assistant_content.append({"type": "text", "text": block.text})
+                    assistant_content.append({'type': 'text', 'text': block.text})
                 elif hasattr(block, 'tool_use'):
-                    assistant_content.append({
-                        "type": "tool_use",
-                        "id": block.tool_use.id,
-                        "name": block.tool_use.name,
-                        "input": block.tool_use.input
-                    })
-            
+                    assistant_content.append(
+                        {
+                            'type': 'tool_use',
+                            'id': block.tool_use.id,
+                            'name': block.tool_use.name,
+                            'input': block.tool_use.input,
+                        }
+                    )
+
             if assistant_content:
-                self.messages.append({
-                    "role": "assistant",
-                    "content": assistant_content
-                })
-            
+                self.messages.append({'role': 'assistant', 'content': assistant_content})
+
             return result
 
     async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator[StreamChunk, None]:
@@ -552,7 +579,8 @@ class AnthropicModel(BaseModel):
 
         try:
             response = await self.async_client.messages.create(
-                stream=True, timeout=stream_timeout(self.model_params), **api_params)
+                stream=True, timeout=stream_timeout(self.model_params), **api_params
+            )
         except Exception as e:
             raise _map_anthropic_error(e)
 
@@ -587,11 +615,13 @@ class AnthropicModel(BaseModel):
                     elif event.type == 'content_block_stop':
                         if current_tool is not None:
                             arguments = json.loads(current_tool['json_str']) if current_tool['json_str'] else {}
-                            tool_calls.append(ToolCallRequest(
-                                id=current_tool['id'],
-                                name=current_tool['name'],
-                                arguments=arguments,
-                            ))
+                            tool_calls.append(
+                                ToolCallRequest(
+                                    id=current_tool['id'],
+                                    name=current_tool['name'],
+                                    arguments=arguments,
+                                )
+                            )
                             current_tool = None
                     elif event.type == 'message_delta' and hasattr(event.usage, 'output_tokens'):
                         output_tokens = event.usage.output_tokens or 0
@@ -614,22 +644,18 @@ class AnthropicModel(BaseModel):
         content = []
         if text:
             content.append({'type': 'text', 'text': text})
-        for tc in (tool_calls or []):
+        for tc in tool_calls or []:
             content.append({'type': 'tool_use', 'id': tc.id, 'name': tc.name, 'input': tc.arguments})
         return [{'role': 'assistant', 'content': content or text}]
 
     def cached_system_message(self) -> list[dict]:
         return [
-                  {
-                    "type": "text",
-                    "text": self.system_message,
-                  },
-                  {
-                    "type": "text",
-                    "text": self.cached_prompt,
-                    "cache_control": {"type": "ephemeral"}
-                  }
-                ]
+            {
+                'type': 'text',
+                'text': self.system_message,
+            },
+            {'type': 'text', 'text': self.cached_prompt, 'cache_control': {'type': 'ephemeral'}},
+        ]
 
     def token_count(self, text: str) -> int:
         message = create_anthropic_message('user', text)
@@ -643,35 +669,31 @@ def transform_tools(tools: list[dict]) -> list[dict]:
     """
     if not tools:
         return None
-        
+
     transformed_tools = []
-    
+
     for tool in tools:
-        if "function" in tool:
+        if 'function' in tool:
             # This is a function tool
             tool_def = {
-                "name": tool["function"].__name__,
-                "description": tool.get("description", ""),
-                "input_schema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
+                'name': tool['function'].__name__,
+                'description': tool.get('description', ''),
+                'input_schema': {'type': 'object', 'properties': {}, 'required': []},
             }
-            
+
             # Add parameters to input_schema
-            for param_name, param_type in tool.get("parameters", {}).items():
-                tool_def["input_schema"]["properties"][param_name] = {
-                    "type": JSON_TYPE_MAP.get(param_type, "string"),
-                    "description": param_name
+            for param_name, param_type in tool.get('parameters', {}).items():
+                tool_def['input_schema']['properties'][param_name] = {
+                    'type': JSON_TYPE_MAP.get(param_type, 'string'),
+                    'description': param_name,
                 }
-                
+
             # Add required parameters
-            if "required_parameters" in tool:
-                tool_def["input_schema"]["required"] = tool["required_parameters"]
-                
+            if 'required_parameters' in tool:
+                tool_def['input_schema']['required'] = tool['required_parameters']
+
             transformed_tools.append(tool_def)
-    
+
     return transformed_tools if transformed_tools else None
 
 
@@ -685,19 +707,19 @@ def create_anthropic_message(role: str, prompt: str, images: ImageInput = None):
             mime_type = identify_image_format_from_base64(base64img)
             content += [
                 {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": mime_type,
-                        "data": base64img,
+                    'type': 'image',
+                    'source': {
+                        'type': 'base64',
+                        'media_type': mime_type,
+                        'data': base64img,
                     },
                 }
             ]
 
     if prompt:
-        content += [{"type": "text", "text": prompt}]
+        content += [{'type': 'text', 'text': prompt}]
 
-    return {"role": role, "content": content}
+    return {'role': role, 'content': content}
 
 
 def extract_json(text: str) -> dict | list:
@@ -721,5 +743,5 @@ def extract_json(text: str) -> dict | list:
         elif ch == close_ch:
             depth -= 1
             if depth == 0:
-                return json.loads(text[start:i+1])
+                return json.loads(text[start : i + 1])
     raise json.JSONDecodeError('No valid JSON found', text, start)

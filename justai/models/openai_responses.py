@@ -1,4 +1,4 @@
-""" Implementation of the OpenAI Responses APImodels.
+"""Implementation of the OpenAI Responses APImodels.
 
 Feature table:
     - Async chat:       YES
@@ -10,6 +10,7 @@ Feature table:
     - File input:       NOT YET IMPLEMENTED
     - Web search:       NOT YET IMPLEMENTED
 """
+
 from __future__ import annotations
 import base64
 import json
@@ -24,8 +25,16 @@ from jsonschema import exceptions, validators, Draft202012Validator
 from PIL import Image
 from openai import OpenAI
 
-from justai.models.basemodel import BaseModel, ImageInput, get_api_key, JSON_TYPE_MAP, \
-    ToolCallRequest, StreamChunk, client_retry_kwargs, client_timeout
+from justai.models.basemodel import (
+    BaseModel,
+    ImageInput,
+    get_api_key,
+    JSON_TYPE_MAP,
+    ToolCallRequest,
+    StreamChunk,
+    client_retry_kwargs,
+    client_timeout,
+)
 from justai.models.openai_completions import map_openai_error, tiktoken_token_count
 from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
 
@@ -58,12 +67,11 @@ def _validate_json_schema(schema: Any) -> None:
 class OpenAIResponsesModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
-        system_message = f"You are {model_name}, a large language model trained by OpenAI."
+        system_message = f'You are {model_name}, a large language model trained by OpenAI.'
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI',
-                              'https://platform.openai.com/account/api-keys')
+        api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI', 'https://platform.openai.com/account/api-keys')
 
         self.client = OpenAI(api_key=api_key, timeout=client_timeout(params), **client_retry_kwargs(params))
 
@@ -85,7 +93,11 @@ class OpenAIResponsesModel(BaseModel):
             return (None, None)
         if EFFORT_MODELS_GPT56.search(self.model_name):
             native, warn_key = _EFFORT_MAP_GPT56[level]
-            warn = None if warn_key is None else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
+            warn = (
+                None
+                if warn_key is None
+                else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
+            )
             return (native, warn)
         return (None, f'effort is not supported by {self.model_name}, ignoring')
 
@@ -102,43 +114,62 @@ class OpenAIResponsesModel(BaseModel):
     def _responses_parse(self, **kwargs):
         return self.client.responses.parse(**kwargs, **self._reasoning_extra())
 
-    def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False) \
-            -> tuple[Any, int|None, int|None]:
+    def prompt(
+        self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False
+    ) -> tuple[Any, int | None, int | None]:
 
         content = self.create_content(prompt, images)
-        input_list = [{'role': 'system', 'content': self.system_message},
-                      {'role': 'user', 'content': content}]
+        input_list = [{'role': 'system', 'content': self.system_message}, {'role': 'user', 'content': content}]
         tool_spec = self.create_tool_spec(tools)
 
         last_response_id = self.last_response_id if _chat else None
 
-        is_pydantic = bool(response_format) and isinstance(response_format, type) \
+        is_pydantic = (
+            bool(response_format)
+            and isinstance(response_format, type)
             and issubclass(response_format, pydantic.BaseModel)
+        )
 
         for run in range(3):  # Max 3 function calls to prevent infinite loop
             try:
                 if is_pydantic:
                     # Pydantic model: use native structured output via responses.parse.
                     # The return_json flag is ignored here; the caller gets a Pydantic instance.
-                    response = self._responses_parse(model=self.model_name, input=input_list, tools=tool_spec,
-                                                    text_format=response_format,
-                                                    previous_response_id=last_response_id)
+                    response = self._responses_parse(
+                        model=self.model_name,
+                        input=input_list,
+                        tools=tool_spec,
+                        text_format=response_format,
+                        previous_response_id=last_response_id,
+                    )
                 elif response_format:
                     _validate_json_schema(response_format)
-                    response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
-                                                     text={"format": {
-                                                         "type": "json_schema",
-                                                         "name": "response_format",
-                                                         "strict": True,
-                                                         "schema": response_format}},
-                                                     previous_response_id=last_response_id)
+                    response = self._responses_create(
+                        model=self.model_name,
+                        input=input_list,
+                        tools=tool_spec,
+                        text={
+                            'format': {
+                                'type': 'json_schema',
+                                'name': 'response_format',
+                                'strict': True,
+                                'schema': response_format,
+                            }
+                        },
+                        previous_response_id=last_response_id,
+                    )
                 elif return_json:
-                    response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
-                                                     text={"format": {"type": "json_object"}},
-                                                     previous_response_id=last_response_id)
+                    response = self._responses_create(
+                        model=self.model_name,
+                        input=input_list,
+                        tools=tool_spec,
+                        text={'format': {'type': 'json_object'}},
+                        previous_response_id=last_response_id,
+                    )
                 else:
-                    response = self._responses_create(model=self.model_name, input=input_list, tools=tool_spec,
-                                                     previous_response_id=last_response_id)
+                    response = self._responses_create(
+                        model=self.model_name, input=input_list, tools=tool_spec, previous_response_id=last_response_id
+                    )
             except Exception as e:
                 raise map_openai_error(e)
 
@@ -151,7 +182,7 @@ class OpenAIResponsesModel(BaseModel):
             input_list += response.output
 
             for item in response.output:
-                if item.type == "function_call":
+                if item.type == 'function_call':
                     function_call = item
                     function_call_arguments = json.loads(item.arguments)
 
@@ -172,7 +203,7 @@ class OpenAIResponsesModel(BaseModel):
                     function = tool['function']
                     break
             else:
-                raise ValueError(f"Function {function_call.name} not found")
+                raise ValueError(f'Function {function_call.name} not found')
 
             # 3. Execute the function logic for get_horoscope
             result = {function_call.name: function(*function_call_arguments.values())}
@@ -180,22 +211,24 @@ class OpenAIResponsesModel(BaseModel):
             # 4. Provide function call results to the model
             input_list.append(
                 {
-                    "type": "function_call_output",
-                    "call_id": function_call.call_id,
-                    "output": json.dumps(result),
+                    'type': 'function_call_output',
+                    'call_id': function_call.call_id,
+                    'output': json.dumps(result),
                 }
             )
 
-    async def prompt_async(self, prompt: str, images: list[ImageInput]=None, _chat=False) -> AsyncGenerator[tuple[str, str], None]:
+    async def prompt_async(
+        self, prompt: str, images: list[ImageInput] = None, _chat=False
+    ) -> AsyncGenerator[tuple[str, str], None]:
 
         content = self.create_content(prompt, images)
-        input_ = [{'role': 'system', 'content': self.system_message},
-                   {"role": "user", "content": content}]
+        input_ = [{'role': 'system', 'content': self.system_message}, {'role': 'user', 'content': content}]
 
         last_response_id = self.last_response_id if _chat else None
 
-        response = self._responses_create(model=self.model_name, input=input_, stream=True,
-                                          previous_response_id=last_response_id)
+        response = self._responses_create(
+            model=self.model_name, input=input_, stream=True, previous_response_id=last_response_id
+        )
 
         # Save the response id for subsequent requests
         self.last_response_id = response.id if _chat else None
@@ -204,10 +237,10 @@ class OpenAIResponsesModel(BaseModel):
             if hasattr(event, 'delta'):
                 yield event.delta, ''  # Second value is reasoning (not available for OpenAI)
 
-    def chat(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
-             -> tuple[Any, int|None, int|None]:
+    def chat(
+        self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format
+    ) -> tuple[Any, int | None, int | None]:
         return self.prompt(prompt, images, tools, return_json, response_format, _chat=True)
-
 
     async def chat_async(self, prompt: str, images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
         async for chunk in self.prompt_async(prompt, images, _chat=True):
@@ -231,12 +264,14 @@ class OpenAIResponsesModel(BaseModel):
         if tools:
             for t in tools:
                 params = t.get('parameters') or t.get('input_schema', {})
-                tool_spec.append({
-                    'type': 'function',
-                    'name': t['name'],
-                    'description': t.get('description', ''),
-                    'parameters': params,
-                })
+                tool_spec.append(
+                    {
+                        'type': 'function',
+                        'name': t['name'],
+                        'description': t.get('description', ''),
+                        'parameters': params,
+                    }
+                )
 
         try:
             response = self._responses_create(
@@ -273,11 +308,13 @@ class OpenAIResponsesModel(BaseModel):
             elif event.type == 'response.function_call_arguments.done':
                 if event.output_index in pending_calls:
                     call = pending_calls[event.output_index]
-                    tool_calls.append(ToolCallRequest(
-                        id=call['call_id'],
-                        name=call['name'],
-                        arguments=json.loads(call['arguments']),
-                    ))
+                    tool_calls.append(
+                        ToolCallRequest(
+                            id=call['call_id'],
+                            name=call['name'],
+                            arguments=json.loads(call['arguments']),
+                        )
+                    )
 
             elif event.type == 'response.completed':
                 usage = event.response.usage
@@ -297,27 +334,34 @@ class OpenAIResponsesModel(BaseModel):
         """Format an assistant message for OpenAI Responses API."""
         items = []
         if text:
-            items.append({
-                'type': 'message', 'role': 'assistant',
-                'content': [{'type': 'output_text', 'text': text}],
-            })
-        for tc in (tool_calls or []):
-            items.append({
-                'type': 'function_call', 'call_id': tc.id,
-                'name': tc.name, 'arguments': json.dumps(tc.arguments),
-            })
+            items.append(
+                {
+                    'type': 'message',
+                    'role': 'assistant',
+                    'content': [{'type': 'output_text', 'text': text}],
+                }
+            )
+        for tc in tool_calls or []:
+            items.append(
+                {
+                    'type': 'function_call',
+                    'call_id': tc.id,
+                    'name': tc.name,
+                    'arguments': json.dumps(tc.arguments),
+                }
+            )
         return items
 
     @staticmethod
     def create_content(prompt, images: list[ImageInput]) -> list[dict]:
-        content = [{"type": "input_text", "text": prompt}]
+        content = [{'type': 'input_text', 'text': prompt}]
 
         if images:
             for image in images:
                 # Always convert to base64 data URI to avoid URL download issues
                 # Some servers (like Wikipedia) block OpenAI's download attempts
                 image_url = to_base64_data_uri(image)
-                content += [{"type": "input_image", "image_url": image_url}]
+                content += [{'type': 'input_image', 'image_url': image_url}]
         return content
 
     @staticmethod
@@ -327,28 +371,29 @@ class OpenAIResponsesModel(BaseModel):
 
         tool_spec = []
         for tool in tools:
-            tool_spec += [{
-                "type": "function",
-                "name": tool["function"].__name__,
-                "description": tool['description'],
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        param_name: {
-                            "type": JSON_TYPE_MAP.get(_type, "string"),  # Default to string if type not in map
-                            "description": param_name,  # Or a more descriptive text if available
-                        }
-                        for param_name, _type in tool['parameters'].items()
+            tool_spec += [
+                {
+                    'type': 'function',
+                    'name': tool['function'].__name__,
+                    'description': tool['description'],
+                    'parameters': {
+                        'type': 'object',
+                        'properties': {
+                            param_name: {
+                                'type': JSON_TYPE_MAP.get(_type, 'string'),  # Default to string if type not in map
+                                'description': param_name,  # Or a more descriptive text if available
+                            }
+                            for param_name, _type in tool['parameters'].items()
+                        },
+                        'required': tool['required_parameters'] or [],
                     },
-                    "required": tool['required_parameters'] or [],
                 }
-            }]
+            ]
         return tool_spec
 
     def token_count(self, text: str) -> int:
-        """ Returns the number of tokens in a string. """
+        """Returns the number of tokens in a string."""
         return tiktoken_token_count(self.model_name, text)
-
 
     def generate_image(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
         if 'gpt-image' in self.model_name:
@@ -359,11 +404,10 @@ class OpenAIResponsesModel(BaseModel):
         from math import sqrt
 
         if not size:
-            raise ValueError(f'{self.model_name} requires an explicit size=(width, height) '
-                             'for image generation')
+            raise ValueError(f'{self.model_name} requires an explicit size=(width, height) for image generation')
 
         def fit_size(size: tuple[int, int]) -> tuple[int, int]:
-            """ OpenAI Size constraints:
+            """OpenAI Size constraints:
             - Maximum edge length must be less than or equal to 3840px
             - Both edges must be multiples of 16px
             - Long edge to short edge ratio must not exceed 3:1
@@ -398,11 +442,7 @@ class OpenAIResponsesModel(BaseModel):
             w = max(16, round(w / 16) * 16)
             h = max(16, round(h / 16) * 16)
 
-            while (
-                w * h > max_pixels
-                or max(w, h) > max_edge
-                or max(w, h) / min(w, h) > max_ratio
-            ):
+            while w * h > max_pixels or max(w, h) > max_edge or max(w, h) / min(w, h) > max_ratio:
                 if w >= h:
                     w -= 16
                 else:
@@ -416,11 +456,12 @@ class OpenAIResponsesModel(BaseModel):
 
             return w, h
 
-
         w, h = fit_size(size)
         return f'{w}x{h}'
 
-    def _generate_image_api(self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None):
+    def _generate_image_api(
+        self, prompt, images: ImageInput, size: tuple[int, int] | None = None, options: dict = None
+    ):
         """Generate image via OpenAI Images API (gpt-image-2)."""
         api_size = self._pick_image_api_size(size)
         quality = (options or {}).get('quality', 'medium')
@@ -476,24 +517,22 @@ class OpenAIResponsesModel(BaseModel):
         client = OpenAI()
         input_structure = [
             {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": prompt}
-                ],
+                'role': 'user',
+                'content': [{'type': 'input_text', 'text': prompt}],
             }
         ]
         if images:
             for image in images:
-                if get_image_type(image) == "image_url":
-                    image_dict = {"type": "input_image", "image_url": image}
+                if get_image_type(image) == 'image_url':
+                    image_dict = {'type': 'input_image', 'image_url': image}
                 else:
-                    image_dict = {"type": "input_image", "image_data": to_base64_image(image)}
-                input_structure[0]["content"] += [image_dict]
+                    image_dict = {'type': 'input_image', 'image_data': to_base64_image(image)}
+                input_structure[0]['content'] += [image_dict]
 
         resp = client.responses.create(
             model=self.model_name,
             input=input_structure,
-            tools=[{"type": "image_generation"}],
+            tools=[{'type': 'image_generation'}],
         )
 
         images_b64 = extract_images(resp)

@@ -3,6 +3,7 @@
 Usage:
     python tests/test_cache.py
 """
+
 import logging
 import os
 import sqlite3
@@ -99,9 +100,7 @@ def test_parallel_cached_llm_response_single_chat_call():
                 assert r[0] == 'ok'
                 assert r[1] == 1
                 assert r[2] == 2
-            assert model.call_count == 1, (
-                f'expected 1 underlying chat call (7 cache hits), got {model.call_count}'
-            )
+            assert model.call_count == 1, f'expected 1 underlying chat call (7 cache hits), got {model.call_count}'
         finally:
             _reset_cachedb_singleton()
             set_cache_dir('')
@@ -142,7 +141,6 @@ def test_parallel_writes_distinct_keys_no_errors():
             set_cache_dir('')
 
     print('  OK: parallel writes with distinct keys all persisted')
-
 
 
 def test_cache_key_includes_system_prompt():

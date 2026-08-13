@@ -87,6 +87,7 @@ class GgufModel(BaseModel):
             handler_cls = Llava15ChatHandler
             if chat_handler_name:
                 import llama_cpp.llama_chat_format as fmt
+
                 handler_cls = getattr(fmt, chat_handler_name)
             with _suppress_stderr():
                 chat_handler = handler_cls(clip_model_path=clip_model_path)
@@ -133,14 +134,26 @@ class GgufModel(BaseModel):
         content.append({'type': 'text', 'text': prompt})
         return content
 
-    def prompt(self, prompt: str, images: ImageInput = None, tools: list = None,
-               return_json: bool = False, response_format=None) -> tuple[Any, int | None, int | None]:
+    def prompt(
+        self,
+        prompt: str,
+        images: ImageInput = None,
+        tools: list = None,
+        return_json: bool = False,
+        response_format=None,
+    ) -> tuple[Any, int | None, int | None]:
         """Stateless prompt - resets conversation history."""
         self.messages = []
         return self.chat(prompt, images, tools, return_json, response_format)
 
-    def chat(self, prompt: str, images: ImageInput = None, tools: list = None,
-             return_json: bool = False, response_format=None) -> tuple[Any, int | None, int | None]:
+    def chat(
+        self,
+        prompt: str,
+        images: ImageInput = None,
+        tools: list = None,
+        return_json: bool = False,
+        response_format=None,
+    ) -> tuple[Any, int | None, int | None]:
         """Stateful chat - maintains conversation history."""
         content = self._build_user_content(prompt, images)
         self.messages.append({'role': 'user', 'content': content})

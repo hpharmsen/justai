@@ -26,10 +26,9 @@ from justai.tools.images import to_base64_image
 
 
 class ReveModel(BaseModel):
-
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
-        system_message = f"You are {model_name}, a large language model trained by Google."
+        system_message = f'You are {model_name}, a large language model trained by Google.'
         super().__init__(model_name, params, system_message)
 
         # Authentication
@@ -42,19 +41,19 @@ class ReveModel(BaseModel):
         # options['aspect_ratio'] = One of '16:9', '9:16', '3:2', '2:3', '4:3', '3:4', or '1:1'.
         # Default: '3:2'
 
-        endpoint = "https://api.reve.com/v1/image/remix" if images else "https://api.reve.com/v1/image/create"
+        endpoint = 'https://api.reve.com/v1/image/remix' if images else 'https://api.reve.com/v1/image/create'
 
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
+            'Authorization': f'Bearer {self.api_key}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
         }
 
-        payload = {"prompt": prompt, "version": "latest"}
+        payload = {'prompt': prompt, 'version': 'latest'}
         if images:
-            payload["reference_images"] = [to_base64_image(im) for im in images]
-        if options and options.get("aspect_ratio"):
-            payload["aspect_ratio"] = options["aspect_ratio"]
+            payload['reference_images'] = [to_base64_image(im) for im in images]
+        if options and options.get('aspect_ratio'):
+            payload['aspect_ratio'] = options['aspect_ratio']
 
         timeout = self.model_params.get('timeout', DEFAULT_TIMEOUT)
         try:
@@ -63,14 +62,14 @@ class ReveModel(BaseModel):
 
             # Parse the response
             result = response.json()
-            print(f"Request ID: {result['request_id']}")
-            print(f"Credits used: {result['credits_used']}")
-            print(f"Credits remaining: {result['credits_remaining']}")
+            print(f'Request ID: {result["request_id"]}')
+            print(f'Credits used: {result["credits_used"]}')
+            print(f'Credits remaining: {result["credits_remaining"]}')
 
-            if result.get("content_violation"):
-                raise BadRequestException("content_violation")
+            if result.get('content_violation'):
+                raise BadRequestException('content_violation')
             else:
-                print("Image generated successfully!")
+                print('Image generated successfully!')
                 # The base64 image data is in result['image']
                 image_data = base64.b64decode(result['image'])
                 image = Image.open(BytesIO(image_data))
@@ -82,16 +81,16 @@ class ReveModel(BaseModel):
             raise GeneralException(e)
 
     def prompt(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format):
-        raise NotImplementedError(f"{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}")
+        raise NotImplementedError(f'{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}')
 
     def chat(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format):
-        raise NotImplementedError(f"{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}")
+        raise NotImplementedError(f'{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}')
 
     async def prompt_async(self, prompt: str, images: list[ImageInput]):
-        raise NotImplementedError(f"{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}")
+        raise NotImplementedError(f'{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}')
 
     async def chat_async(self, prompt: str, images: list[ImageInput]):
-        raise NotImplementedError(f"{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}")
+        raise NotImplementedError(f'{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}')
 
     def token_count(self, text: str) -> int:
-        raise NotImplementedError(f"{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}")
+        raise NotImplementedError(f'{sys._getframe().f_code.co_name} is not supported by {self.__class__.__name__}')

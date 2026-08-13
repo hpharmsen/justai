@@ -12,14 +12,7 @@ from PIL.Image import Image
 
 from justai.tools.display import ERROR_COLOR, color_print
 
-ImageInput = Optional[Union[
-    list[str],
-    list[bytes],
-    list[Image],
-    str,
-    bytes,
-    Image
-]]
+ImageInput = Optional[Union[list[str], list[bytes], list[Image], str, bytes, Image]]
 
 
 # Default timeout in seconds for all API calls
@@ -62,7 +55,9 @@ def client_timeout(params: dict) -> httpx.Timeout:
     for the entire answer in one read, so tightening it would break long generations."""
     return httpx.Timeout(
         params.get('timeout', DEFAULT_TIMEOUT),
-        connect=CONNECT_TIMEOUT, write=CONNECT_TIMEOUT, pool=CONNECT_TIMEOUT,
+        connect=CONNECT_TIMEOUT,
+        write=CONNECT_TIMEOUT,
+        pool=CONNECT_TIMEOUT,
     )
 
 
@@ -71,7 +66,10 @@ def stream_timeout(params: dict) -> httpx.Timeout:
     far tighter than the client default without capping the total response."""
     read = min(params.get('timeout', DEFAULT_TIMEOUT), STREAM_READ_TIMEOUT)
     return httpx.Timeout(
-        read, connect=CONNECT_TIMEOUT, write=CONNECT_TIMEOUT, pool=CONNECT_TIMEOUT,
+        read,
+        connect=CONNECT_TIMEOUT,
+        write=CONNECT_TIMEOUT,
+        pool=CONNECT_TIMEOUT,
     )
 
 
@@ -89,23 +87,30 @@ JSON_TYPE_MAP: dict[type, str] = {
 class ConnectionException(Exception):
     pass
 
+
 class AuthorizationException(Exception):
     pass
+
 
 class ModelOverloadException(Exception):
     pass
 
+
 class RatelimitException(Exception):
     pass
+
 
 class BadRequestException(Exception):
     pass
 
+
 class TimeoutException(Exception):
     pass
 
+
 class GeneralException(Exception):
     pass
+
 
 class TruncatedResponseException(GeneralException):
     """Raised when the model stopped on its output limit, so the answer is incomplete.
@@ -115,8 +120,10 @@ class TruncatedResponseException(GeneralException):
     whether an unparseable answer was cut off or simply not JSON.
     """
 
+
 class RefusalException(Exception):
     """Raised when a model refuses to answer (e.g. Anthropic safety classifier)."""
+
     def __init__(self, category: str = 'unknown', message: str = ''):
         self.category = category
         super().__init__(f'Model refused response: {category}. {message}'.strip())
@@ -132,6 +139,7 @@ UNIVERSAL_EFFORT_LEVELS: frozenset[str] = frozenset({'low', 'medium', 'high', 'x
 @dataclass
 class ToolCallRequest:
     """A tool/function call requested by the LLM."""
+
     id: str
     name: str
     arguments: dict
@@ -140,6 +148,7 @@ class ToolCallRequest:
 @dataclass
 class StreamChunk:
     """A chunk from a streaming LLM response."""
+
     type: str  # 'text' | 'tool_calls' | 'done'
     content: str | None = None
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
@@ -148,7 +157,6 @@ class StreamChunk:
 
 
 class BaseModel(ABC):
-
     # Keys that live in model_params but must not be forwarded to provider APIs.
     # Subclasses extend by overriding with a broader frozenset.
     _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'max_retries', 'async', 'debug', 'effort'})
@@ -158,7 +166,7 @@ class BaseModel(ABC):
 
     @abstractmethod
     def __init__(self, model_name: str, params: dict, system_message: str):
-        """ Model implemention should create attributes for all supported parameters """
+        """Model implemention should create attributes for all supported parameters"""
         self.model_name = model_name
         self.model_params = params  # Specific parameters for specific models like temperature
         self.system_message = system_message
@@ -199,7 +207,7 @@ class BaseModel(ABC):
 
     def set(self, key: str, value):
         if not hasattr(self, key):
-            raise (AttributeError(f"Model has no attribute {key}"))
+            raise (AttributeError(f'Model has no attribute {key}'))
         setattr(self, key, value)
 
     def close(self) -> None:
@@ -218,9 +226,7 @@ class BaseModel(ABC):
             return
         if value not in self.EFFORT_VALID:
             valid = sorted(v for v in self.EFFORT_VALID)
-            raise ValueError(
-                f'effort must be one of {valid} or None; got {value!r}'
-            )
+            raise ValueError(f'effort must be one of {valid} or None; got {value!r}')
 
     def resolve_effort(self) -> tuple[Any, str | None]:
         """Translate `self.model_params['effort']` to the provider-native wire value.
@@ -243,24 +249,24 @@ class BaseModel(ABC):
         warnings.warn(message, EffortDownmapWarning, stacklevel=3)
 
     @abstractmethod
-    def prompt(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
-            -> tuple[Any, int|None, int|None, dict|None]:
-        ...
+    def prompt(
+        self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format
+    ) -> tuple[Any, int | None, int | None, dict | None]: ...
 
     @abstractmethod
-    def chat(self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format) \
-            -> tuple[Any, int|None, int|None, dict|None]:
-        ...
+    def chat(
+        self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format
+    ) -> tuple[Any, int | None, int | None, dict | None]: ...
 
     @abstractmethod
-    def prompt_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
-        ...
+    def prompt_async(self, prompt: str, images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]: ...
 
     @abstractmethod
-    def chat_async(self, prompt: str,  images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]:
-        ...
+    def chat_async(self, prompt: str, images: list[ImageInput]) -> AsyncGenerator[tuple[str, str], None]: ...
 
-    async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator['StreamChunk', None]:
+    async def stream(
+        self, messages: list[dict], tools: list[dict] | None = None
+    ) -> AsyncGenerator['StreamChunk', None]:
         """Stateless streaming call. Caller manages conversation history."""
         raise NotImplementedError(f'stream() is not supported by {self.__class__.__name__}')
         yield  # Make it a generator
@@ -274,14 +280,11 @@ class BaseModel(ABC):
         raise NotImplementedError(f'format_assistant_message() is not supported by {self.__class__.__name__}')
 
     def generate_image(self, *args, **kwargs):
-        """ Overwrite in subclasses that DO support image generation."""
-        raise NotImplementedError(
-            f"generate_image() is not supported by {self.__class__.__name__}"
-        )
+        """Overwrite in subclasses that DO support image generation."""
+        raise NotImplementedError(f'generate_image() is not supported by {self.__class__.__name__}')
 
     @abstractmethod
-    def token_count(self, text: str) -> int:
-        ...
+    def token_count(self, text: str) -> int: ...
 
 
 def get_api_key(params: dict, keynames: str | tuple[str, ...], provider: str, url: str) -> str:
@@ -299,8 +302,11 @@ def get_api_key(params: dict, keynames: str | tuple[str, ...], provider: str, ur
         if key:
             return key
     keyname = names[0]
-    color_print(f'No {provider} API key found. Create one at {url} and '
-                f'set it in the .env file like {keyname}=here_comes_your_key.', color=ERROR_COLOR)
+    color_print(
+        f'No {provider} API key found. Create one at {url} and '
+        f'set it in the .env file like {keyname}=here_comes_your_key.',
+        color=ERROR_COLOR,
+    )
     raise AuthorizationException(f'No {keyname} found')
 
 

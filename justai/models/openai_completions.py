@@ -1,4 +1,4 @@
-""" Implementation of the OpenAI models. 
+"""Implementation of the OpenAI models.
 
 Feature table:
     - Async chat:       YES
@@ -8,7 +8,7 @@ Feature table:
     - Image support:    YES
     - Tool use:         YES
 
-Supported parameters:    
+Supported parameters:
     # The maximum number of tokens to generate in the completion.
     # Defaults to 16
     # The token count of your prompt plus max_tokens cannot exceed the model's context length.
@@ -53,8 +53,16 @@ from typing import Any, AsyncGenerator
 
 import httpx
 import tiktoken
-from openai import OpenAI, NOT_GIVEN, APIConnectionError, \
-    RateLimitError, APITimeoutError, AuthenticationError, PermissionDeniedError, BadRequestError
+from openai import (
+    OpenAI,
+    NOT_GIVEN,
+    APIConnectionError,
+    RateLimitError,
+    APITimeoutError,
+    AuthenticationError,
+    PermissionDeniedError,
+    BadRequestError,
+)
 
 from justai.tools.display import color_print, DEBUG_COLOR2
 from justai.models.basemodel import (
@@ -112,22 +120,22 @@ def tiktoken_token_count(model_name: str, text: str) -> int:
 class OpenAICompletionsModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
-        system_message = f"You are {model_name}, a large language model trained by OpenAI."
+        system_message = f'You are {model_name}, a large language model trained by OpenAI.'
         super().__init__(model_name, params, system_message)
 
         # Authentication
-        api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI',
-                              'https://platform.openai.com/account/api-keys')
+        api_key = get_api_key(params, 'OPENAI_API_KEY', 'OpenAI', 'https://platform.openai.com/account/api-keys')
 
         self.client = OpenAI(api_key=api_key, timeout=client_timeout(params), **client_retry_kwargs(params))
         self.supports_function_calling = True
         # Provider-specific hook for extra kwargs (e.g. OpenRouter passes reasoning via extra_body).
 
         # Only include system message if not empty (some providers reject empty system messages)
-        assert self.system_message is None or isinstance(self.system_message, str), \
+        assert self.system_message is None or isinstance(self.system_message, str), (
             f'system_message must be a string, got {type(self.system_message)}'
+        )
         if self.system_message and self.system_message.strip():
-            self.messages = [{"role": "system", "content": self.system_message}]
+            self.messages = [{'role': 'system', 'content': self.system_message}]
         else:
             self.messages = []
 
@@ -135,19 +143,24 @@ class OpenAICompletionsModel(BaseModel):
         """Provider hook: extra kwargs merged into every chat.completions call. Override in subclass."""
         return {}
 
-    def chat(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) \
-            -> tuple[Any, int|None, int|None, dict|None]:
+    def chat(
+        self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format
+    ) -> tuple[Any, int | None, int | None, dict | None]:
 
-        raise NotImplementedError("Justai with the Open AI Completion API does not support chat anymore, use prompt or another model")
+        raise NotImplementedError(
+            'Justai with the Open AI Completion API does not support chat anymore, use prompt or another model'
+        )
 
-    def prompt(self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format) -> tuple[Any, int|None, int|None]:
+    def prompt(
+        self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format
+    ) -> tuple[Any, int | None, int | None]:
 
-        if not tools: # Models like deepseek-chat don't like tools to be an empty list
+        if not tools:  # Models like deepseek-chat don't like tools to be an empty list
             tools = NOT_GIVEN
 
         # Reset messages - only include system message if not empty
         if self.system_message and self.system_message.strip():
-            self.messages = [{"role": "system", "content": self.system_message}]
+            self.messages = [{'role': 'system', 'content': self.system_message}]
         else:
             self.messages = []
 
@@ -158,7 +171,7 @@ class OpenAICompletionsModel(BaseModel):
         input_token_count = completion.usage.prompt_tokens
         output_token_count = completion.usage.completion_tokens
 
-        if message_text and message_text.startswith("```json"):
+        if message_text and message_text.startswith('```json'):
             message_text = message_text[7:-3]
         if return_json and self.supports_return_json:
             if not message_text:
@@ -168,7 +181,7 @@ class OpenAICompletionsModel(BaseModel):
             result = message_text
 
         if self.debug:
-            color_print(f"{message_text}", color=DEBUG_COLOR2)
+            color_print(f'{message_text}', color=DEBUG_COLOR2)
 
         return result, input_token_count, output_token_count
 
@@ -179,12 +192,7 @@ class OpenAICompletionsModel(BaseModel):
     async def chat_async(self, prompt: str, images: ImageInput = None) -> AsyncGenerator[tuple[str, str], None]:
         # Get the streaming response
         stream = self.completion(
-            prompt=prompt,
-            images=images,
-            tools=NOT_GIVEN,
-            return_json=False,
-            response_format=NOT_GIVEN,
-            stream=True
+            prompt=prompt, images=images, tools=NOT_GIVEN, return_json=False, response_format=NOT_GIVEN, stream=True
         )
 
         # Process the streaming response
@@ -204,37 +212,42 @@ class OpenAICompletionsModel(BaseModel):
                 # Small sleep to prevent overwhelming the event loop
                 await asyncio.sleep(0.01)
 
-    def completion(self, prompt: str, images: ImageInput, tools=NOT_GIVEN, return_json: bool = False,
-                   response_format = NOT_GIVEN, stream: bool = False):
+    def completion(
+        self,
+        prompt: str,
+        images: ImageInput,
+        tools=NOT_GIVEN,
+        return_json: bool = False,
+        response_format=NOT_GIVEN,
+        stream: bool = False,
+    ):
 
         if tools and not self.supports_function_calling:
-            raise NotImplementedError(f"{self.model_name} does not support function calling")
+            raise NotImplementedError(f'{self.model_name} does not support function calling')
         if images and not self.supports_image_input:
-            raise NotImplementedError(f"{self.model_name} does not support image input")
+            raise NotImplementedError(f'{self.model_name} does not support image input')
 
-        content = [{"type": "text", "text": prompt or ""}]
+        content = [{'type': 'text', 'text': prompt or ''}]
         if images:
             for image in images:
                 content.append(
                     {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{to_base64_image(image)}"
-                        },
+                        'type': 'image_url',
+                        'image_url': {'url': f'data:image/jpeg;base64,{to_base64_image(image)}'},
                     }
                 )
-        self.messages += [{'role':'user', 'content':content}]
+        self.messages += [{'role': 'user', 'content': content}]
         if response_format:
-            if "openai.com" not in str(self.client.base_url):
-                raise NotImplementedError("response_model is only supported with OpenAI models")
+            if 'openai.com' not in str(self.client.base_url):
+                raise NotImplementedError('response_model is only supported with OpenAI models')
             if stream:
-                raise NotImplementedError("streaming is not supported with response_model")
+                raise NotImplementedError('streaming is not supported with response_model')
         else:
             if return_json and not stream and self.supports_return_json:
-                response_format = {"type": "json_object"}
+                response_format = {'type': 'json_object'}
 
-            if self.model_name.startswith("gpt-5"):
-                self.model_params["temperature"] = 1  # Only the default of 1 is supported in GPT-5
+            if self.model_name.startswith('gpt-5'):
+                self.model_params['temperature'] = 1  # Only the default of 1 is supported in GPT-5
 
         # Create the completion with streaming
         tool_spec = NOT_GIVEN if tools is NOT_GIVEN else self.create_tool_spec(tools)
@@ -279,8 +292,8 @@ class OpenAICompletionsModel(BaseModel):
             response_msg = result.choices[0].message
 
             if not response_msg.tool_calls:
-                if "response_format" in self.model_params:
-                    del self.model_params["response_format"]
+                if 'response_format' in self.model_params:
+                    del self.model_params['response_format']
                 return result
 
             # Tool call was triggered
@@ -292,7 +305,7 @@ class OpenAICompletionsModel(BaseModel):
                     if tool['function'].__name__ == fn_name:
                         break
                 else:
-                    raise ValueError(f"Function {fn_name} not found")
+                    raise ValueError(f'Function {fn_name} not found')
 
                 function = tool['function']
                 result = function(**fn_args)
@@ -301,15 +314,14 @@ class OpenAICompletionsModel(BaseModel):
                 self.messages.append(response_msg.model_dump())  # include model’s function call message
                 self.messages.append(
                     {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps(result),
+                        'role': 'tool',
+                        'tool_call_id': tool_call.id,
+                        'content': json.dumps(result),
                     }
                 )
 
-
     def token_count(self, text: str) -> int:
-        """ Returns the number of tokens in a string. """
+        """Returns the number of tokens in a string."""
         return tiktoken_token_count(self.model_name, text)
 
     @staticmethod
@@ -327,24 +339,26 @@ class OpenAICompletionsModel(BaseModel):
                 # If function is not provided, use a default name
                 function_name = tool.get('name', 'unknown_function')
 
-            tool_spec.append({
-                "type": "function",
-                "function": {
-                    "name": function_name,
-                    "description": tool.get('description', ''),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            param_name: {
-                                "type": JSON_TYPE_MAP.get(_type, "string"),
-                                "description": param_name,
-                            }
-                            for param_name, _type in tool.get('parameters', {}).items()
+            tool_spec.append(
+                {
+                    'type': 'function',
+                    'function': {
+                        'name': function_name,
+                        'description': tool.get('description', ''),
+                        'parameters': {
+                            'type': 'object',
+                            'properties': {
+                                param_name: {
+                                    'type': JSON_TYPE_MAP.get(_type, 'string'),
+                                    'description': param_name,
+                                }
+                                for param_name, _type in tool.get('parameters', {}).items()
+                            },
+                            'required': tool.get('required_parameters', []),
                         },
-                        "required": tool.get('required_parameters', []),
-                    }
+                    },
                 }
-            })
+            )
         return tool_spec
 
     async def stream(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncGenerator[StreamChunk, None]:
@@ -355,14 +369,16 @@ class OpenAICompletionsModel(BaseModel):
             tool_spec = []
             for t in tools:
                 params = t.get('parameters') or t.get('input_schema', {})
-                tool_spec.append({
-                    'type': 'function',
-                    'function': {
-                        'name': t['name'],
-                        'description': t.get('description', ''),
-                        'parameters': params,
+                tool_spec.append(
+                    {
+                        'type': 'function',
+                        'function': {
+                            'name': t['name'],
+                            'description': t.get('description', ''),
+                            'parameters': params,
+                        },
                     }
-                })
+                )
 
         try:
             response = self.client.chat.completions.create(
@@ -432,11 +448,13 @@ class OpenAICompletionsModel(BaseModel):
             tool_calls = []
             for idx in sorted(pending_tool_calls):
                 tc = pending_tool_calls[idx]
-                tool_calls.append(ToolCallRequest(
-                    id=tc['id'],
-                    name=tc['name'],
-                    arguments=json.loads(tc['arguments']) if tc['arguments'] else {},
-                ))
+                tool_calls.append(
+                    ToolCallRequest(
+                        id=tc['id'],
+                        name=tc['name'],
+                        arguments=json.loads(tc['arguments']) if tc['arguments'] else {},
+                    )
+                )
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
 
         yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
@@ -456,7 +474,7 @@ class OpenAICompletionsModel(BaseModel):
                     'function': {
                         'name': tc.name,
                         'arguments': json.dumps(tc.arguments),
-                    }
+                    },
                 }
                 for tc in tool_calls
             ]

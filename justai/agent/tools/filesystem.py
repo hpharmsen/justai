@@ -1,4 +1,5 @@
 """FileSystemTool with path traversal prevention."""
+
 from pathlib import Path
 
 
@@ -41,25 +42,16 @@ class FileSystemTool:
         if not resolved.is_dir():
             raise ValueError(f'Not a directory: {path}')
         entries = sorted(resolved.iterdir())
-        return '\n'.join(
-            f'{"[dir]  " if e.is_dir() else "[file] "}{e.name}' for e in entries
-        )
+        return '\n'.join(f'{"[dir]  " if e.is_dir() else "[file] "}{e.name}' for e in entries)
 
     def get_tools(self) -> list[tuple]:
         """Return tool specs as (name, description, parameters, callable) tuples."""
         tools = []
         if self.read_paths:
-            tools.append((
-                'read_file', 'Read a file and return its contents.',
-                {'path': str}, self.read_file
-            ))
-            tools.append((
-                'list_directory', 'List files and directories at the given path.',
-                {'path': str}, self.list_directory
-            ))
+            tools.append(('read_file', 'Read a file and return its contents.', {'path': str}, self.read_file))
+            tools.append(
+                ('list_directory', 'List files and directories at the given path.', {'path': str}, self.list_directory)
+            )
         if self.write_paths:
-            tools.append((
-                'write_file', 'Write content to a file.',
-                {'path': str, 'content': str}, self.write_file
-            ))
+            tools.append(('write_file', 'Write content to a file.', {'path': str, 'content': str}, self.write_file))
         return tools

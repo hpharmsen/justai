@@ -1,4 +1,5 @@
-""" Handles the GPT API and the conversation state. """
+"""Handles the GPT API and the conversation state."""
+
 import json
 import time
 from pathlib import Path
@@ -39,7 +40,7 @@ def _to_pydantic(result, response_format):
 
 class Model:
     def __init__(self, model_name: str, **kwargs):
-        
+
         # Model parameters
         self.model = ModelFactory.create(model_name, **kwargs)
         self.model.encapsulating_model = self
@@ -54,7 +55,7 @@ class Model:
         self.input_token_count = 0
         self.output_token_count = 0
         self.last_response_time = 0
-        
+
         self.logger = None
 
     def __enter__(self):
@@ -64,7 +65,7 @@ class Model:
         self.close()
 
     def close(self):
-        """ Closes any open connections in the underlying model. """
+        """Closes any open connections in the underlying model."""
         self.model.close()
 
     def __setattr__(self, name, value):
@@ -84,7 +85,7 @@ class Model:
             super().__setattr__(name, value)
 
     def set_api_key(self, key: str):
-        """ Used when using Aigent from a browser where the user has to specify a key """
+        """Used when using Aigent from a browser where the user has to specify a key"""
         self.model.set('api_key', key)
 
     @property
@@ -100,40 +101,51 @@ class Model:
         self.model.system_message = value
 
     @property
-    def cached_prompt(self): 
+    def cached_prompt(self):
         if hasattr(self.model, 'cached_prompt'):
             return self.model.cached_prompt
-        raise AttributeError("Model does not support cached_prompt")
+        raise AttributeError('Model does not support cached_prompt')
 
     @cached_prompt.setter
     def cached_prompt(self, value):
         if hasattr(self.model, 'cached_prompt'):
             self.model.cached_prompt = value
         else:
-            raise AttributeError("Model does not support cached_prompt")
+            raise AttributeError('Model does not support cached_prompt')
 
     @property
     def cache_creation_input_tokens(self):
         if hasattr(self.model, 'cache_creation_input_tokens'):
             return self.model.cache_creation_input_tokens
-        raise AttributeError("Model does not support cache_creation_input_tokens")
-    
+        raise AttributeError('Model does not support cache_creation_input_tokens')
+
     @property
     def cache_read_input_tokens(self):
         if hasattr(self.model, 'cache_read_input_tokens'):
             return self.model.cache_read_input_tokens
-        raise AttributeError("Model does not support cache_read_input_tokens")
-        
+        raise AttributeError('Model does not support cache_read_input_tokens')
+
     def reset(self):
         self.messages = []
 
-    def add_tool(self, function: Callable, description: str|None = None, parameters: dict = None, required_parameters: list=None):
+    def add_tool(
+        self,
+        function: Callable,
+        description: str | None = None,
+        parameters: dict = None,
+        required_parameters: list = None,
+    ):
         if description is None and not self.model.supports_function_calling:
-            raise NotImplementedError(f"{self.model.model_name} does not support function calling")
+            raise NotImplementedError(f'{self.model.model_name} does not support function calling')
         if not description and not self.model.supports_automatic_function_calling:
-            raise NotImplementedError(f"{self.model.model_name} does not support automatic function calling")
-        tool = {'type': 'function', 'function': function, 'description': description, 'parameters': parameters,
-                'required_parameters': required_parameters}
+            raise NotImplementedError(f'{self.model.model_name} does not support automatic function calling')
+        tool = {
+            'type': 'function',
+            'function': function,
+            'description': description,
+            'parameters': parameters,
+            'required_parameters': required_parameters,
+        }
         self.tools.append(tool)
         self.functions[function.__name__] = function
 
@@ -153,9 +165,16 @@ class Model:
         response = None
 
         if cached:
-            response = cached_response(self.model.model_name, self.model.model_params,
-                                       self.model.system_message, prompt, images, self.tools,
-                                       return_json, response_format)
+            response = cached_response(
+                self.model.model_name,
+                self.model.model_params,
+                self.model.system_message,
+                prompt,
+                images,
+                self.tools,
+                return_json,
+                response_format,
+            )
 
         if response:
             result, _, _ = response
@@ -163,13 +182,22 @@ class Model:
                 result = json.loads(result)
             self.input_token_count = self.output_token_count = 0
         else:
-            response = self.model.prompt(prompt, images=images, tools=self.tools, return_json=return_json,
-                                         response_format=response_format)
+            response = self.model.prompt(
+                prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+            )
             if cached:
                 stored = (_cache_encode(response[0]), *response[1:]) if structured else response
-                cache_save(stored, self.model.model_name, self.model.model_params,
-                           self.model.system_message, prompt, images, self.tools,
-                           return_json, response_format)
+                cache_save(
+                    stored,
+                    self.model.model_name,
+                    self.model.model_params,
+                    self.model.system_message,
+                    prompt,
+                    images,
+                    self.tools,
+                    return_json,
+                    response_format,
+                )
 
             result, self.input_token_count, self.output_token_count = response
 
@@ -179,19 +207,20 @@ class Model:
     def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=False):
         self.raise_for_unsupported(images, return_json)
         if cached:
-            raise NotImplementedError("Model.chat does not support cached=True. Use prompt instead.")
+            raise NotImplementedError('Model.chat does not support cached=True. Use prompt instead.')
 
         start_time = time.time()
         if images and not isinstance(images, list):
             images = [images]
 
-        response = self.model.chat(prompt, images=images, tools=self.tools, return_json=return_json,
-                                   response_format=response_format)
+        response = self.model.chat(
+            prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+        )
 
         result, self.input_token_count, self.output_token_count = response
         self.last_response_time = time.time() - start_time
         return _to_pydantic(result, response_format)
-    
+
     async def prompt_async(self, prompt, *, images: ImageInput = None):
         # Using 'async for' to properly yield from the chat_async generator
         if images and not isinstance(images, list):
@@ -213,8 +242,7 @@ class Model:
             yield word, reasoning_content
 
     async def chat_async_reasoning(self, prompt, *, images: ImageInput = None):
-        """ Same as chat_async but returns the reasoning content as well
-        """
+        """Same as chat_async but returns the reasoning content as well"""
         if images and not isinstance(images, list):
             images = [images]
         async for word, reasoning_content in self.model.chat_async(prompt=prompt, images=images):
@@ -236,20 +264,21 @@ class Model:
 
     def raise_for_unsupported(self, images: ImageInput = None, return_json=False):
         if return_json and not self.model.supports_return_json:
-            raise NotImplementedError(f"{self.model.model_name} does not support return_json")
+            raise NotImplementedError(f'{self.model.model_name} does not support return_json')
         if images and not self.model.supports_image_input:
-            raise NotImplementedError(f"{self.model.model_name} does not support image input")
+            raise NotImplementedError(f'{self.model.model_name} does not support image input')
 
     def token_count(self, text: str):
         return self.model.token_count(text)
 
-    def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int]|None = None, options: dict = None) -> Image:
+    def generate_image(
+        self, prompt: str, images: ImageInput = None, size: tuple[int, int] | None = None, options: dict = None
+    ) -> Image:
         if not self.model.supports_image_generation:
-            raise NotImplementedError(f"{self.model.model_name} does not support image generation")
+            raise NotImplementedError(f'{self.model.model_name} does not support image generation')
         if images and not isinstance(images, list):
             images = [images]
         image = self.model.generate_image(prompt, images, size=size, options=options)
         if size:
             image = crop_to_fit(image, size[0], size[1])
         return image
-

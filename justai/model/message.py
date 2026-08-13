@@ -10,7 +10,7 @@ class Message:
     - images: A list of images associated with the message.
     """
 
-    def __init__(self, role=None, content=None, images: list=[]):
+    def __init__(self, role=None, content=None, images: list = []):
         self.role = role
         if isinstance(content, str):
             self.content = content
@@ -18,7 +18,7 @@ class Message:
             try:
                 self.content = json.dumps(content)
             except (TypeError, OverflowError, ValueError, RecursionError):
-                raise ValueError("Invalid content type in message. Must be str or json serializable data.")
+                raise ValueError('Invalid content type in message. Must be str or json serializable data.')
         self.images = images
 
     def __bool__(self):
@@ -33,9 +33,7 @@ class Message:
 
 
 class ToolUseMessage(Message):
-    def __init__(self, *, content=None, images: list=[], tool_use: dict=None):
+    def __init__(self, *, content=None, images: list = [], tool_use: dict = None):
         super().__init__('tool', content, images)
         self.tool_use = tool_use
         self.tool_call_id = tool_use.get('call_id', '')
-
-

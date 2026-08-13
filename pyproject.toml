@@ -51,6 +51,9 @@ dev = [
 # met enkele quotes erbij 1922.
 [tool.ruff]
 line-length = 120
+# Ruff 0.16 formatteert ook Python-codeblokken in markdown. De voorbeelden in
+# README.md en docs/ zijn documentatie en horen niet mee te veranderen.
+extend-exclude = ['*.md']
 
 [tool.ruff.format]
 quote-style = "single"

@@ -3,6 +3,7 @@
 Shows how to create an agent with tools, skills, custom tools,
 and dynamic instructions. Assumes justai.Agent is implemented.
 """
+
 import asyncio
 import os
 from pathlib import Path
@@ -63,10 +64,7 @@ async def full_example():
         return f'Working on project: {ctx.deps["project_name"]}'
 
     # Simple usage — just get the final result
-    result = await agent.run_until_done(
-        'tasks.md',
-        deps={'project_name': 'myapp', 'python_version': '3.12'}
-    )
+    result = await agent.run_until_done('tasks.md', deps={'project_name': 'myapp', 'python_version': '3.12'})
 
     print(f'Answer: {result.answer}')
     print(f'Iterations: {result.iterations}')
@@ -87,9 +85,7 @@ async def demo():
     src_dir = demo_dir / 'src'
     out_dir = demo_dir / 'output'
 
-    (src_dir / 'hello.py').write_text(
-        'def greet(name):\n    print(f"Hello {name}")\n'
-    )
+    (src_dir / 'hello.py').write_text('def greet(name):\n    print(f"Hello {name}")\n')
     (demo_dir / 'tasks.md').write_text(
         '# Tasks\n\n'
         f'- [ ] Read the file {src_dir}/hello.py\n'
@@ -102,10 +98,7 @@ async def demo():
         role='Python developer',
         goal='Improve code quality',
         tools=[
-            FileSystemTool(
-                read=[str(src_dir)],
-                write=[str(out_dir)]
-            ),
+            FileSystemTool(read=[str(src_dir)], write=[str(out_dir)]),
         ],
         max_iterations=10,
     )

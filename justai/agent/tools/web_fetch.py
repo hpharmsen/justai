@@ -1,4 +1,5 @@
 """WebFetchTool with SSRF protection."""
+
 import ipaddress
 import socket
 from html.parser import HTMLParser
@@ -23,6 +24,7 @@ BLOCKED_IP_RANGES = [
 
 class _TextExtractor(HTMLParser):
     """Simple HTML to text converter."""
+
     def __init__(self):
         super().__init__()
         self.parts: list[str] = []
@@ -91,9 +93,11 @@ class WebFetchTool:
 
     def get_tools(self) -> list[tuple]:
         """Return tool specs as (name, description, parameters, callable) tuples."""
-        return [(
-            'fetch_url',
-            'Fetch a URL and return its text content. Set raw=True for raw HTML.',
-            {'url': str, 'raw': bool},
-            self.fetch_url
-        )]
+        return [
+            (
+                'fetch_url',
+                'Fetch a URL and return its text content. Set raw=True for raw HTML.',
+                {'url': str, 'raw': bool},
+                self.fetch_url,
+            )
+        ]

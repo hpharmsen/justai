@@ -47,8 +47,7 @@ def json_response():
     """Get structured JSON output."""
     model = Model(TEXT_MODEL)
     result = model.prompt(
-        'Return a JSON object with keys "city" and "country" for the capital of France.',
-        return_json=True
+        'Return a JSON object with keys "city" and "country" for the capital of France.', return_json=True
     )
     print(f'JSON: {result}')
 

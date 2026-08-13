@@ -4,6 +4,7 @@ Extended-thinking models (e.g. claude-sonnet-5) return content lists like
 [ThinkingBlock, TextBlock]. The chat() method must find the text block instead
 of blindly indexing content[0].
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -35,8 +36,7 @@ def _mock_response(content_blocks: list, stop_reason: str = 'end_turn') -> Magic
     resp = MagicMock()
     resp.content = content_blocks
     resp.stop_reason = stop_reason
-    resp.usage = MagicMock(input_tokens=1, output_tokens=1,
-                           cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    resp.usage = MagicMock(input_tokens=1, output_tokens=1, cache_creation_input_tokens=0, cache_read_input_tokens=0)
     return resp
 
 

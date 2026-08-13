@@ -3,6 +3,7 @@
 Runs without a real MINIMAX_API_KEY: we pass a dummy key through kwargs
 so ModelFactory + MiniMaxModel init resolve without touching the network.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -26,18 +27,21 @@ def isolate_cache(monkeypatch, tmp_path):
 def test_factory_routes_minimax_prefix_case_insensitively(model_name):
     from justai.models.modelfactory import ModelFactory
     from justai.models.minimax_models import MiniMaxModel
+
     model = ModelFactory.create(model_name, MINIMAX_API_KEY='test')
     assert isinstance(model, MiniMaxModel)
 
 
 def test_minimax_client_base_url():
     from justai.models.minimax_models import MiniMaxModel
+
     model = MiniMaxModel('MiniMax-M3', params={'MINIMAX_API_KEY': 'test'})
     assert 'api.minimax.io' in str(model.client.base_url)
 
 
 def test_m3_supports_images_and_m2_does_not():
     from justai.models.minimax_models import MiniMaxModel
+
     assert MiniMaxModel('MiniMax-M3', params={'MINIMAX_API_KEY': 'test'}).supports_image_input is True
     assert MiniMaxModel('MiniMax-M2.7-highspeed', params={'MINIMAX_API_KEY': 'test'}).supports_image_input is False
 

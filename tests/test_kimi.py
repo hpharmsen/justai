@@ -3,6 +3,7 @@
 Runs without a real MOONSHOT_API_KEY: we pass a dummy key through kwargs
 so ModelFactory + KimiModel init resolve without touching the network.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -25,6 +26,7 @@ def isolate_cache(monkeypatch, tmp_path):
 def test_factory_routes_kimi_prefix():
     from justai.models.modelfactory import ModelFactory
     from justai.models.kimi_models import KimiModel
+
     model = ModelFactory.create('kimi-k2.6', MOONSHOT_API_KEY='test')
     assert isinstance(model, KimiModel)
 
@@ -32,18 +34,21 @@ def test_factory_routes_kimi_prefix():
 def test_factory_routes_moonshot_prefix():
     from justai.models.modelfactory import ModelFactory
     from justai.models.kimi_models import KimiModel
+
     model = ModelFactory.create('moonshot-v1-8k', MOONSHOT_API_KEY='test')
     assert isinstance(model, KimiModel)
 
 
 def test_kimi_client_base_url():
     from justai.models.kimi_models import KimiModel
+
     model = KimiModel('kimi-k2.6', params={'MOONSHOT_API_KEY': 'test'})
     assert 'api.moonshot.ai' in str(model.client.base_url)
 
 
 def test_kimi_supports_function_calling_and_images():
     from justai.models.kimi_models import KimiModel
+
     model = KimiModel('kimi-k2.6', params={'MOONSHOT_API_KEY': 'test'})
     assert model.supports_function_calling is True
     assert model.supports_image_input is True
@@ -51,12 +56,14 @@ def test_kimi_supports_function_calling_and_images():
 
 def test_kimi_temperature_is_clamped_to_one():
     from justai.models.kimi_models import KimiModel
+
     model = KimiModel('kimi-k2.6', params={'MOONSHOT_API_KEY': 'test', 'temperature': 1.7})
     assert model.api_params['temperature'] == 1.0
 
 
 def test_kimi_temperature_under_one_is_preserved():
     from justai.models.kimi_models import KimiModel
+
     model = KimiModel('kimi-k2.6', params={'MOONSHOT_API_KEY': 'test', 'temperature': 0.4})
     assert model.api_params['temperature'] == 0.4
 

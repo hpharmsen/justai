@@ -21,7 +21,7 @@ def bump(file, tag, what='minor', new_version=None):
                         patch = 0
                     else:
                         patch = int(patch) + 1
-                    new_version = f"{major}.{minor}.{patch}"
+                    new_version = f'{major}.{minor}.{patch}'
                 if quoted:
                     lines[index] = f'{tag}"{new_version}"\n'
                 else:
@@ -31,10 +31,10 @@ def bump(file, tag, what='minor', new_version=None):
     return new_version
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     what = sys.argv[1]
-    version = bump('pyproject.toml', "version = ", what=what)
-    bump("README.md", "Current version: ", new_version=version)
+    version = bump('pyproject.toml', 'version = ', what=what)
+    bump('README.md', 'Current version: ', new_version=version)
     if '-v' in sys.argv:
         print(version)
     else:

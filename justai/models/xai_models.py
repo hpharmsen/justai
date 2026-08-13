@@ -22,12 +22,17 @@ _EFFORT_MAP_GROK = {
 class XAIModel(OpenAIResponsesModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
-        system_message = f"You are {model_name}, a large language model trained by X AI."
+        system_message = f'You are {model_name}, a large language model trained by X AI.'
         BaseModel.__init__(self, model_name, params, system_message)
 
         # Authentication
         api_key = get_api_key(params, 'X_API_KEY', 'X AI', 'https://console.x.ai')
-        self.client = OpenAI(api_key=api_key, base_url='https://api.x.ai/v1', timeout=client_timeout(params), **client_retry_kwargs(params))
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url='https://api.x.ai/v1',
+            timeout=client_timeout(params),
+            **client_retry_kwargs(params),
+        )
 
         self.supports_image_generation = False
         self.last_response_id = None
@@ -42,6 +47,10 @@ class XAIModel(OpenAIResponsesModel):
             return (None, None)
         if EFFORT_MODELS_GROK.search(self.model_name):
             native, warn_key = _EFFORT_MAP_GROK[level]
-            warn = None if warn_key is None else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
+            warn = (
+                None
+                if warn_key is None
+                else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
+            )
             return (native, warn)
         return (None, f'effort is not supported by {self.model_name}, ignoring')

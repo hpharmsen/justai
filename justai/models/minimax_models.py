@@ -1,4 +1,3 @@
-
 from openai import OpenAI
 
 from justai.models.basemodel import get_api_key, BaseModel, client_retry_kwargs, client_timeout
@@ -12,7 +11,12 @@ class MiniMaxModel(OpenAICompletionsModel):
         BaseModel.__init__(self, model_name, params, system_message)
 
         api_key = get_api_key(params, 'MINIMAX_API_KEY', 'MiniMax', 'https://platform.minimax.io/')
-        self.client = OpenAI(api_key=api_key, base_url='https://api.minimax.io/v1', timeout=client_timeout(params), **client_retry_kwargs(params))
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url='https://api.minimax.io/v1',
+            timeout=client_timeout(params),
+            **client_retry_kwargs(params),
+        )
 
         self.messages = [{'role': 'system', 'content': self.system_message}]
 

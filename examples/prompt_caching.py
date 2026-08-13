@@ -1,4 +1,4 @@
-""" Example that shows the usage of prompt caching """
+"""Example that shows the usage of prompt caching"""
 
 from justai import Model
 from examples.return_types import get_story
@@ -11,24 +11,25 @@ def caching_example(model: Model):
 
     # First without cached prompt
     model.system_message = SYSTEM_MESSAGE
-    res = model.prompt(get_story() + 'Who is Mr. Thompsons Neighbour? Give me just the name.',
-                     cached=False)  # Disable justais own cache
+    res = model.prompt(
+        get_story() + 'Who is Mr. Thompsons Neighbour? Give me just the name.', cached=False
+    )  # Disable justais own cache
     print(res)
     show_token_usage(model)
 
     # Now with cached prompt
     model.system_message = SYSTEM_MESSAGE
     model.cached_prompt = get_story()
-    res = model.prompt('Who is Mr. Thompsons Neighbour? Give me just the name.',
-                     cached=False)  # Disable justais own cache
+    res = model.prompt(
+        'Who is Mr. Thompsons Neighbour? Give me just the name.', cached=False
+    )  # Disable justais own cache
     print(res)
     show_token_usage(model)
 
-    res = model.prompt('Who called it an accident? Give me just the name.',
-                       cached=False)  # Disable justais own cache
+    res = model.prompt('Who called it an accident? Give me just the name.', cached=False)  # Disable justais own cache
     print(res)
     show_token_usage(model)
-    
+
 
 def show_token_usage(model):
     print('input_token_count', model.input_token_count)
@@ -43,4 +44,3 @@ def show_token_usage(model):
 if __name__ == '__main__':
     model = Model('claude-sonnet-4-6')
     caching_example(model)
-    

@@ -1,4 +1,5 @@
 """Skill loader: reads and concatenates .md files from a directory."""
+
 from pathlib import Path
 
 

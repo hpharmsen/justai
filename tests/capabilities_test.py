@@ -8,6 +8,7 @@ Usage:
     python tests/capabilities_test.py -t async pydantic
     python tests/capabilities_test.py -t json -m deepseek-chat sonar
 """
+
 import argparse
 import asyncio
 
@@ -31,10 +32,12 @@ ALL_MODELS = [
 
 def run_async(model_name):
     """Test async streaming."""
+
     async def run_prompt():
         model = Model(model_name)
         async for _ in model.prompt_async('Say hello'):
             pass
+
     asyncio.run(run_prompt())
 
 
@@ -59,6 +62,7 @@ def run_vision(model_name):
 
 def run_tooluse(model_name):
     """Test tool/function calling."""
+
     def get_temperature(city: str) -> str:
         temps = {'amsterdam': '18', 'london': '15', 'paris': '20', 'berlin': '17'}
         return temps.get(city.lower(), '22')
@@ -68,7 +72,7 @@ def run_tooluse(model_name):
         get_temperature,
         description='Get the current temperature for a city',
         parameters={'city': str},
-        required_parameters=['city']
+        required_parameters=['city'],
     )
     response = model.prompt('What is the temperature in Amsterdam?', cached=False)
     assert '18' in str(response), f'Tool not called correctly: {response[:100]}'
@@ -85,12 +89,24 @@ ALL_TESTS = {
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test JustAI capabilities')
-    parser.add_argument('-m', '--models', nargs='+', default=ALL_MODELS,
-                        choices=ALL_MODELS, metavar='MODEL',
-                        help=f'Models to test. Available: {", ".join(ALL_MODELS)}')
-    parser.add_argument('-t', '--tests', nargs='+', default=list(ALL_TESTS.keys()),
-                        choices=ALL_TESTS.keys(), metavar='TEST',
-                        help=f'Tests to run. Available: {", ".join(ALL_TESTS.keys())}')
+    parser.add_argument(
+        '-m',
+        '--models',
+        nargs='+',
+        default=ALL_MODELS,
+        choices=ALL_MODELS,
+        metavar='MODEL',
+        help=f'Models to test. Available: {", ".join(ALL_MODELS)}',
+    )
+    parser.add_argument(
+        '-t',
+        '--tests',
+        nargs='+',
+        default=list(ALL_TESTS.keys()),
+        choices=ALL_TESTS.keys(),
+        metavar='TEST',
+        help=f'Tests to run. Available: {", ".join(ALL_TESTS.keys())}',
+    )
     return parser.parse_args()
 
 

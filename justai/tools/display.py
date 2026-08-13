@@ -1,4 +1,5 @@
-""" Just some color coded output to the terminal """
+"""Just some color coded output to the terminal"""
+
 import rich
 
 ERROR_COLOR = '#ff0000'

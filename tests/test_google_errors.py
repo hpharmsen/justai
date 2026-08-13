@@ -5,6 +5,7 @@ Runs without a Google API key: the genai client is mocked everywhere.
 Usage:
     uv run pytest tests/test_google_errors.py
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -12,9 +13,17 @@ from unittest.mock import MagicMock
 import pytest
 from google.genai.errors import APIError, ClientError, ServerError
 
-from justai import (AuthorizationException, BadRequestException, ConnectionException, GeneralException,
-                    ModelOverloadException, Model, RatelimitException, TimeoutException,
-                    TruncatedResponseException)
+from justai import (
+    AuthorizationException,
+    BadRequestException,
+    ConnectionException,
+    GeneralException,
+    ModelOverloadException,
+    Model,
+    RatelimitException,
+    TimeoutException,
+    TruncatedResponseException,
+)
 from justai.models.google_models import _map_google_error, convert_to_justai_response
 from justai.tools import cache
 
@@ -65,6 +74,7 @@ def _mock_model(response: _FakeResponse = None, error: Exception = None, **kwarg
 # 1. No output ceiling is invented for a caller who passed none
 # ---------------------------------------------------------------------------
 
+
 def test_json_call_without_kwarg_sets_no_output_ceiling():
     m, client = _mock_model(_FakeResponse('{"a": 1}'))
     m.prompt('hi', return_json=True, cached=False)
@@ -90,26 +100,29 @@ def test_json_call_with_high_ceiling_is_left_alone():
 # 2. APIError translation
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize('code, expected', [
-    (401, AuthorizationException),
-    (403, AuthorizationException),
-    (408, TimeoutException),
-    (429, RatelimitException),
-    (400, BadRequestException),
-    (404, BadRequestException),
-    (422, BadRequestException),
-    (503, ModelOverloadException),
-    (500, ConnectionException),
-    (502, ConnectionException),
-])
+
+@pytest.mark.parametrize(
+    'code, expected',
+    [
+        (401, AuthorizationException),
+        (403, AuthorizationException),
+        (408, TimeoutException),
+        (429, RatelimitException),
+        (400, BadRequestException),
+        (404, BadRequestException),
+        (422, BadRequestException),
+        (503, ModelOverloadException),
+        (500, ConnectionException),
+        (502, ConnectionException),
+    ],
+)
 def test_api_error_maps_to_justai_exception(code, expected):
     mapped = _map_google_error(APIError(code, {'error': {'message': 'boom', 'status': 'X'}}))
     assert isinstance(mapped, expected)
 
 
 def test_mapped_exception_keeps_code_and_details():
-    payload = {'error': {'message': 'quota', 'status': 'RESOURCE_EXHAUSTED',
-                         'details': [{'retryDelay': '31s'}]}}
+    payload = {'error': {'message': 'quota', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'retryDelay': '31s'}]}}
     mapped = _map_google_error(ClientError(429, payload))
     assert mapped.code == 429
     assert mapped.details['error']['details'][0]['retryDelay'] == '31s'
@@ -130,6 +143,7 @@ def test_prompt_translates_server_error():
 # ---------------------------------------------------------------------------
 # 3. Truncation gets its own type, unparseable JSON keeps the old one
 # ---------------------------------------------------------------------------
+
 
 def test_truncated_json_raises_truncated_response_exception():
     response = _FakeResponse('{"names": ["Antoine Amedin Houns', finish_reason='MAX_TOKENS')
@@ -159,6 +173,7 @@ def test_truncated_non_json_response_is_returned_as_is():
 # 4. Unknown kwargs are rejected at construction instead of silently dropped
 # ---------------------------------------------------------------------------
 
+
 def test_unknown_kwarg_raises_at_construction():
     with pytest.raises(ValueError, match='verbositty'):
         Model('gemini-2.5-flash', GEMINI_API_KEY='k', verbositty=2)
@@ -178,6 +193,7 @@ def test_non_api_kwargs_are_accepted():
 # ---------------------------------------------------------------------------
 # 5. max_retries reaches the Google client instead of vanishing
 # ---------------------------------------------------------------------------
+
 
 def _retry_options(model: Model):
     return model.model.client._api_client._http_options.retry_options

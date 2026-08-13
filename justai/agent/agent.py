@@ -1,4 +1,5 @@
 """Agent class for autonomous agent execution with streaming events."""
+
 import inspect
 import logging
 import time
@@ -8,8 +9,12 @@ from typing import Any, AsyncGenerator, Callable
 from justai.agent.skills import load_skills
 from justai.model.model import Model
 from justai.models.basemodel import (
-    JSON_TYPE_MAP, ToolCallRequest, DEFAULT_AGENT_RETRIES,
-    RatelimitException, AuthorizationException, ConnectionException,
+    JSON_TYPE_MAP,
+    ToolCallRequest,
+    DEFAULT_AGENT_RETRIES,
+    RatelimitException,
+    AuthorizationException,
+    ConnectionException,
 )
 
 logger = logging.getLogger(__name__)
@@ -18,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AgentContext:
     """Context passed to tools and instructions."""
+
     deps: Any = None
     agent: Any = None
 
@@ -25,6 +31,7 @@ class AgentContext:
 @dataclass
 class AuditEntry:
     """A single tool execution record."""
+
     timestamp: str
     tool_name: str
     arguments: dict
@@ -36,6 +43,7 @@ class AuditEntry:
 @dataclass
 class AgentResult:
     """Final result of an agent run."""
+
     answer: str
     audit: list[AuditEntry] = field(default_factory=list)
     tasks: str = ''
@@ -46,6 +54,7 @@ class AgentResult:
 @dataclass
 class AgentEvent:
     """An event yielded during agent execution."""
+
     type: str  # 'status' | 'response' | 'tool_call' | 'task_update' | 'error' | 'done'
     message: str | None = None
     content: str | None = None
@@ -119,7 +128,7 @@ class Agent:
         self._register_tool(self._final_answer, needs_ctx=False, name='final_answer')
 
         # Register tools from tool objects and raw callables
-        for t in (tools or []):
+        for t in tools or []:
             if hasattr(t, 'get_tools'):
                 for name, desc, params, func in t.get_tools():
                     schema = {
@@ -194,11 +203,13 @@ class Agent:
                 'properties': schema['parameters'],
                 'required': schema.get('required', []),
             }
-            specs.append({
-                'name': name,
-                'description': schema['description'],
-                'input_schema': input_schema,
-            })
+            specs.append(
+                {
+                    'name': name,
+                    'description': schema['description'],
+                    'input_schema': input_schema,
+                }
+            )
         return specs
 
     def _execute_tool(self, tc: ToolCallRequest, ctx: AgentContext) -> tuple[str, bool]:
@@ -219,14 +230,16 @@ class Agent:
             logger.warning(f'Tool {tc.name} failed: {e}')
 
         duration_ms = int((time.time() - start) * 1000)
-        self._audit.append(AuditEntry(
-            timestamp=time.strftime('%Y-%m-%dT%H:%M:%S'),
-            tool_name=tc.name,
-            arguments=tc.arguments,
-            result=result_str[:500],
-            duration_ms=duration_ms,
-            success=success,
-        ))
+        self._audit.append(
+            AuditEntry(
+                timestamp=time.strftime('%Y-%m-%dT%H:%M:%S'),
+                tool_name=tc.name,
+                arguments=tc.arguments,
+                result=result_str[:500],
+                duration_ms=duration_ms,
+                success=success,
+            )
+        )
         return result_str, success
 
     def _read_tasks(self, tasks_file: str) -> str:
@@ -296,9 +309,12 @@ class Agent:
                         yield AgentEvent(type='error', message='Rate limit exceeded, max retries reached')
                         yield AgentEvent(type='done', result=self._build_result(tasks_content, iteration + 1))
                         return
-                    yield AgentEvent(type='status', message=f'Rate limited, retrying ({retry_count}/{self.max_retries})...')
+                    yield AgentEvent(
+                        type='status', message=f'Rate limited, retrying ({retry_count}/{self.max_retries})...'
+                    )
                     import asyncio
-                    await asyncio.sleep(2 ** retry_count)
+
+                    await asyncio.sleep(2**retry_count)
                 except ConnectionException:
                     # A dropped stream is only safe to replay while nothing has
                     # left this step yet. Once text has streamed to the caller or
@@ -314,7 +330,8 @@ class Agent:
                         message=f'Connection lost, retrying ({retry_count}/{self.max_retries})...',
                     )
                     import asyncio
-                    await asyncio.sleep(2 ** retry_count)
+
+                    await asyncio.sleep(2**retry_count)
                 except AuthorizationException as e:
                     yield AgentEvent(type='error', message=f'Authorization error: {e}')
                     yield AgentEvent(type='done', result=self._build_result(tasks_content, iteration + 1))
@@ -331,13 +348,8 @@ class Agent:
                 tool_results = []
                 for tc in tool_calls:
                     result_str, success = self._execute_tool(tc, ctx)
-                    yield AgentEvent(
-                        type='tool_call', name=tc.name,
-                        arguments=tc.arguments, tool_result=result_str
-                    )
-                    tool_results.append(
-                        self.model.model.format_tool_result(tc.id, tc.name, result_str)
-                    )
+                    yield AgentEvent(type='tool_call', name=tc.name, arguments=tc.arguments, tool_result=result_str)
+                    tool_results.append(self.model.model.format_tool_result(tc.id, tc.name, result_str))
 
                 # Add tool results to messages
                 # For Anthropic: each result is a user message with tool_result content

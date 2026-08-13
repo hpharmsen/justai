@@ -3,6 +3,7 @@
 Layered to run without any provider API keys (mocked tests) plus a smoke test
 section that skips per-provider when the relevant API key is missing.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,7 @@ from justai.tools import cache
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def isolate_cache_and_warnings(monkeypatch, tmp_path):
@@ -41,8 +43,7 @@ def _mock_anthropic_response(text='ok', stop_reason='end_turn', refusal_category
     resp.stop_reason = stop_reason
     if refusal_category is not None:
         resp.refusal_category = refusal_category
-    resp.usage = MagicMock(input_tokens=1, output_tokens=1,
-                           cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    resp.usage = MagicMock(input_tokens=1, output_tokens=1, cache_creation_input_tokens=0, cache_read_input_tokens=0)
     return resp
 
 
@@ -76,6 +77,7 @@ def _install_mock_openai_client(model, response=None):
 # 1. effort=None sends no reasoning/output_config/thinking_config
 # ---------------------------------------------------------------------------
 
+
 def test_effort_none_sends_no_output_config_anthropic():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
     client = _install_mock_anthropic_client(m)
@@ -96,6 +98,7 @@ def test_effort_none_sends_no_reasoning_openai():
 # ---------------------------------------------------------------------------
 # 2. Each valid level on claude-fable-5 → correct output_config['effort']
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize('level', ['low', 'medium', 'high', 'xhigh', 'max'])
 def test_anthropic_fable5_sends_native_effort(level):
@@ -127,6 +130,7 @@ def test_anthropic_fable5_merges_effort_with_structured_format():
 # 3. xhigh on claude-opus-4-6 → sends max, emits EffortDownmapWarning
 # ---------------------------------------------------------------------------
 
+
 def test_xhigh_on_opus_4_6_maps_up_to_max_with_warning():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
@@ -145,6 +149,7 @@ def test_xhigh_on_opus_4_6_maps_up_to_max_with_warning():
 # 4. max on claude-sonnet-4-5 → nothing sent, EffortDownmapWarning
 # ---------------------------------------------------------------------------
 
+
 def test_effort_on_unsupported_anthropic_model_ignored_with_warning():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
@@ -161,6 +166,7 @@ def test_effort_on_unsupported_anthropic_model_ignored_with_warning():
 # ---------------------------------------------------------------------------
 # 5. max on gpt-5.6-sol → xhigh + warning; 'none' on gpt-5.6-luna → none
 # ---------------------------------------------------------------------------
+
 
 def test_max_on_gpt_56_downmaps_to_xhigh_with_warning():
     with warnings.catch_warnings(record=True) as w:
@@ -186,6 +192,7 @@ def test_none_passthrough_on_gpt_56():
 # 6. max on older OpenAI reasoning model → ignored + warning (per user scope)
 # ---------------------------------------------------------------------------
 
+
 def test_max_on_older_openai_reasoning_ignored():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
@@ -202,6 +209,7 @@ def test_max_on_older_openai_reasoning_ignored():
 # 7. high on gemini-3-pro → thinking_config.thinking_level == HIGH
 # ---------------------------------------------------------------------------
 
+
 def test_gemini3_high_sends_thinking_level_high(monkeypatch):
     # Bypass Google auth by providing dummy key
     monkeypatch.setenv('GEMINI_API_KEY', 'k')
@@ -215,6 +223,7 @@ def test_gemini3_high_sends_thinking_level_high(monkeypatch):
 # ---------------------------------------------------------------------------
 # 8. invalid effort raises at both constructor and setattr
 # ---------------------------------------------------------------------------
+
 
 def test_effort_invalid_value_raises_at_constructor():
     with pytest.raises(ValueError, match='effort must be one of'):
@@ -231,6 +240,7 @@ def test_effort_invalid_value_raises_at_setattr():
 # 9. 'none' on claude → ValueError
 # ---------------------------------------------------------------------------
 
+
 def test_none_string_on_anthropic_raises():
     with pytest.raises(ValueError, match='effort must be one of'):
         Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='none')
@@ -240,21 +250,29 @@ def test_none_string_on_anthropic_raises():
 # 10. Cache key changes when effort changes (direct hash inequality)
 # ---------------------------------------------------------------------------
 
+
 def test_cache_key_differs_across_effort_values():
     m_none = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
     m_high = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='high')
     # Use the same hash inputs as cached_response uses for prompt()
     prompt = 'test prompt'
-    h1 = cache.CACHE_NAMESPACE + ':' + cache.recursive_hash(
-        (m_none.model.model_name, m_none.model.model_params, None, prompt, None, False, None))
-    h2 = cache.CACHE_NAMESPACE + ':' + cache.recursive_hash(
-        (m_high.model.model_name, m_high.model.model_params, None, prompt, None, False, None))
+    h1 = (
+        cache.CACHE_NAMESPACE
+        + ':'
+        + cache.recursive_hash((m_none.model.model_name, m_none.model.model_params, None, prompt, None, False, None))
+    )
+    h2 = (
+        cache.CACHE_NAMESPACE
+        + ':'
+        + cache.recursive_hash((m_high.model.model_name, m_high.model.model_params, None, prompt, None, False, None))
+    )
     assert h1 != h2
 
 
 # ---------------------------------------------------------------------------
 # 11. Smoke tests against real APIs (skipped per-provider when key missing)
 # ---------------------------------------------------------------------------
+
 
 def test_smoke_effort_low_reaches_provider():
     ran_any = False
@@ -284,6 +302,7 @@ def test_smoke_effort_low_reaches_provider():
 # ---------------------------------------------------------------------------
 # 12. Streaming/async paths still send effort (Anthropic + OpenAI)
 # ---------------------------------------------------------------------------
+
 
 def test_effort_reaches_anthropic_streaming_path():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='high')
@@ -316,6 +335,7 @@ def test_effort_reaches_openai_streaming_path():
 # ---------------------------------------------------------------------------
 # 13. Multi-turn tool loop: effort on every iteration
 # ---------------------------------------------------------------------------
+
 
 def test_effort_survives_openai_multi_turn_tool_loop():
     m = Model('gpt-5.6-sol', OPENAI_API_KEY='k', effort='high')
@@ -358,6 +378,7 @@ def test_effort_survives_openai_multi_turn_tool_loop():
 # 14. Warning dedup: two chat() calls → exactly one downmap warning
 # ---------------------------------------------------------------------------
 
+
 def test_downmap_warning_emitted_once_across_multiple_calls():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
@@ -373,6 +394,7 @@ def test_downmap_warning_emitted_once_across_multiple_calls():
 # ---------------------------------------------------------------------------
 # 15. OpenRouter forwards reasoning via extra_body
 # ---------------------------------------------------------------------------
+
 
 def test_openrouter_forwards_reasoning():
     m = Model('openrouter/openai/gpt-5.6', OPENROUTER_API_KEY='k', effort='high')
@@ -391,6 +413,7 @@ def test_openrouter_forwards_reasoning():
 # 16. api_params strips effort
 # ---------------------------------------------------------------------------
 
+
 def test_api_params_strips_effort():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='high')
     assert 'effort' in m.model.model_params
@@ -401,8 +424,10 @@ def test_api_params_strips_effort():
 # 17. RefusalException import + category attribute
 # ---------------------------------------------------------------------------
 
+
 def test_refusal_exception_import_and_category():
     from justai import RefusalException as R
+
     assert R is RefusalException
     exc = RefusalException('csam')
     assert exc.category == 'csam'
@@ -423,6 +448,7 @@ def test_anthropic_refusal_raises_with_category():
 # 18. Refusal does not retry
 # ---------------------------------------------------------------------------
 
+
 def test_refusal_short_circuits_retry_loop():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
     resp = _mock_anthropic_response(text='', stop_reason='refusal', refusal_category='violence')
@@ -439,6 +465,7 @@ def test_refusal_short_circuits_retry_loop():
 # ---------------------------------------------------------------------------
 # 20. No-op provider strip: effort never leaks to underlying client
 # ---------------------------------------------------------------------------
+
 
 def test_deepseek_does_not_leak_effort_kwarg():
     m = Model('deepseek-chat', DEEPSEEK_API_KEY='k', effort='high')

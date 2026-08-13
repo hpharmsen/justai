@@ -11,15 +11,19 @@ from justai.tools.images import to_base64_data_uri
 
 class OpenRouterModel(OpenAICompletionsModel):
     def __init__(self, model_name: str, params: dict = None):
-        system_message = f"You are {model_name}, a large language model."
+        system_message = f'You are {model_name}, a large language model.'
         BaseModel.__init__(self, model_name, params, system_message)
 
         # Authentication
-        api_key = get_api_key(params, 'OPENROUTER_API_KEY', 'OpenRouter',
-                              'https://openrouter.ai/settings/keys')
-        self.client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1", timeout=client_timeout(params), **client_retry_kwargs(params))
+        api_key = get_api_key(params, 'OPENROUTER_API_KEY', 'OpenRouter', 'https://openrouter.ai/settings/keys')
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url='https://openrouter.ai/api/v1',
+            timeout=client_timeout(params),
+            **client_retry_kwargs(params),
+        )
 
-        self.messages = [{"role": "system", "content": self.system_message}]
+        self.messages = [{'role': 'system', 'content': self.system_message}]
         self.supports_image_generation = True
 
     def resolve_effort(self) -> tuple[str | None, str | None]:
@@ -33,18 +37,20 @@ class OpenRouterModel(OpenAICompletionsModel):
             return {}
         return {'extra_body': {'reasoning': {'effort': native}}}
 
-    def generate_image(self, prompt: str, images: ImageInput = None, size: tuple[int, int] | None = None, options: dict = None) -> Image:
+    def generate_image(
+        self, prompt: str, images: ImageInput = None, size: tuple[int, int] | None = None, options: dict = None
+    ) -> Image:
         """Generate an image via OpenRouter chat completions with modalities."""
-        content = [{"type": "text", "text": prompt}]
+        content = [{'type': 'text', 'text': prompt}]
         if images:
             for image in images:
                 data_uri = image if isinstance(image, str) and image.startswith('http') else to_base64_data_uri(image)
-                content.append({"type": "image_url", "image_url": {"url": data_uri}})
+                content.append({'type': 'image_url', 'image_url': {'url': data_uri}})
 
         resp = self.client.chat.completions.create(
             model=self.model_name,
-            messages=[{"role": "user", "content": content}],
-            modalities=["image", "text"],
+            messages=[{'role': 'user', 'content': content}],
+            modalities=['image', 'text'],
             timeout=300,
         )
 
@@ -62,7 +68,7 @@ class OpenRouterModel(OpenAICompletionsModel):
 
         # Fallback: check content blocks
         if not b64 and hasattr(message, 'content') and message.content:
-            for block in (message.content if isinstance(message.content, list) else [message.content]):
+            for block in message.content if isinstance(message.content, list) else [message.content]:
                 if isinstance(block, str) and block.startswith('data:image'):
                     b64 = block.split(',', 1)[1]
                 elif hasattr(block, 'type') and block.type == 'image_url':
