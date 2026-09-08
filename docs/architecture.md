@@ -71,7 +71,14 @@ Async variant (`prompt_async`) yieldt `(content, reasoning)`-tuples per delta-ch
 
 ## Cross-cutting features
 
-- **Prompt caching** — Provider-specifiek (Anthropic native, andere via lokale cache).
+- **Prompt caching** — Bij Anthropic standaard aan: `apply_cache_control()` in
+  `anthropic_models.py` zet per request twee breakpoints, na de systeemprompt (dat
+  dekt door de rendervolgorde meteen de tool-definities) en na de laatste beurt,
+  vanaf de tweede message. Copy-on-write, want de Agent hergebruikt zijn
+  messages-lijst tussen iteraties. Te sturen met `cache_ttl` en `prompt_cache`.
+  OpenAI en Gemini cachen server-side vanzelf. De cachetellers
+  (`cache_read_input_tokens`, `cache_creation_input_tokens`) staan op `BaseModel`
+  en worden gezet door `record_usage()`, dus elke provider heeft ze.
 - **Effort** — Universeel API (`effort='high'`), met warning-based downmap per provider.
 - **Tool use** — Uniforme `add_tool()` API; provider vertaalt naar eigen function-calling spec.
 - **JSON / structured output** — `return_json=True` of `response_format=PydanticModel`. Structured output is voorlopig alleen native op OpenAI.
