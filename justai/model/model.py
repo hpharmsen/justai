@@ -115,15 +115,13 @@ class Model:
 
     @property
     def cache_creation_input_tokens(self):
-        if hasattr(self.model, 'cache_creation_input_tokens'):
-            return self.model.cache_creation_input_tokens
-        raise AttributeError('Model does not support cache_creation_input_tokens')
+        """Tokens naar de cache geschreven in de laatste call. Nul als niets gemeten is."""
+        return self.model.cache_creation_input_tokens
 
     @property
     def cache_read_input_tokens(self):
-        if hasattr(self.model, 'cache_read_input_tokens'):
-            return self.model.cache_read_input_tokens
-        raise AttributeError('Model does not support cache_read_input_tokens')
+        """Tokens uit de cache gelezen in de laatste call. Nul als niets gemeten is."""
+        return self.model.cache_read_input_tokens
 
     def reset(self):
         self.messages = []

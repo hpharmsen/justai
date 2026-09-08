@@ -155,12 +155,16 @@ class StreamChunk:
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cache_creation_input_tokens: int | None = None
+    cache_read_input_tokens: int | None = None
 
 
 class BaseModel(ABC):
     # Keys that live in model_params but must not be forwarded to provider APIs.
     # Subclasses extend by overriding with a broader frozenset.
-    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'max_retries', 'async', 'debug', 'effort'})
+    _NON_API_PARAMS: frozenset[str] = frozenset(
+        {'timeout', 'max_retries', 'async', 'debug', 'effort', 'cache_ttl', 'prompt_cache'}
+    )
 
     # Levels the user may pass as `effort=...`. Providers may extend (e.g. OpenAI adds 'none').
     EFFORT_VALID: frozenset[str] = UNIVERSAL_EFFORT_LEVELS
@@ -193,6 +197,12 @@ class BaseModel(ABC):
         # this on the error path instead of losing the spend.
         self.last_usage: tuple[int, int] | None = None
 
+        # Cachetellers van de call in flight. Nul betekent "niets gemeten": providers
+        # die geen cache-cijfers rapporteren blijven op nul staan, wat iets anders is
+        # dan een cache die miste.
+        self.cache_creation_input_tokens = 0
+        self.cache_read_input_tokens = 0
+
         # Effort scaffolding. Seed default so `Model.__setattr__` routes `model.effort = ...` writes here.
         self.model_params.setdefault('effort', None)
         self._effort_warned: set[str] = set()
@@ -216,13 +226,26 @@ class BaseModel(ABC):
             raise (AttributeError(f'Model has no attribute {key}'))
         setattr(self, key, value)
 
-    def record_usage(self, input_tokens: int | None, output_tokens: int | None) -> None:
+    def record_usage(
+        self,
+        input_tokens: int | None,
+        output_tokens: int | None,
+        *,
+        cache_creation_tokens: int | None = 0,
+        cache_read_tokens: int | None = 0,
+    ) -> None:
         """Record what the provider reported for the call in flight.
 
         Call this as soon as the numbers are known, before any validation that may raise:
         the tokens are billed whether or not we end up with a usable answer.
+
+        The cache counters are overwritten on every call, also when the caller passes
+        nothing. Leaving the previous call's numbers standing would report a cache hit
+        for a call that never had one.
         """
         self.last_usage = (input_tokens or 0, output_tokens or 0)
+        self.cache_creation_input_tokens = cache_creation_tokens or 0
+        self.cache_read_input_tokens = cache_read_tokens or 0
 
     def close(self) -> None:
         """Close the provider's HTTP client. No-op for providers that don't hold one.

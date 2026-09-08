@@ -388,7 +388,13 @@ def convert_to_justai_response(response, return_json, model=None):
     )
     # Record before parsing: a truncated answer burned these tokens and is billed for them.
     if model is not None:
-        model.record_usage(input_token_count, output_token_count)
+        # Gemini cachet impliciet; alleen de read-teller vult zich. Net als bij OpenAI
+        # zijn deze tokens onderdeel van prompt_token_count, niet iets ernaast.
+        model.record_usage(
+            input_token_count,
+            output_token_count,
+            cache_read_tokens=getattr(response.usage_metadata, 'cached_content_token_count', 0),
+        )
     if not return_json:
         result = response.text
     elif response.parsed:

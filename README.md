@@ -118,12 +118,41 @@ asyncio.run(stream('sonar-pro', 'Give me 5 names for a juice bar'))
 ```
 
 ### Prompt caching (Anthropic)
+
+**On by default.** JustAI marks two cache breakpoints on every Anthropic request: one after the system prompt, which also covers the tool definitions, and one after the last turn of the conversation. Multi-turn chats and agent runs reuse their prefix instead of paying full price for it on every call.
+
+The second breakpoint is only set from the second message on. A cache write costs 1.25x, so on a genuine one-shot call there would be nothing to earn it back.
+
+`cached_prompt` still has a job: it moves a large fixed text into the cached prefix, ahead of the varying question.
+
 ```python
 model = Model('claude-sonnet-4-6')
 model.system_message = 'You are an experienced book analyzer'
 model.cached_prompt = SOME_LONG_TEXT
 response = model.chat('Who is the main character?', cached=False)
 ```
+
+Two settings, both optional:
+
+```python
+model = Model('claude-sonnet-4-6', cache_ttl='1h')       # default '5m'
+model = Model('claude-sonnet-4-6', prompt_cache=False)   # no breakpoints at all
+```
+
+A 1-hour write costs 2x rather than 1.25x and needs three requests to break even, so it is worth it only when your traffic has gaps longer than five minutes.
+
+**Below the minimum, caching silently does nothing.** The shortest cacheable prefix is 1024 tokens on Sonnet 5, Sonnet 4.6 and Opus 4.8, 512 on Opus 5, 2048 on Opus 4.7, and 4096 on Opus 4.6 and Haiku 4.5. Under that the API caches nothing, without an error and without charging you for it. Zero counters on a short prompt are expected, not a bug.
+
+### Cache counters
+
+```python
+model.cache_read_input_tokens      # served from cache, ~0.1x price
+model.cache_creation_input_tokens  # written to cache, ~1.25x price
+```
+
+Available on every provider. Anthropic reports both; OpenAI and Gemini cache server-side on their own and report reads only. Providers that report nothing stay at zero, which means "not measured" rather than "no cache".
+
+**The two families count differently.** On OpenAI and Gemini the cached tokens are a subset of the input tokens. On Anthropic they sit beside them, so the full prompt size is `input_token_count + cache_read_input_tokens + cache_creation_input_tokens`. If an agent ran for an hour and `input_token_count` reads 4000, the rest came from cache: check the sum, not the single field.
 
 ### Effort
 

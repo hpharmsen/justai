@@ -136,6 +136,56 @@ def _map_anthropic_error(e: Exception) -> Exception:
     return exc
 
 
+def _breakpoint(ttl: str | None) -> dict:
+    """cache_control-blok. 5m is de default van de API en wordt niet meegestuurd."""
+    return {'type': 'ephemeral', 'ttl': ttl} if ttl and ttl != '5m' else {'type': 'ephemeral'}
+
+
+def _marked(blocks: list, ttl: str | None) -> list:
+    """Kopie van blocks met een breakpoint op het laatste blok, tenzij dat er al een heeft."""
+    if not blocks or not isinstance(blocks[-1], dict):
+        return blocks
+    if 'cache_control' in blocks[-1]:
+        return blocks  # cached_system_message() zet er zelf al een
+    return [*blocks[:-1], {**blocks[-1], 'cache_control': _breakpoint(ttl)}]
+
+
+def apply_cache_control(system, messages: list[dict], ttl: str | None = None, enabled: bool = True):
+    """Zet cache-breakpoints op system en op de laatste beurt. Muteert de input niet.
+
+    Twee van de vier toegestane breakpoints:
+
+    1. Laatste systeemblok. De rendervolgorde is tools, system, messages, dus dit
+       ene punt cachet de tool-definities en de systeemprompt samen.
+    2. Laatste content-blok van de laatste message, maar pas vanaf de tweede
+       message. Een cache write kost 1,25x; bij een enkele message is er nog niets
+       om te hergebruiken en zou het breakpoint puur verlies zijn.
+
+    Copy-on-write is hier geen nettigheid maar een eis: de Agent hergebruikt zijn
+    messages-lijst tussen iteraties, en een gemuteerde dict verandert de bytes van
+    de prefix bij de volgende request. De cache mist dan stil, zonder foutmelding
+    en zonder dat je het aan de response ziet.
+    """
+    if not enabled:
+        return system, messages
+
+    if isinstance(system, str):
+        system = _marked([{'type': 'text', 'text': system}], ttl) if system.strip() else system
+    elif isinstance(system, list):
+        system = _marked(system, ttl)
+
+    # Vanaf de tweede message: daarvoor valt er niets te hergebruiken.
+    if len(messages) > 1:
+        last = messages[-1]
+        content = last.get('content')
+        if isinstance(content, str) and content:
+            content = [{'type': 'text', 'text': content}]
+        if isinstance(content, list) and content:
+            messages = [*messages[:-1], {**last, 'content': _marked(content, ttl)}]
+
+    return system, messages
+
+
 class AnthropicModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
@@ -177,6 +227,20 @@ class AnthropicModel(BaseModel):
 
         self.supports_cached_prompts = True
         self.messages = []
+
+    def _cached(self, system, messages: list[dict]):
+        """apply_cache_control met de twee model-params als instelling.
+
+        cache_ttl: '5m' (default) of '1h'. Een 1-uurs write kost 2x in plaats van
+        1,25x en verdient zich pas terug vanaf de derde request, dus opt-in.
+        prompt_cache: op False gedraagt justai zich als voor de breakpoints bestonden.
+        """
+        return apply_cache_control(
+            system,
+            messages,
+            ttl=self.model_params.get('cache_ttl'),
+            enabled=self.model_params.get('prompt_cache', True),
+        )
 
     def resolve_effort(self) -> tuple[str | None, str | None]:
         level = self.model_params.get('effort')
@@ -264,7 +328,12 @@ class AnthropicModel(BaseModel):
         # answers, so the caller must be able to see those tokens.
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
-        self.record_usage(input_tokens, output_tokens)
+        self.record_usage(
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens=getattr(message.usage, 'cache_creation_input_tokens', 0),
+            cache_read_tokens=getattr(message.usage, 'cache_read_input_tokens', 0),
+        )
 
         # Refusal is HTTP 200 with an empty content list; catch it before content[0] IndexErrors.
         if getattr(message, 'stop_reason', None) == 'refusal':
@@ -288,13 +357,9 @@ class AnthropicModel(BaseModel):
         else:
             response = response_str
 
-        # Token count (input_tokens and output_tokens were read above, before the checks)
-        if self.cached_prompt:
-            self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens
-            self.cache_read_input_tokens = message.usage.cache_read_input_tokens
-        else:
-            self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
-
+        # De cachetellers zijn hierboven al gezet, samen met de tokentelling. Ze zaten
+        # ooit achter een `if self.cached_prompt`, maar sinds de breakpoints automatisch
+        # gezet worden valt er ook zonder cached_prompt iets te melden.
         return response, input_tokens, output_tokens
 
     def _supports_structured_outputs(self) -> bool:
@@ -349,10 +414,11 @@ class AnthropicModel(BaseModel):
         antr_tools = transform_tools(tools or []) if tools is not None else None
 
         try:
+            cached_system, cached_messages = self._cached(system_message, self.messages)
             api_params = {
                 'model': self.model_name,
-                'messages': self.messages,
-                'system': system_message,
+                'messages': cached_messages,
+                'system': cached_system,
                 'output_config': output_config,
                 **self.api_params,
             }
@@ -421,11 +487,12 @@ class AnthropicModel(BaseModel):
                         raise NotImplementedError(
                             'Anthropic model does not support streaming and tools at the same time'
                         )
+                    cached_system, cached_messages = self._cached(system_message, self.messages)
                     stream_params = self._prepare_api_params(
                         {
                             'model': self.model_name,
-                            'system': system_message,
-                            'messages': self.messages,
+                            'system': cached_system,
+                            'messages': cached_messages,
                             **self.api_params,
                         }
                     )
@@ -476,7 +543,7 @@ class AnthropicModel(BaseModel):
                 ):
                     api_params['messages'] = api_messages[:-1]
 
-                api_params['system'] = system_message
+                api_params['system'], api_params['messages'] = self._cached(system_message, api_params['messages'])
 
                 # Only add tools if we have any
                 if antr_tools:
@@ -572,10 +639,13 @@ class AnthropicModel(BaseModel):
             else:
                 api_messages.append(msg)
 
+        # De agent-loop stuurt elke iteratie de volledige, groeiende geschiedenis opnieuw.
+        # Zonder breakpoints betaalt elke iteratie de hele prefix opnieuw tegen vol tarief.
+        cached_system, cached_messages = self._cached(system_message, api_messages)
         api_params = {
             'model': self.model_name,
-            'messages': api_messages,
-            'system': system_message,
+            'messages': cached_messages,
+            'system': cached_system,
             **self.api_params,
         }
         if tools:
@@ -592,6 +662,8 @@ class AnthropicModel(BaseModel):
 
         input_tokens = 0
         output_tokens = 0
+        cache_creation_tokens = 0
+        cache_read_tokens = 0
         # Track tool_use blocks as they stream in
         current_tool = None  # {id, name, json_str}
         tool_calls = []
@@ -604,7 +676,10 @@ class AnthropicModel(BaseModel):
                 async for event in stream:
                     if event.type == 'message_start':
                         if hasattr(event.message, 'usage') and event.message.usage:
-                            input_tokens = event.message.usage.input_tokens or 0
+                            usage = event.message.usage
+                            input_tokens = usage.input_tokens or 0
+                            cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                            cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
                     elif event.type == 'content_block_start':
                         if hasattr(event.content_block, 'type') and event.content_block.type == 'tool_use':
                             current_tool = {
@@ -634,9 +709,25 @@ class AnthropicModel(BaseModel):
         except Exception as e:
             raise _map_anthropic_error(e)
 
+        # Ook op de instantie, zodat Model.cache_read_input_tokens de laatste iteratie
+        # van een agent-loop laat zien. De done-chunk draagt ze mee voor wie over
+        # iteraties heen wil optellen.
+        self.record_usage(
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+            cache_read_tokens=cache_read_tokens,
+        )
+
         if tool_calls:
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
-        yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+        yield StreamChunk(
+            type='done',
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_creation_tokens,
+            cache_read_input_tokens=cache_read_tokens,
+        )
 
     def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
         """Format a tool result message for Anthropic."""
