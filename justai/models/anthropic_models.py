@@ -136,6 +136,11 @@ def _map_anthropic_error(e: Exception) -> Exception:
     return exc
 
 
+def apply_cache_control(system, messages: list[dict], ttl: str | None = None, enabled: bool = True):
+    """Nog niet geimplementeerd; geeft de input ongewijzigd terug."""
+    return system, messages
+
+
 class AnthropicModel(BaseModel):
     def __init__(self, model_name: str, params: dict = None):
         params = params or {}
