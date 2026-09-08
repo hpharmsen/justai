@@ -2,7 +2,15 @@ docs/
 .envrc
 .idea/
 .env
+# Varianten als `.env (1)` en `.env.local` vallen niet onder de kale `.env`
+# hierboven en zouden dus met een `git add -A` mee de repo in gaan.
+.env*
 .DS_Store
+
+# Conflictkopieen van cloud-sync. Vervuilen grep-resultaten en pytest-collectie
+# (`test_agent (1).py` matcht het test_*.py-patroon en wordt dubbel verzameld).
+* (1)*
+* (2)*
 dist/
 __pycache__/
 build/
