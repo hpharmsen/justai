@@ -172,7 +172,14 @@ class OpenAICompletionsModel(BaseModel):
         input_token_count = completion.usage.prompt_tokens
         output_token_count = completion.usage.completion_tokens
         # Record before parsing: an empty or unparseable answer was billed all the same.
-        self.record_usage(input_token_count, output_token_count)
+        # cached_tokens is a subset of prompt_tokens here, unlike Anthropic where the
+        # cache counters sit beside input_tokens rather than inside them.
+        details = getattr(completion.usage, 'prompt_tokens_details', None)
+        self.record_usage(
+            input_token_count,
+            output_token_count,
+            cache_read_tokens=getattr(details, 'cached_tokens', 0),
+        )
 
         if message_text and message_text.startswith('```json'):
             message_text = message_text[7:-3]

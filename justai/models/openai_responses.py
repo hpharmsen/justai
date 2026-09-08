@@ -188,7 +188,15 @@ class OpenAIResponsesModel(BaseModel):
 
             if not function_call or run == 2:
                 # Record before parsing: output that turns out not to be JSON was billed too.
-                self.record_usage(response.usage.input_tokens, response.usage.output_tokens)
+                # OpenAI cachet server-side en vanzelf; alleen de read-teller vult zich.
+                # Anders dan bij Anthropic zijn deze tokens een deelverzameling van
+                # input_tokens, niet iets dat er los naast staat.
+                details = getattr(response.usage, 'input_tokens_details', None)
+                self.record_usage(
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                    cache_read_tokens=getattr(details, 'cached_tokens', 0),
+                )
                 if is_pydantic:
                     output = response.output_parsed
                 elif return_json:

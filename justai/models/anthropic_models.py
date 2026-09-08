@@ -314,7 +314,12 @@ class AnthropicModel(BaseModel):
         # answers, so the caller must be able to see those tokens.
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
-        self.record_usage(input_tokens, output_tokens)
+        self.record_usage(
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens=getattr(message.usage, 'cache_creation_input_tokens', 0),
+            cache_read_tokens=getattr(message.usage, 'cache_read_input_tokens', 0),
+        )
 
         # Refusal is HTTP 200 with an empty content list; catch it before content[0] IndexErrors.
         if getattr(message, 'stop_reason', None) == 'refusal':
@@ -338,13 +343,9 @@ class AnthropicModel(BaseModel):
         else:
             response = response_str
 
-        # Token count (input_tokens and output_tokens were read above, before the checks)
-        if self.cached_prompt:
-            self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens
-            self.cache_read_input_tokens = message.usage.cache_read_input_tokens
-        else:
-            self.cache_creation_input_tokens = self.cache_read_input_tokens = 0
-
+        # De cachetellers zijn hierboven al gezet, samen met de tokentelling. Ze zaten
+        # ooit achter een `if self.cached_prompt`, maar sinds de breakpoints automatisch
+        # gezet worden valt er ook zonder cached_prompt iets te melden.
         return response, input_tokens, output_tokens
 
     def _supports_structured_outputs(self) -> bool:
@@ -649,6 +650,8 @@ class AnthropicModel(BaseModel):
 
         input_tokens = 0
         output_tokens = 0
+        cache_creation_tokens = 0
+        cache_read_tokens = 0
         # Track tool_use blocks as they stream in
         current_tool = None  # {id, name, json_str}
         tool_calls = []
@@ -661,7 +664,10 @@ class AnthropicModel(BaseModel):
                 async for event in stream:
                     if event.type == 'message_start':
                         if hasattr(event.message, 'usage') and event.message.usage:
-                            input_tokens = event.message.usage.input_tokens or 0
+                            usage = event.message.usage
+                            input_tokens = usage.input_tokens or 0
+                            cache_creation_tokens = getattr(usage, 'cache_creation_input_tokens', 0) or 0
+                            cache_read_tokens = getattr(usage, 'cache_read_input_tokens', 0) or 0
                     elif event.type == 'content_block_start':
                         if hasattr(event.content_block, 'type') and event.content_block.type == 'tool_use':
                             current_tool = {
@@ -691,9 +697,25 @@ class AnthropicModel(BaseModel):
         except Exception as e:
             raise _map_anthropic_error(e)
 
+        # Ook op de instantie, zodat Model.cache_read_input_tokens de laatste iteratie
+        # van een agent-loop laat zien. De done-chunk draagt ze mee voor wie over
+        # iteraties heen wil optellen.
+        self.record_usage(
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+            cache_read_tokens=cache_read_tokens,
+        )
+
         if tool_calls:
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
-        yield StreamChunk(type='done', input_tokens=input_tokens, output_tokens=output_tokens)
+        yield StreamChunk(
+            type='done',
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_creation_tokens,
+            cache_read_input_tokens=cache_read_tokens,
+        )
 
     def format_tool_result(self, tool_call_id: str, tool_name: str, result: str) -> dict:
         """Format a tool result message for Anthropic."""

@@ -118,12 +118,11 @@ def test_openai_responses_reports_cached_tokens():
     resp.output = []
     resp.output_text = 'ok'
     resp.id = 'resp_test'
-    resp.usage = MagicMock(
-        input_tokens=100, output_tokens=5, input_tokens_details=MagicMock(cached_tokens=64)
-    )
+    resp.usage = MagicMock(input_tokens=100, output_tokens=5, input_tokens_details=MagicMock(cached_tokens=64))
     m.model.client = MagicMock()
     m.model.client.responses.create.return_value = resp
-    m.model.chat('hallo')
+    # OpenAI's chat() heeft geen defaults op deze argumenten, anders dan Anthropic.
+    m.model.chat('hallo', None, None, False, None)
     assert m.cache_read_input_tokens == 64
 
 
@@ -140,7 +139,8 @@ def test_openai_completions_reports_cached_tokens():
     )
     m.model.client = MagicMock()
     m.model.client.chat.completions.create.return_value = completion
-    m.model.chat('hallo')
+    # De Completions-API ondersteunt chat() niet meer; prompt() is het pad.
+    m.model.prompt('hallo', None, None, False, None)
     assert m.cache_read_input_tokens == 32
 
 
@@ -156,7 +156,8 @@ def test_missing_usage_details_do_not_raise():
     del resp.usage.input_tokens_details
     m.model.client = MagicMock()
     m.model.client.responses.create.return_value = resp
-    m.model.chat('hallo')
+    # OpenAI's chat() heeft geen defaults op deze argumenten, anders dan Anthropic.
+    m.model.chat('hallo', None, None, False, None)
     assert m.cache_read_input_tokens == 0
 
 
