@@ -136,8 +136,53 @@ def _map_anthropic_error(e: Exception) -> Exception:
     return exc
 
 
+def _breakpoint(ttl: str | None) -> dict:
+    """cache_control-blok. 5m is de default van de API en wordt niet meegestuurd."""
+    return {'type': 'ephemeral', 'ttl': ttl} if ttl and ttl != '5m' else {'type': 'ephemeral'}
+
+
+def _marked(blocks: list, ttl: str | None) -> list:
+    """Kopie van blocks met een breakpoint op het laatste blok, tenzij dat er al een heeft."""
+    if not blocks or not isinstance(blocks[-1], dict):
+        return blocks
+    if 'cache_control' in blocks[-1]:
+        return blocks  # cached_system_message() zet er zelf al een
+    return [*blocks[:-1], {**blocks[-1], 'cache_control': _breakpoint(ttl)}]
+
+
 def apply_cache_control(system, messages: list[dict], ttl: str | None = None, enabled: bool = True):
-    """Nog niet geimplementeerd; geeft de input ongewijzigd terug."""
+    """Zet cache-breakpoints op system en op de laatste beurt. Muteert de input niet.
+
+    Twee van de vier toegestane breakpoints:
+
+    1. Laatste systeemblok. De rendervolgorde is tools, system, messages, dus dit
+       ene punt cachet de tool-definities en de systeemprompt samen.
+    2. Laatste content-blok van de laatste message, maar pas vanaf de tweede
+       message. Een cache write kost 1,25x; bij een enkele message is er nog niets
+       om te hergebruiken en zou het breakpoint puur verlies zijn.
+
+    Copy-on-write is hier geen nettigheid maar een eis: de Agent hergebruikt zijn
+    messages-lijst tussen iteraties, en een gemuteerde dict verandert de bytes van
+    de prefix bij de volgende request. De cache mist dan stil, zonder foutmelding
+    en zonder dat je het aan de response ziet.
+    """
+    if not enabled:
+        return system, messages
+
+    if isinstance(system, str):
+        system = _marked([{'type': 'text', 'text': system}], ttl) if system.strip() else system
+    elif isinstance(system, list):
+        system = _marked(system, ttl)
+
+    # Vanaf de tweede message: daarvoor valt er niets te hergebruiken.
+    if len(messages) > 1:
+        last = messages[-1]
+        content = last.get('content')
+        if isinstance(content, str) and content:
+            content = [{'type': 'text', 'text': content}]
+        if isinstance(content, list) and content:
+            messages = [*messages[:-1], {**last, 'content': _marked(content, ttl)}]
+
     return system, messages
 
 
@@ -354,10 +399,11 @@ class AnthropicModel(BaseModel):
         antr_tools = transform_tools(tools or []) if tools is not None else None
 
         try:
+            cached_system, cached_messages = apply_cache_control(system_message, self.messages)
             api_params = {
                 'model': self.model_name,
-                'messages': self.messages,
-                'system': system_message,
+                'messages': cached_messages,
+                'system': cached_system,
                 'output_config': output_config,
                 **self.api_params,
             }
@@ -426,11 +472,12 @@ class AnthropicModel(BaseModel):
                         raise NotImplementedError(
                             'Anthropic model does not support streaming and tools at the same time'
                         )
+                    cached_system, cached_messages = apply_cache_control(system_message, self.messages)
                     stream_params = self._prepare_api_params(
                         {
                             'model': self.model_name,
-                            'system': system_message,
-                            'messages': self.messages,
+                            'system': cached_system,
+                            'messages': cached_messages,
                             **self.api_params,
                         }
                     )
@@ -481,7 +528,9 @@ class AnthropicModel(BaseModel):
                 ):
                     api_params['messages'] = api_messages[:-1]
 
-                api_params['system'] = system_message
+                api_params['system'], api_params['messages'] = apply_cache_control(
+                    system_message, api_params['messages']
+                )
 
                 # Only add tools if we have any
                 if antr_tools:
@@ -577,10 +626,13 @@ class AnthropicModel(BaseModel):
             else:
                 api_messages.append(msg)
 
+        # De agent-loop stuurt elke iteratie de volledige, groeiende geschiedenis opnieuw.
+        # Zonder breakpoints betaalt elke iteratie de hele prefix opnieuw tegen vol tarief.
+        cached_system, cached_messages = apply_cache_control(system_message, api_messages)
         api_params = {
             'model': self.model_name,
-            'messages': api_messages,
-            'system': system_message,
+            'messages': cached_messages,
+            'system': cached_system,
             **self.api_params,
         }
         if tools:

@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import asyncio
 import copy
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from justai import Model
 from justai.models.anthropic_models import AnthropicModel, apply_cache_control
+from justai.models.basemodel import GeneralException
 from justai.tools import cache
 
 BREAKPOINT = {'type': 'ephemeral'}
@@ -204,9 +205,7 @@ def _mock_response():
     block.type = 'text'
     resp.content = [block]
     resp.stop_reason = 'end_turn'
-    resp.usage = MagicMock(
-        input_tokens=1, output_tokens=1, cache_creation_input_tokens=0, cache_read_input_tokens=0
-    )
+    resp.usage = MagicMock(input_tokens=1, output_tokens=1, cache_creation_input_tokens=0, cache_read_input_tokens=0)
     return resp
 
 
@@ -270,7 +269,8 @@ def _capture_stream_params(model, messages):
         async for _ in model.model.stream(messages):
             pass
 
-    with pytest.raises(Exception):
+    # De foutmapper van de provider verpakt _StopStream als GeneralException.
+    with pytest.raises(GeneralException):
         asyncio.run(drain())
     return captured
 
