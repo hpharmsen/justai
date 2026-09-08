@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -337,3 +338,36 @@ def test_stream_does_not_mutate_callers_messages():
     snapshot = copy.deepcopy(messages)
     _capture_stream_params(m, messages)
     assert messages == snapshot
+
+
+# ---------------------------------------------------------------------------
+# 7. Tegen de echte API (opt-in)
+# ---------------------------------------------------------------------------
+
+
+LONG_TEXT = 'Achtergronddocument.\n' + '\n'.join(
+    f'Regel {i}: kade {i % 7} verwerkte {i * 13} containers, ploegleider '
+    f'{"Anna" if i % 2 else "Bram"}, wachttijd {i % 45} minuten.'
+    for i in range(220)
+)
+
+
+@pytest.mark.skipif(
+    not os.getenv('RUN_LIVE_TESTS'),
+    reason='kost echte tokens; zet RUN_LIVE_TESTS=1 om te draaien (sleutel komt uit .env)',
+)
+def test_live_second_turn_reads_the_cache():
+    # De enige manier om te bewijzen dat de breakpoints op de goede plek staan is
+    # het de API laten zeggen. Onder de drempel (1024 tokens voor sonnet-4-6)
+    # cachet die stil niets, vandaar de lengte van LONG_TEXT.
+    m = Model('claude-sonnet-4-6', max_tokens=20)
+    m.system_message = 'Antwoord met maximaal drie woorden.'
+    m.cached_prompt = LONG_TEXT
+
+    m.chat('Wie was ploegleider in regel 4?', cached=False)  # cached=False omzeilt de lokale cache
+    first_total = m.input_token_count + m.cache_read_input_tokens + m.cache_creation_input_tokens
+
+    m.chat('En in regel 5?', cached=False)
+    assert m.cache_read_input_tokens > 1000
+    # De tweede beurt betaalt bijna niets tegen vol tarief.
+    assert m.input_token_count < first_total / 10
