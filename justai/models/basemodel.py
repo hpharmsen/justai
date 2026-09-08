@@ -162,7 +162,9 @@ class StreamChunk:
 class BaseModel(ABC):
     # Keys that live in model_params but must not be forwarded to provider APIs.
     # Subclasses extend by overriding with a broader frozenset.
-    _NON_API_PARAMS: frozenset[str] = frozenset({'timeout', 'max_retries', 'async', 'debug', 'effort'})
+    _NON_API_PARAMS: frozenset[str] = frozenset(
+        {'timeout', 'max_retries', 'async', 'debug', 'effort', 'cache_ttl', 'prompt_cache'}
+    )
 
     # Levels the user may pass as `effort=...`. Providers may extend (e.g. OpenAI adds 'none').
     EFFORT_VALID: frozenset[str] = UNIVERSAL_EFFORT_LEVELS

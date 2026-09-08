@@ -228,6 +228,20 @@ class AnthropicModel(BaseModel):
         self.supports_cached_prompts = True
         self.messages = []
 
+    def _cached(self, system, messages: list[dict]):
+        """apply_cache_control met de twee model-params als instelling.
+
+        cache_ttl: '5m' (default) of '1h'. Een 1-uurs write kost 2x in plaats van
+        1,25x en verdient zich pas terug vanaf de derde request, dus opt-in.
+        prompt_cache: op False gedraagt justai zich als voor de breakpoints bestonden.
+        """
+        return apply_cache_control(
+            system,
+            messages,
+            ttl=self.model_params.get('cache_ttl'),
+            enabled=self.model_params.get('prompt_cache', True),
+        )
+
     def resolve_effort(self) -> tuple[str | None, str | None]:
         level = self.model_params.get('effort')
         if level is None:
@@ -400,7 +414,7 @@ class AnthropicModel(BaseModel):
         antr_tools = transform_tools(tools or []) if tools is not None else None
 
         try:
-            cached_system, cached_messages = apply_cache_control(system_message, self.messages)
+            cached_system, cached_messages = self._cached(system_message, self.messages)
             api_params = {
                 'model': self.model_name,
                 'messages': cached_messages,
@@ -473,7 +487,7 @@ class AnthropicModel(BaseModel):
                         raise NotImplementedError(
                             'Anthropic model does not support streaming and tools at the same time'
                         )
-                    cached_system, cached_messages = apply_cache_control(system_message, self.messages)
+                    cached_system, cached_messages = self._cached(system_message, self.messages)
                     stream_params = self._prepare_api_params(
                         {
                             'model': self.model_name,
@@ -529,9 +543,7 @@ class AnthropicModel(BaseModel):
                 ):
                     api_params['messages'] = api_messages[:-1]
 
-                api_params['system'], api_params['messages'] = apply_cache_control(
-                    system_message, api_params['messages']
-                )
+                api_params['system'], api_params['messages'] = self._cached(system_message, api_params['messages'])
 
                 # Only add tools if we have any
                 if antr_tools:
@@ -629,7 +641,7 @@ class AnthropicModel(BaseModel):
 
         # De agent-loop stuurt elke iteratie de volledige, groeiende geschiedenis opnieuw.
         # Zonder breakpoints betaalt elke iteratie de hele prefix opnieuw tegen vol tarief.
-        cached_system, cached_messages = apply_cache_control(system_message, api_messages)
+        cached_system, cached_messages = self._cached(system_message, api_messages)
         api_params = {
             'model': self.model_name,
             'messages': cached_messages,
