@@ -174,6 +174,17 @@ warnings.filterwarnings('error', category=EffortDownmapWarning)
 
 Level names are **not calibrated across providers** — `'high'` on Anthropic burns different tokens than `'high'` on OpenAI. Re-test cost/latency when switching models.
 
+**A failed call still reports its tokens.** When the provider returns a response that justai then rejects — no text block because the whole budget went to thinking, JSON that will not parse, output truncated at the ceiling — the tokens were billed. `last_token_count()` reports them after the exception, so a caller adding up what a run cost does not lose that spend:
+
+```python
+try:
+    model.prompt('...')
+except BadRequestException:
+    spent = model.last_token_count()   # (input, output, total) of the failed call
+```
+
+When nothing came back at all (connection error, rate limit), the counters read `(0, 0, 0)` rather than the previous call's numbers.
+
 ## Agent
 
 JustAI includes an `Agent` class for autonomous, tool-using agent execution. The agent runs in a loop: it reads a task file, calls tools as needed, and returns a final answer.

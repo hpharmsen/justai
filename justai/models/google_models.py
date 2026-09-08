@@ -25,30 +25,31 @@ Supported parameters:
 import json
 import logging
 import re
+from collections.abc import AsyncGenerator
 from io import BytesIO
-from typing import Any, AsyncGenerator
+from typing import Any
 
-from PIL import Image
 from google import genai
 from google.genai.errors import APIError
+from PIL import Image
 
 from justai.model.model import ImageInput
 from justai.models.anthropic_models import extract_json
 from justai.models.basemodel import (
-    get_api_key,
-    BaseModel,
     DEFAULT_TIMEOUT,
-    StreamChunk,
-    ToolCallRequest,
-    client_retry_attempts,
     AuthorizationException,
     BadRequestException,
+    BaseModel,
     ConnectionException,
     GeneralException,
     ModelOverloadException,
     RatelimitException,
+    StreamChunk,
     TimeoutException,
+    ToolCallRequest,
     TruncatedResponseException,
+    client_retry_attempts,
+    get_api_key,
 )
 from justai.tools.images import to_pil_image
 
@@ -183,7 +184,7 @@ class GoogleModel(BaseModel):
             response = self.client.models.generate_content(model=self.model_name, contents=prompt, config=config)
         except APIError as e:
             raise _map_google_error(e) from e
-        return convert_to_justai_response(response, return_json or response_format)
+        return convert_to_justai_response(response, return_json or response_format, self)
 
     def chat(
         self, prompt: str, images: ImageInput, tools: list, return_json: bool, response_format
@@ -202,7 +203,7 @@ class GoogleModel(BaseModel):
             response = self.chat_session.send_message(message=prompt)
         except APIError as e:
             raise _map_google_error(e) from e
-        return convert_to_justai_response(response, return_json)
+        return convert_to_justai_response(response, return_json, self)
 
     async def prompt_async(self, prompt: str, images: list[ImageInput] = None) -> AsyncGenerator[tuple[str, str], None]:
         if images:
@@ -380,11 +381,14 @@ class GoogleModel(BaseModel):
                 return image
 
 
-def convert_to_justai_response(response, return_json):
+def convert_to_justai_response(response, return_json, model=None):
     input_token_count = response.usage_metadata.prompt_token_count
     output_token_count = (response.usage_metadata.candidates_token_count or 0) + (
         response.usage_metadata.thoughts_token_count or 0
     )
+    # Record before parsing: a truncated answer burned these tokens and is billed for them.
+    if model is not None:
+        model.record_usage(input_token_count, output_token_count)
     if not return_json:
         result = response.text
     elif response.parsed:

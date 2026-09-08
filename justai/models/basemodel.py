@@ -3,8 +3,9 @@ import inspect
 import os
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Callable, Optional, Union
+from typing import Any, Optional
 
 import httpx
 from dotenv import dotenv_values
@@ -12,7 +13,7 @@ from PIL.Image import Image
 
 from justai.tools.display import ERROR_COLOR, color_print
 
-ImageInput = Optional[Union[list[str], list[bytes], list[Image], str, bytes, Image]]
+ImageInput = Optional[list[str] | list[bytes] | list[Image] | str | bytes | Image]
 
 
 # Default timeout in seconds for all API calls
@@ -187,6 +188,11 @@ class BaseModel(ABC):
         # This value will be set by the Model class itself after instantiation
         self.encapsulating_model = None
 
+        # Usage of the call in flight, recorded the moment the provider reports it. A response
+        # that arrives and then fails to yield an answer was billed all the same, so Model reads
+        # this on the error path instead of losing the spend.
+        self.last_usage: tuple[int, int] | None = None
+
         # Effort scaffolding. Seed default so `Model.__setattr__` routes `model.effort = ...` writes here.
         self.model_params.setdefault('effort', None)
         self._effort_warned: set[str] = set()
@@ -209,6 +215,14 @@ class BaseModel(ABC):
         if not hasattr(self, key):
             raise (AttributeError(f'Model has no attribute {key}'))
         setattr(self, key, value)
+
+    def record_usage(self, input_tokens: int | None, output_tokens: int | None) -> None:
+        """Record what the provider reported for the call in flight.
+
+        Call this as soon as the numbers are known, before any validation that may raise:
+        the tokens are billed whether or not we end up with a usable answer.
+        """
+        self.last_usage = (input_tokens or 0, output_tokens or 0)
 
     def close(self) -> None:
         """Close the provider's HTTP client. No-op for providers that don't hold one.

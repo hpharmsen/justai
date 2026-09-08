@@ -29,19 +29,20 @@ import json
 import logging
 import re
 import warnings
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
 from anthropic import (
     Anthropic,
-    AsyncAnthropic,
     APIConnectionError,
     APIStatusError,
+    AsyncAnthropic,
     AuthenticationError,
-    PermissionDeniedError,
-    RateLimitError,
     BadRequestError,
     InternalServerError,
+    PermissionDeniedError,
+    RateLimitError,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,23 +78,23 @@ EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
 
 
 from justai.models.basemodel import (
-    BaseModel,
-    client_retry_kwargs,
-    client_timeout,
-    stream_timeout,
-    ToolCallRequest,
-    StreamChunk,
-    identify_image_format_from_base64,
-    get_api_key,
     JSON_TYPE_MAP,
-    ConnectionException,
     AuthorizationException,
+    BadRequestException,
+    BaseModel,
+    ConnectionException,
+    GeneralException,
+    ImageInput,
     ModelOverloadException,
     RatelimitException,
-    BadRequestException,
-    GeneralException,
     RefusalException,
-    ImageInput,
+    StreamChunk,
+    ToolCallRequest,
+    client_retry_kwargs,
+    client_timeout,
+    get_api_key,
+    identify_image_format_from_base64,
+    stream_timeout,
 )
 from justai.tools.images import to_base64_image
 
@@ -258,18 +259,25 @@ class AnthropicModel(BaseModel):
         else:
             message = self.completion(prompt, images, tools, return_json, response_format)
 
+        # Before the checks below, all of which can raise on a response that was already billed.
+        # A reasoning model that spends its whole budget on thinking costs the same as one that
+        # answers, so the caller must be able to see those tokens.
+        input_tokens = message.usage.input_tokens
+        output_tokens = message.usage.output_tokens
+        self.record_usage(input_tokens, output_tokens)
+
         # Refusal is HTTP 200 with an empty content list; catch it before content[0] IndexErrors.
         if getattr(message, 'stop_reason', None) == 'refusal':
             raise RefusalException(getattr(message, 'refusal_category', 'unknown'))
 
-        # Text content — skip thinking/tool blocks that can precede the text block on reasoning models.
-        response_str = next(
-            (b.text for b in message.content if getattr(b, 'type', None) == 'text'),
-            None,
-        )
-        if response_str is None:
+        # Text content — skip thinking/tool blocks that precede the text on reasoning models.
+        # Join instead of taking the first: citations and mid-stream fallbacks split one
+        # answer over several text blocks, and picking [0] truncates it without a trace.
+        texts = [b.text for b in message.content if getattr(b, 'type', None) == 'text']
+        if not texts:
             block_types = [getattr(b, 'type', '?') for b in message.content]
             raise BadRequestException(f'No text block in response (blocks: {block_types})')
+        response_str = ''.join(texts)
         if return_json or response_format:
             if use_structured_outputs:
                 # Structured outputs guarantees valid JSON
@@ -280,9 +288,7 @@ class AnthropicModel(BaseModel):
         else:
             response = response_str
 
-        # Token count
-        input_tokens = message.usage.input_tokens
-        output_tokens = message.usage.output_tokens
+        # Token count (input_tokens and output_tokens were read above, before the checks)
         if self.cached_prompt:
             self.cache_creation_input_tokens = message.usage.cache_creation_input_tokens
             self.cache_read_input_tokens = message.usage.cache_read_input_tokens

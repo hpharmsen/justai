@@ -2,14 +2,14 @@
 
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PIL.Image import Image
 
 from justai.models.basemodel import ImageInput
-from justai.tools.cache import cached_response, cache_save
 from justai.models.modelfactory import ModelFactory
+from justai.tools.cache import cache_save, cached_response
 from justai.tools.images import crop_to_fit
 
 
@@ -152,6 +152,20 @@ class Model:
     def last_token_count(self):
         return self.input_token_count, self.output_token_count, self.input_token_count + self.output_token_count
 
+    def _call(self, call):
+        """Run a provider call and keep the token counters describing that call, also when it
+        raises. A response that arrived and then failed to parse was billed, and reporting the
+        previous call's numbers instead would be worse than reporting none.
+        """
+        self.input_token_count = self.output_token_count = 0
+        self.model.last_usage = None
+        try:
+            return call()
+        except Exception:
+            if self.model.last_usage:
+                self.input_token_count, self.output_token_count = self.model.last_usage
+            raise
+
     def prompt(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
         self.raise_for_unsupported(images, return_json)
 
@@ -182,8 +196,10 @@ class Model:
                 result = json.loads(result)
             self.input_token_count = self.output_token_count = 0
         else:
-            response = self.model.prompt(
-                prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+            response = self._call(
+                lambda: self.model.prompt(
+                    prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+                )
             )
             if cached:
                 stored = (_cache_encode(response[0]), *response[1:]) if structured else response
@@ -213,8 +229,10 @@ class Model:
         if images and not isinstance(images, list):
             images = [images]
 
-        response = self.model.chat(
-            prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+        response = self._call(
+            lambda: self.model.chat(
+                prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+            )
         )
 
         result, self.input_token_count, self.output_token_count = response

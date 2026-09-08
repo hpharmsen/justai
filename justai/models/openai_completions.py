@@ -49,39 +49,40 @@ Supported parameters:
 
 import asyncio
 import json
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
 import tiktoken
 from openai import (
-    OpenAI,
     NOT_GIVEN,
     APIConnectionError,
-    RateLimitError,
     APITimeoutError,
     AuthenticationError,
-    PermissionDeniedError,
     BadRequestError,
+    OpenAI,
+    PermissionDeniedError,
+    RateLimitError,
 )
 
-from justai.tools.display import color_print, DEBUG_COLOR2
 from justai.models.basemodel import (
-    BaseModel,
-    client_retry_kwargs,
-    client_timeout,
-    stream_timeout,
-    ConnectionException,
+    JSON_TYPE_MAP,
     AuthorizationException,
-    ModelOverloadException,
-    RatelimitException,
     BadRequestException,
+    BaseModel,
+    ConnectionException,
     GeneralException,
     ImageInput,
-    get_api_key,
-    JSON_TYPE_MAP,
-    ToolCallRequest,
+    ModelOverloadException,
+    RatelimitException,
     StreamChunk,
+    ToolCallRequest,
+    client_retry_kwargs,
+    client_timeout,
+    get_api_key,
+    stream_timeout,
 )
+from justai.tools.display import DEBUG_COLOR2, color_print
 from justai.tools.images import to_base64_image
 
 
@@ -170,6 +171,8 @@ class OpenAICompletionsModel(BaseModel):
         message_text = message.content
         input_token_count = completion.usage.prompt_tokens
         output_token_count = completion.usage.completion_tokens
+        # Record before parsing: an empty or unparseable answer was billed all the same.
+        self.record_usage(input_token_count, output_token_count)
 
         if message_text and message_text.startswith('```json'):
             message_text = message_text[7:-3]

@@ -12,32 +12,32 @@ Feature table:
 """
 
 from __future__ import annotations
+
 import base64
 import json
 import re
+from collections.abc import AsyncGenerator
 from io import BytesIO
+from typing import Any
 
 import httpx
 import pydantic
-from typing import Any, AsyncGenerator
-
-from jsonschema import exceptions, validators, Draft202012Validator
-from PIL import Image
+from jsonschema import Draft202012Validator, exceptions, validators
 from openai import OpenAI
+from PIL import Image
 
 from justai.models.basemodel import (
+    JSON_TYPE_MAP,
     BaseModel,
     ImageInput,
-    get_api_key,
-    JSON_TYPE_MAP,
-    ToolCallRequest,
     StreamChunk,
+    ToolCallRequest,
     client_retry_kwargs,
     client_timeout,
+    get_api_key,
 )
 from justai.models.openai_completions import map_openai_error, tiktoken_token_count
-from justai.tools.images import extract_images, to_base64_image, to_base64_data_uri, get_image_type
-
+from justai.tools.images import extract_images, get_image_type, to_base64_data_uri, to_base64_image
 
 # Models that support the reasoning parameter (GPT-5.6 series only, per current OpenAI docs).
 EFFORT_MODELS_GPT56 = re.compile(r'gpt-5\.6')
@@ -187,6 +187,8 @@ class OpenAIResponsesModel(BaseModel):
                     function_call_arguments = json.loads(item.arguments)
 
             if not function_call or run == 2:
+                # Record before parsing: output that turns out not to be JSON was billed too.
+                self.record_usage(response.usage.input_tokens, response.usage.output_tokens)
                 if is_pydantic:
                     output = response.output_parsed
                 elif return_json:

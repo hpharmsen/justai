@@ -7,7 +7,8 @@ of blindly indexing content[0].
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -70,6 +71,21 @@ def test_thinking_block_before_json_text_returns_parsed_json():
     assert response == {'answer': 42}
 
 
+def test_multiple_text_blocks_are_joined():
+    """Citations and mid-stream fallbacks split one answer over several text blocks."""
+    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    blocks = [
+        _block('thinking', thinking='reasoning...'),
+        _block('text', text='the answer '),
+        _block('text', text='is 42'),
+    ]
+    _install_client(m, _mock_response(blocks))
+
+    response, _, _ = m.model.prompt('hi')
+
+    assert response == 'the answer is 42'
+
+
 def test_no_text_block_raises_bad_request():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
     only_thinking = _block('thinking', thinking='never got to a text block')
@@ -87,3 +103,66 @@ def test_non_json_response_raises_bad_request_not_value_error():
 
     with pytest.raises(BadRequestException):
         m.model.prompt('hi', return_json=True)
+
+
+class _Obj:
+    """Attribute bag. Not a MagicMock: hasattr() must be able to return False."""
+
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)
+
+
+class _FakeAsyncStream:
+    def __init__(self, events):
+        self._events = events
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    def __aiter__(self):
+        async def gen():
+            for event in self._events:
+                yield event
+
+        return gen()
+
+
+def _collect(async_gen):
+    async def run():
+        return [chunk async for chunk in async_gen]
+
+    return asyncio.run(run())
+
+
+def test_chat_async_skips_thinking_deltas():
+    """Streaming yields text deltas only; thinking deltas carry .thinking, not .text."""
+    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    events = [
+        _Obj(delta=_Obj(type='thinking_delta', thinking='let me reason...')),
+        _Obj(delta=_Obj(type='text_delta', text='the answer is 42')),
+    ]
+    client = MagicMock()
+    client.messages.create.return_value = events
+    m.model.client = client
+
+    assert _collect(m.model.chat_async('hi')) == [('the answer is 42', None)]
+
+
+def test_stateless_stream_skips_thinking_deltas():
+    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    events = [
+        _Obj(type='message_start', message=_Obj(usage=_Obj(input_tokens=7))),
+        _Obj(type='content_block_delta', delta=_Obj(type='thinking_delta', thinking='hmm')),
+        _Obj(type='content_block_delta', delta=_Obj(type='text_delta', text='the answer is 42')),
+        _Obj(type='message_delta', usage=_Obj(output_tokens=3)),
+    ]
+    m.model.async_client = MagicMock()
+    m.model.async_client.messages.create = AsyncMock(return_value=_FakeAsyncStream(events))
+
+    chunks = _collect(m.model.stream([{'role': 'user', 'content': 'hi'}]))
+
+    assert [(c.type, c.content) for c in chunks if c.type == 'text'] == [('text', 'the answer is 42')]
+    assert chunks[-1].type == 'done' and chunks[-1].input_tokens == 7
