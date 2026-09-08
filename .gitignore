@@ -38,3 +38,6 @@ justai/saves
 *.gguf
 AGENTS.md
 .codex/
+
+# Worktrees van /hp:start
+.worktrees/
