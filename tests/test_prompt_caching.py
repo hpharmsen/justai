@@ -227,6 +227,41 @@ def test_completion_sends_system_breakpoint():
     assert system[-1]['cache_control'] == BREAKPOINT
 
 
+# ---------------------------------------------------------------------------
+# 6. De twee schakelaars
+# ---------------------------------------------------------------------------
+
+
+def test_cache_ttl_param_reaches_the_request():
+    m = Model('claude-sonnet-4-6', ANTHROPIC_API_KEY='k', cache_ttl='1h')
+    client = _install_mock_client(m)
+    m.model.completion('hallo')
+    system = client.messages.create.call_args.kwargs['system']
+    assert system[-1]['cache_control'] == {'type': 'ephemeral', 'ttl': '1h'}
+
+
+def test_prompt_cache_false_sends_no_breakpoints():
+    # Ontsnappingsluik voor wie alleen one-shot calls doet en de 1,25x write-premie
+    # niet wil betalen op een cache die nooit gelezen wordt.
+    m = Model('claude-sonnet-4-6', ANTHROPIC_API_KEY='k', prompt_cache=False)
+    client = _install_mock_client(m)
+    m.model.completion('beurt een')
+    m.model.completion('beurt twee')
+    kwargs = client.messages.create.call_args.kwargs
+    assert 'cache_control' not in str(kwargs['system'])
+    assert 'cache_control' not in str(kwargs['messages'])
+
+
+@pytest.mark.parametrize('param', ['cache_ttl', 'prompt_cache'])
+def test_switches_do_not_leak_into_the_api_call(param):
+    # model_params gaan standaard mee de provider-API in; deze twee horen daar niet.
+    value = '1h' if param == 'cache_ttl' else False
+    m = Model('claude-sonnet-4-6', ANTHROPIC_API_KEY='k', **{param: value})
+    client = _install_mock_client(m)
+    m.model.completion('hallo')
+    assert param not in client.messages.create.call_args.kwargs
+
+
 def test_completion_sends_history_breakpoint_on_second_turn():
     m = Model('claude-sonnet-4-6', ANTHROPIC_API_KEY='k')
     client = _install_mock_client(m)
