@@ -62,6 +62,8 @@ The provider is chosen automatically based on the model name prefix:
 | `openrouter/*` | OpenRouter |
 | `kimi*`, `moonshot*` | Moonshot |
 | `minimax*` (case-insensitive) | MiniMax |
+| `jev*` | TypeSafe (System One) |
+| `systemone/*` | Self-hosted System One |
 | `*.gguf` | Local GGUF |
 
 ## Features
@@ -84,6 +86,51 @@ class Character(PydanticModel):
 
 result = model.chat(prompt, response_format=list[Character])
 ```
+
+### Classification (System One models)
+
+System One models do not generate text. They read a state, answer typed questions about
+it, and return a calibrated probability for every possible answer. They reply in tens to
+hundreds of milliseconds, which makes them practical for routing and triage where a chat
+model is too slow and too vague.
+
+A dict of options gives a **choice**:
+```python
+model = Model('openrouter/typesafe/jev-1.13')
+model.classify('My payouts have been failing for 3 days',
+               {'payments': 'money and payouts', 'frontend': 'UI', 'account': 'logging in'},
+               instructions='Which team should pick this up?')
+# {'type': 'choice', 'choice': 'payments', 'confidence': 1.0,
+#  'probabilities': {'payments': 1.0, 'frontend': 0.0, 'account': 0.0}}
+```
+
+An ordered list of levels gives a **score**. `legend` and `probabilities` are keyed by
+level number:
+```python
+model.classify(ticket, ['can wait', 'normal', 'now'], instructions='How urgent?')
+# {'type': 'score', 'score': 1.99, 'confidence': 0.99,
+#  'probabilities': {0: 0.0, 1: 0.01, 2: 0.99},
+#  'legend': {0: 'can wait', 1: 'normal', 2: 'now'}}
+```
+
+No options gives a **noul**, a single yes/no probability:
+```python
+model.classify(ticket, instructions='Is this a software bug?')
+# {'type': 'noul', 'noul': 0.97}
+```
+
+Ask several questions in one call with `questions=`; the result is then keyed by question
+name:
+```python
+model.classify(ticket, questions={
+    'team': {'type': 'choice', 'instructions': 'Which team?',
+             'criteria': {'payments': '...', 'frontend': '...'}},
+    'urgency': {'type': 'score', 'instructions': 'How urgent?',
+                'criteria': ['low', 'medium', 'high']}})
+```
+
+`instructions` is what the model is actually asked, and is required for every question.
+Models that are not System One models raise `NotImplementedError`.
 
 ### Images
 Pass images as URLs, raw bytes or PIL images:
