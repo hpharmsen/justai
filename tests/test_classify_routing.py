@@ -1,6 +1,6 @@
 """Provider routing, transport and retries for System One classification.
 
-httpx is mocked throughout, so nothing leaves the machine, except for the two smoke
+httpx is mocked throughout, so nothing leaves the machine, except for the three smoke
 tests at the bottom which skip without a key.
 
 Usage:
@@ -11,11 +11,7 @@ import os
 
 import httpx
 import pytest
-from dotenv import load_dotenv
-
-# The smoke tests below skip on a missing key, so the key has to be visible at collection
-# time. Without this they silently skip even when .env has one.
-load_dotenv()
+from dotenv import dotenv_values
 
 import justai.tools.cache as cache
 from justai import Model, BadRequestException, ModelOverloadException, RatelimitException
@@ -30,6 +26,13 @@ CHOICE_BODY = {
 }
 OPTIONS = {'billing': 'about money', 'technical': 'about bugs'}
 ASK = 'What is this about?'
+
+# Real keys for the smoke tests, resolved once at import. Reading .env directly rather than
+# load_dotenv(): that would push the keys into os.environ for the whole session and wake up
+# the network smoke tests in other test modules. Resolved here and not inside the tests
+# because the fake_keys fixture below has replaced os.getenv's answers by then.
+ENV = dotenv_values()
+REAL_KEYS = {name: os.getenv(name) or ENV.get(name) for name in ('TYPESAFE_API_KEY', 'OPENROUTER_API_KEY')}
 
 
 @pytest.fixture(autouse=True)
@@ -281,21 +284,29 @@ def test_openrouter_close_still_closes_openai_client(transport):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not os.getenv('TYPESAFE_API_KEY'), reason='needs TYPESAFE_API_KEY')
-def test_typesafe_smoke(monkeypatch):
-    monkeypatch.undo()
-    answer = Model('jev-latest').classify('I was charged twice for my subscription.', OPTIONS, instructions=ASK, cached=False)
-    assert answer['choice'] in OPTIONS
+TICKET = 'I was charged twice for my subscription.'
 
 
-@pytest.mark.skipif(not os.getenv('OPENROUTER_API_KEY'), reason='needs OPENROUTER_API_KEY')
-def test_openrouter_smoke_string_state(monkeypatch):
-    """Settles whether the OpenRouter route accepts a plain string as state."""
-    monkeypatch.undo()
-    answer = Model('openrouter/typesafe/jev-1.13').classify(
-        'I was charged twice for my subscription.', OPTIONS, instructions=ASK, cached=False
-    )
-    assert answer['choice'] in OPTIONS
+@pytest.mark.skipif(not REAL_KEYS['TYPESAFE_API_KEY'], reason='needs TYPESAFE_API_KEY')
+def test_typesafe_smoke():
+    model = Model('jev-latest', TYPESAFE_API_KEY=REAL_KEYS['TYPESAFE_API_KEY'])
+    assert model.classify(TICKET, OPTIONS, instructions=ASK, cached=False)['choice'] in OPTIONS
+
+
+@pytest.mark.skipif(not REAL_KEYS['OPENROUTER_API_KEY'], reason='needs OPENROUTER_API_KEY')
+def test_openrouter_smoke_string_state():
+    """Settles that the OpenRouter route accepts a plain string as state."""
+    model = Model('openrouter/typesafe/jev-1.13', OPENROUTER_API_KEY=REAL_KEYS['OPENROUTER_API_KEY'])
+    assert model.classify(TICKET, OPTIONS, instructions=ASK, cached=False)['choice'] in OPTIONS
+
+
+@pytest.mark.skipif(not REAL_KEYS['OPENROUTER_API_KEY'], reason='needs OPENROUTER_API_KEY')
+def test_openrouter_smoke_score_has_int_levels():
+    """The wire sends string keys; justai hands back int levels like the vendor SDKs do."""
+    model = Model('openrouter/typesafe/jev-1.13', OPENROUTER_API_KEY=REAL_KEYS['OPENROUTER_API_KEY'])
+    answer = model.classify(TICKET, ['can wait', 'normal', 'now'], instructions='How urgent?', cached=False)
+    assert set(answer['legend']) == {0, 1, 2}
+    assert answer['legend'][round(answer['score'])] in ('can wait', 'normal', 'now')
 
 
 if __name__ == '__main__':

@@ -22,6 +22,8 @@ Provider-implementaties. Elk erft van `BaseModel` (of van een tussenklasse zoals
 - **`reve_models.py`** — Reve (image generation).
 - **`openrouter_models.py`** — OpenRouter aggregator.
 - **`kimi_models.py`** — Kimi / Moonshot (erft van `OpenAICompletionsModel`).
+- **`minimax_models.py`** — MiniMax.
+- **`systemone.py`** — System One-classificatie: het wire-formaat als losse functies, plus `SystemOneMixin` (de HTTP-helft) en `SystemOneModel` (TypeSafe en zelf-gehost). Geen tekstgeneratie; `prompt` en vrienden gooien `NotImplementedError`.
 - **`gguf_models.py`** — Lokale GGUF-modellen via `llama-cpp-python`.
 - **`modelfactory.py`** — `ModelFactory.create()` matcht op prefix en retourneert de juiste subclass.
 
@@ -47,14 +49,16 @@ Volgorde uit `ModelFactory.create`:
 | `sonar*` | `PerplexityModel` |
 | `reve*` | `ReveModel` |
 | `kimi*`, `moonshot*` | `KimiModel` |
+| `minimax*` (case-insensitief) | `MiniMaxModel` |
+| `systemone/*`, `jev*` | `SystemOneModel` |
 
 ## Uitbreidbaarheid
 
 Nieuwe provider toevoegen:
 1. Maak `justai/models/<provider>_models.py` met een subclass van `BaseModel` (of van `OpenAICompletionsModel` als de wire-format OpenAI-compatible is).
 2. Voeg prefix-match toe in `ModelFactory.create`.
-3. Documenteer de prefix in `README.md` (features + prefix-tabel), `CLAUDE.md` (Model Factory-lijst) en optioneel keywords in `pyproject.toml`.
-4. Schrijf een `tests/test_<provider>.py` met factory- en init-tests (kopieer de `isolate_cache` fixture uit `test_effort.py`).
+3. Documenteer de prefix in `README.md` (features + prefix-tabel), `CLAUDE.md` (Model Factory-lijst) en optioneel keywords in `pyproject.toml`. `AGENTS.md` heeft dezelfde lijst maar staat in `.gitignore`, dus die blijft lokaal.
+4. Schrijf een `tests/test_<provider>.py` met factory- en init-tests (kopieer de `isolate_cache_and_warnings` fixture uit `test_effort.py`).
 
 ## Message flow
 
@@ -83,3 +87,15 @@ Async variant (`prompt_async`) yieldt `(content, reasoning)`-tuples per delta-ch
 - **Tool use** — Uniforme `add_tool()` API; provider vertaalt naar eigen function-calling spec.
 - **JSON / structured output** — `return_json=True` of `response_format=PydanticModel`. Structured output is voorlopig alleen native op OpenAI.
 - **Multimodaal** — PIL Image, URL of raw bytes → automatische base64-encoding.
+- **Classificatie** — `Model.classify()` op System One-modellen. Eén wire-formaat
+  (`POST /v1/systemone`) achter drie ingangen: TypeSafe, OpenRouter en elke zelf-gehoste
+  server. Het formaat staat als losse functies in `systemone.py`, de HTTP-helft in
+  `SystemOneMixin`, die `OpenRouterModel` als tweede basis meekrijgt. Die mixin heeft een
+  eigen keep-alive `httpx.Client` en een eigen retry-lus op 429 en 529, niet omdat de
+  provider-SDK's dat niet kunnen maar omdat er hier geen SDK tussen zit: latency is het
+  hele punt van deze modelcategorie, en een TLS-handshake van 50-100 ms weegt zwaar tegen
+  een antwoord van 400 ms. De timeout is daarom 30 seconden, niet de 120 van
+  `DEFAULT_TIMEOUT`. Er is geen emulatie op gewone LLM's: die leveren geen gekalibreerde
+  kansen, en een `classify()` die er stiekem een chat-call van maakt zou de enige reden om
+  deze modellen te gebruiken weggooien. Andere modellen krijgen `NotImplementedError` uit
+  `BaseModel`.

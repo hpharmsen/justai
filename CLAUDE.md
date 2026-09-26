@@ -31,6 +31,9 @@ JustAI is a Python package that provides a unified interface for working with mu
 - `reve*` → Reve
 - `openrouter/*` → OpenRouter
 - `kimi*`, `moonshot*` → Moonshot
+- `minimax*` (case-insensitive) → MiniMax
+- `jev*` → TypeSafe System One
+- `systemone/*` → Self-hosted System One
 - `*.gguf` → Local GGUF models
 
 **Base Model Pattern**: All provider implementations inherit from `BaseModel` in basemodel.py which defines the common interface.
@@ -46,6 +49,7 @@ JustAI is a Python package that provides a unified interface for working with mu
 - **Tool/Function calling**: Support for provider-specific function calling capabilities
 - **Prompt caching**: On by default for Anthropic. `apply_cache_control()` in anthropic_models.py sets two breakpoints per request: after the system prompt (which also covers the tool definitions, given the tools/system/messages render order) and after the last turn, from the second message on. It is copy-on-write: the Agent reuses its messages list between iterations, so mutating a dict would change the prefix bytes and make the next cache lookup miss silently. `cached_prompt` adds a large fixed text to the cached prefix. Tune with `cache_ttl='1h'` or switch off with `prompt_cache=False`. Cache counters live on `BaseModel` and are set by `record_usage()`; Anthropic reports reads and writes, OpenAI and Gemini reads only.
 - **JSON responses**: Structured output support with `return_json=True` parameter
+- **Classification**: `Model.classify()` for System One models, which return typed decisions with calibrated probabilities instead of text. One wire format (`POST /v1/systemone`) behind three entrances: `jev*` at TypeSafe, `openrouter/typesafe/jev-*` at OpenRouter, and `systemone/<name>` at any self-hosted server. `systemone.py` holds the format, `SystemOneMixin` the HTTP half with its own keep-alive client and 429/529 retry loop. `instructions` is required per question; score answers key `legend` and `probabilities` by int level, matching the vendor SDKs. Every other model raises `NotImplementedError`.
 
 ### Development Notes
 
