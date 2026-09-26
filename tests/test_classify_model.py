@@ -214,7 +214,9 @@ def test_classify_does_not_collide_with_prompt_cache():
     provider = Provider()
     model = jev(provider)
     model.classify('hi', OPTIONS, instructions=ASK)
-    assert cache.cached_response(model.model.model_name, model.model.model_params, '', 'hi', None, [], False, None) is None
+    assert (
+        cache.cached_response(model.model.model_name, model.model.model_params, '', 'hi', None, [], False, None) is None
+    )
 
 
 if __name__ == '__main__':

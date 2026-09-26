@@ -246,9 +246,7 @@ class Model:
             self.input_token_count = self.output_token_count = 0
         else:
             response = self._call(
-                lambda: self.model.classify(
-                    state, options, instructions=instructions, questions=questions
-                )
+                lambda: self.model.classify(state, options, instructions=instructions, questions=questions)
             )
             if cached:
                 cache_save((json.dumps(response[0]), *response[1:]), *key)

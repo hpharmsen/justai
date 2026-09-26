@@ -201,7 +201,12 @@ def test_unpack_score_ints_survive_a_json_round_trip():
     """The cache stores the dict as JSON, which restringifies int keys."""
     body = {
         'answers': {
-            SINGLE: {'type': 'score', 'score': 1, 'legend': {'0': 'low', '1': 'high'}, 'probabilities': {'0': 0.3, '1': 0.7}}
+            SINGLE: {
+                'type': 'score',
+                'score': 1,
+                'legend': {'0': 'low', '1': 'high'},
+                'probabilities': {'0': 0.3, '1': 0.7},
+            }
         }
     }
     answer = unpack(body, single=True)

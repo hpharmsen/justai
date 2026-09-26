@@ -185,9 +185,7 @@ class SystemOneMixin:
         questions: dict | None = None,
         timeout: float | None = None,
     ) -> tuple[dict, int, int]:
-        payload = build_payload(
-            self.wire_model_name(), state, options, instructions=instructions, questions=questions
-        )
+        payload = build_payload(self.wire_model_name(), state, options, instructions=instructions, questions=questions)
         limits = httpx.Timeout(
             timeout or self.model_params.get('timeout', CLASSIFY_TIMEOUT),
             connect=CONNECT_TIMEOUT,
@@ -239,7 +237,9 @@ class SystemOneModel(SystemOneMixin, BaseModel):
 
         if model_name.startswith('systemone/'):
             base_url = params.get('base_url')
-            assert base_url, "A self-hosted System One model needs a base_url, e.g. Model('systemone/kev-3b', base_url='http://localhost:8000')"
+            assert base_url, (
+                "A self-hosted System One model needs a base_url, e.g. Model('systemone/kev-3b', base_url='http://localhost:8000')"
+            )
             self.base_url = base_url.rstrip('/')
             # Self-hosted servers usually want no key at all, so a missing one is not an error.
             self.api_key = params.pop('SYSTEMONE_API_KEY', None) or os.getenv('SYSTEMONE_API_KEY')

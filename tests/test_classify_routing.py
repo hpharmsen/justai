@@ -21,7 +21,9 @@ from justai.models.systemone import SystemOneModel
 CHOICE_BODY = {
     'id': 'dec_1',
     'model': 'jev-latest',
-    'answers': {'answer': {'type': 'choice', 'choice': 'billing', 'probabilities': {'billing': 1.0}, 'confidence': 1.0}},
+    'answers': {
+        'answer': {'type': 'choice', 'choice': 'billing', 'probabilities': {'billing': 1.0}, 'confidence': 1.0}
+    },
     'usage': {'input_tokens': 476, 'output_tokens': 70, 'cost': 0.000019992},
 }
 OPTIONS = {'billing': 'about money', 'technical': 'about bugs'}
@@ -187,7 +189,7 @@ def test_classify_records_usage_before_unpack(transport):
     """Tokens are billed even when the body turns out to be unusable."""
     transport((200, {'usage': {'input_tokens': 12, 'output_tokens': 3}}))
     model = Model('jev-latest')
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         model.classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert model.last_token_count()[:2] == (12, 3)
 
