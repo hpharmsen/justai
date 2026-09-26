@@ -57,7 +57,7 @@ Volgorde uit `ModelFactory.create`:
 Nieuwe provider toevoegen:
 1. Maak `justai/models/<provider>_models.py` met een subclass van `BaseModel` (of van `OpenAICompletionsModel` als de wire-format OpenAI-compatible is).
 2. Voeg prefix-match toe in `ModelFactory.create`.
-3. Documenteer de prefix in `README.md` (features + prefix-tabel), `CLAUDE.md` (Model Factory-lijst) en optioneel keywords in `pyproject.toml`. `AGENTS.md` heeft dezelfde lijst maar staat in `.gitignore`, dus die blijft lokaal.
+3. Documenteer de prefix in `README.md` (features + prefix-tabel), `CLAUDE.md` en `AGENTS.md` (beide hebben dezelfde Model Factory-lijst) en optioneel keywords in `pyproject.toml`.
 4. Schrijf een `tests/test_<provider>.py` met factory- en init-tests (kopieer de `isolate_cache_and_warnings` fixture uit `test_effort.py`).
 
 ## Message flow
