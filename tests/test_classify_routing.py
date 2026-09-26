@@ -11,6 +11,11 @@ import os
 
 import httpx
 import pytest
+from dotenv import load_dotenv
+
+# The smoke tests below skip on a missing key, so the key has to be visible at collection
+# time. Without this they silently skip even when .env has one.
+load_dotenv()
 
 import justai.tools.cache as cache
 from justai import Model, BadRequestException, ModelOverloadException, RatelimitException
@@ -24,6 +29,7 @@ CHOICE_BODY = {
     'usage': {'input_tokens': 476, 'output_tokens': 70, 'cost': 0.000019992},
 }
 OPTIONS = {'billing': 'about money', 'technical': 'about bugs'}
+ASK = 'What is this about?'
 
 
 @pytest.fixture(autouse=True)
@@ -109,56 +115,56 @@ def test_systemone_works_without_api_key(monkeypatch):
 
 def test_systemone_posts_to_base_url(transport):
     stub = transport()
-    Model('systemone/kev-3b', base_url='http://localhost:8000').classify('hi', OPTIONS, cached=False)
+    Model('systemone/kev-3b', base_url='http://localhost:8000').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['url'] == 'http://localhost:8000/v1/systemone'
 
 
 def test_base_url_trailing_slash_is_handled(transport):
     stub = transport()
-    Model('systemone/kev-3b', base_url='http://localhost:8000/').classify('hi', OPTIONS, cached=False)
+    Model('systemone/kev-3b', base_url='http://localhost:8000/').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['url'] == 'http://localhost:8000/v1/systemone'
 
 
 def test_jev_posts_to_typesafe(transport):
     stub = transport()
-    Model('jev-latest').classify('hi', OPTIONS, cached=False)
+    Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['url'] == 'https://api.typesafe.ai/v1/systemone'
 
 
 def test_openrouter_posts_to_systemone(transport):
     stub = transport()
-    Model('openrouter/typesafe/jev-1.13').classify('hi', OPTIONS, cached=False)
+    Model('openrouter/typesafe/jev-1.13').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['url'] == 'https://openrouter.ai/api/v1/systemone'
 
 
 def test_openrouter_sends_bearer_key(transport):
     stub = transport()
-    Model('openrouter/typesafe/jev-1.13').classify('hi', OPTIONS, cached=False)
+    Model('openrouter/typesafe/jev-1.13').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['headers']['Authorization'] == 'Bearer test-openrouter_api_key'
 
 
 def test_openrouter_sends_full_slug(transport):
     stub = transport()
-    Model('openrouter/typesafe/jev-1.13').classify('hi', OPTIONS, cached=False)
+    Model('openrouter/typesafe/jev-1.13').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['json']['model'] == 'typesafe/jev-1.13'
 
 
 def test_systemone_sends_bare_model_name(transport):
     stub = transport()
-    Model('systemone/kev-3b', base_url='http://localhost:8000').classify('hi', OPTIONS, cached=False)
+    Model('systemone/kev-3b', base_url='http://localhost:8000').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['json']['model'] == 'kev-3b'
 
 
 def test_base_url_and_key_stay_out_of_body(transport):
     stub = transport()
-    Model('systemone/kev-3b', base_url='http://localhost:8000').classify('hi', OPTIONS, cached=False)
+    Model('systemone/kev-3b', base_url='http://localhost:8000').classify('hi', OPTIONS, instructions=ASK, cached=False)
     body = str(stub.calls[0]['json'])
     assert 'base_url' not in body and 'localhost' not in body and 'test-systemone_api_key' not in body
 
 
 def test_classify_uses_a_short_default_timeout(transport):
     stub = transport()
-    Model('jev-latest').classify('hi', OPTIONS, cached=False)
+    Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert stub.calls[0]['timeout'].read == 30.0
 
 
@@ -170,7 +176,7 @@ def test_classify_uses_a_short_default_timeout(transport):
 def test_classify_records_usage(transport):
     transport()
     model = Model('jev-latest')
-    model.classify('hi', OPTIONS, cached=False)
+    model.classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert model.last_token_count()[:2] == (476, 70)
 
 
@@ -179,7 +185,7 @@ def test_classify_records_usage_before_unpack(transport):
     transport((200, {'usage': {'input_tokens': 12, 'output_tokens': 3}}))
     model = Model('jev-latest')
     with pytest.raises(Exception):
-        model.classify('hi', OPTIONS, cached=False)
+        model.classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert model.last_token_count()[:2] == (12, 3)
 
 
@@ -190,47 +196,49 @@ def test_classify_records_usage_before_unpack(transport):
 
 def test_retries_on_429_then_succeeds(transport):
     stub = transport((429, {}), (429, {}), (200, CHOICE_BODY))
-    result = Model('jev-latest').classify('hi', OPTIONS, cached=False)
+    result = Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert result['choice'] == 'billing'
     assert len(stub.calls) == 3
 
 
 def test_retries_on_529(transport):
     stub = transport((529, {}), (200, CHOICE_BODY))
-    Model('jev-latest').classify('hi', OPTIONS, cached=False)
+    Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert len(stub.calls) == 2
 
 
 def test_retries_give_up_as_ratelimit(transport):
     stub = transport((429, {}))
     with pytest.raises(RatelimitException):
-        Model('jev-latest').classify('hi', OPTIONS, cached=False)
+        Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert len(stub.calls) == 3
 
 
 def test_retries_give_up_as_overload(transport):
+    stub = transport((529, {}))
     with pytest.raises(ModelOverloadException):
-        Model('jev-latest').classify('hi', OPTIONS, cached=False)
+        Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
+    assert len(stub.calls) == 3
 
 
 def test_no_retry_on_422(transport):
     stub = transport((422, {}))
     with pytest.raises(BadRequestException):
-        Model('jev-latest').classify('hi', OPTIONS, cached=False)
+        Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert len(stub.calls) == 1
 
 
 def test_max_retries_zero_does_one_call(transport):
     stub = transport((429, {}))
     with pytest.raises(RatelimitException):
-        Model('jev-latest', max_retries=0).classify('hi', OPTIONS, cached=False)
+        Model('jev-latest', max_retries=0).classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert len(stub.calls) == 1
 
 
 def test_backoff_is_exponential(transport, no_sleep):
     transport((429, {}))
     with pytest.raises(RatelimitException):
-        Model('jev-latest').classify('hi', OPTIONS, cached=False)
+        Model('jev-latest').classify('hi', OPTIONS, instructions=ASK, cached=False)
     assert no_sleep == [2, 4]
 
 
@@ -254,7 +262,7 @@ def test_systemone_reports_no_text_capabilities():
 def test_close_closes_http_client(transport):
     transport()
     model = Model('jev-latest')
-    model.classify('hi', OPTIONS, cached=False)
+    model.classify('hi', OPTIONS, instructions=ASK, cached=False)
     model.close()
     assert model.model._systemone_client.is_closed
 
@@ -263,7 +271,7 @@ def test_openrouter_close_still_closes_openai_client(transport):
     """The mixin overrides close(), so the OpenAI client must not be left open."""
     transport()
     model = Model('openrouter/typesafe/jev-1.13')
-    model.classify('hi', OPTIONS, cached=False)
+    model.classify('hi', OPTIONS, instructions=ASK, cached=False)
     model.close()
     assert model.model._systemone_client.is_closed
 
@@ -276,7 +284,7 @@ def test_openrouter_close_still_closes_openai_client(transport):
 @pytest.mark.skipif(not os.getenv('TYPESAFE_API_KEY'), reason='needs TYPESAFE_API_KEY')
 def test_typesafe_smoke(monkeypatch):
     monkeypatch.undo()
-    answer = Model('jev-latest').classify('I was charged twice for my subscription.', OPTIONS, cached=False)
+    answer = Model('jev-latest').classify('I was charged twice for my subscription.', OPTIONS, instructions=ASK, cached=False)
     assert answer['choice'] in OPTIONS
 
 
@@ -285,7 +293,7 @@ def test_openrouter_smoke_string_state(monkeypatch):
     """Settles whether the OpenRouter route accepts a plain string as state."""
     monkeypatch.undo()
     answer = Model('openrouter/typesafe/jev-1.13').classify(
-        'I was charged twice for my subscription.', OPTIONS, cached=False
+        'I was charged twice for my subscription.', OPTIONS, instructions=ASK, cached=False
     )
     assert answer['choice'] in OPTIONS
 

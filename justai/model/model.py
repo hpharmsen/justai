@@ -9,6 +9,7 @@ from PIL.Image import Image
 
 from justai.models.basemodel import ImageInput
 from justai.models.modelfactory import ModelFactory
+from justai.models.systemone import restore_level_keys
 from justai.tools.cache import cache_save, cached_response
 from justai.tools.images import crop_to_fit
 
@@ -217,6 +218,44 @@ class Model:
 
         self.last_response_time = time.time() - start_time
         return _to_pydantic(result, response_format)
+
+    def classify(
+        self,
+        state: str | dict | list,
+        options: dict | list | None = None,
+        *,
+        instructions: str | None = None,
+        questions: dict | None = None,
+        cached=True,
+    ) -> dict:
+        """Ask a System One model a typed question about `state` and get a dict back.
+
+        A dict of options gives a choice, an ordered list gives a score, no options gives a
+        yes/no. Pass `questions` instead to ask several at once; the result is then keyed by
+        question name. Models that are not System One raise NotImplementedError.
+        """
+        start_time = time.time()
+        # 'classify' keeps these entries away from prompt entries, which hash an argument list
+        # of the same length.
+        key = (self.model.model_name, self.model.model_params, 'classify', state, options, instructions, questions)
+
+        response = cached_response(*key) if cached else None
+        if response:
+            # sqlite binds strings, not dicts, so the answer went in serialised.
+            result = restore_level_keys(json.loads(response[0]), single=questions is None)
+            self.input_token_count = self.output_token_count = 0
+        else:
+            response = self._call(
+                lambda: self.model.classify(
+                    state, options, instructions=instructions, questions=questions
+                )
+            )
+            if cached:
+                cache_save((json.dumps(response[0]), *response[1:]), *key)
+            result, self.input_token_count, self.output_token_count = response
+
+        self.last_response_time = time.time() - start_time
+        return result
 
     def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=False):
         self.raise_for_unsupported(images, return_json)

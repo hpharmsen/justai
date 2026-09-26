@@ -42,55 +42,64 @@ def _status_error(code: int) -> httpx.HTTPStatusError:
 # ---------------------------------------------------------------------------
 
 
+ASK = 'What is this about?'
+
+
 def test_dict_options_give_choice():
-    question = build_question({'billing': 'about money', 'technical': 'about bugs'}, None)
+    question = build_question({'billing': 'about money', 'technical': 'about bugs'}, ASK)
     assert question['type'] == 'choice'
     assert question['criteria'] == {'billing': 'about money', 'technical': 'about bugs'}
 
 
 def test_list_options_give_score():
-    question = build_question(['calm', 'annoyed', 'furious'], None)
+    question = build_question(['calm', 'annoyed', 'furious'], ASK)
     assert question['type'] == 'score'
     assert question['criteria'] == ['calm', 'annoyed', 'furious']
 
 
 def test_no_options_give_noul():
-    question = build_question(None, None)
+    question = build_question(None, ASK)
     assert question['type'] == 'noul'
     assert 'criteria' not in question
 
 
 def test_instructions_land_in_question():
     assert build_question(None, 'Is this urgent?')['instructions'] == 'Is this urgent?'
-    assert 'instructions' not in build_question(None, None)
+
+
+def test_instructions_are_required():
+    """The API answers 400 on a question without instructions, for all three types."""
+    for options in ({'a': 'b'}, ['low', 'high'], None):
+        with pytest.raises(AssertionError):
+            build_question(options, '')
 
 
 def test_choice_at_255_passes():
     options = {f'o{i}': f'option {i}' for i in range(MAX_CHOICE_OPTIONS)}
-    assert len(build_question(options, None)['criteria']) == 255
+    assert len(build_question(options, ASK)['criteria']) == 255
 
 
 def test_choice_over_255_raises():
     options = {f'o{i}': f'option {i}' for i in range(MAX_CHOICE_OPTIONS + 1)}
     with pytest.raises(AssertionError):
-        build_question(options, None)
+        build_question(options, ASK)
 
 
 def test_score_at_2_and_10_pass():
-    assert len(build_question(['a'] * MIN_SCORE_LEVELS, None)['criteria']) == 2
-    assert len(build_question(['a'] * MAX_SCORE_LEVELS, None)['criteria']) == 10
+    assert len(build_question(['a'] * MIN_SCORE_LEVELS, ASK)['criteria']) == 2
+    assert len(build_question(['a'] * MAX_SCORE_LEVELS, ASK)['criteria']) == 10
 
 
 def test_score_at_1_and_11_raise():
     with pytest.raises(AssertionError):
-        build_question(['a'], None)
+        build_question(['a'], ASK)
     with pytest.raises(AssertionError):
-        build_question(['a'] * 11, None)
+        build_question(['a'] * 11, ASK)
 
 
 def test_options_rejects_other_types():
     with pytest.raises(TypeError) as excinfo:
-        build_question('billing', None)
+        build_question('billing', ASK)
     assert 'str' in str(excinfo.value)
 
 
@@ -101,12 +110,12 @@ def test_options_rejects_other_types():
 
 def test_state_accepts_str_dict_list():
     for state in ('plain text', {'subject': 'refund'}, ['line one', 'line two']):
-        assert build_payload('jev-latest', state, None)['state'] == state
+        assert build_payload('jev-latest', state, None, instructions=ASK)['state'] == state
 
 
 def test_state_rejects_other_types():
     with pytest.raises(AssertionError):
-        build_payload('jev-latest', 42, None)
+        build_payload('jev-latest', 42, None, instructions=ASK)
 
 
 def test_options_and_questions_are_exclusive():
@@ -114,8 +123,13 @@ def test_options_and_questions_are_exclusive():
         build_payload('jev-latest', 'x', {'a': 'b'}, questions={'q': {'type': 'noul'}})
 
 
+def test_instructions_and_questions_are_exclusive():
+    with pytest.raises(AssertionError):
+        build_payload('jev-latest', 'x', instructions=ASK, questions={'q': {'type': 'noul'}})
+
+
 def test_questions_pass_through_unchanged():
-    questions = {'urgency': {'type': 'noul'}, 'topic': {'type': 'choice', 'criteria': {'a': 'b'}}}
+    questions = {'urgency': {'type': 'noul', 'instructions': 'Urgent?'}}
     assert build_payload('jev-latest', 'x', questions=questions)['questions'] == questions
 
 
@@ -126,7 +140,7 @@ def test_single_question_lands_under_single_key():
 
 
 def test_payload_carries_wire_model_name():
-    assert build_payload('kev-3b', 'x', None)['model'] == 'kev-3b'
+    assert build_payload('kev-3b', 'x', None, instructions=ASK)['model'] == 'kev-3b'
 
 
 # ---------------------------------------------------------------------------

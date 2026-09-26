@@ -6,16 +6,20 @@ from PIL import Image
 
 from justai.models.basemodel import get_api_key, BaseModel, ImageInput, client_retry_kwargs, client_timeout
 from justai.models.openai_completions import OpenAICompletionsModel
+from justai.models.systemone import SystemOneMixin
 from justai.tools.images import to_base64_data_uri
 
 
-class OpenRouterModel(OpenAICompletionsModel):
+class OpenRouterModel(SystemOneMixin, OpenAICompletionsModel):
     def __init__(self, model_name: str, params: dict = None):
         system_message = f'You are {model_name}, a large language model.'
         BaseModel.__init__(self, model_name, params, system_message)
 
-        # Authentication
-        api_key = get_api_key(params, 'OPENROUTER_API_KEY', 'OpenRouter', 'https://openrouter.ai/settings/keys')
+        # Authentication. Kept on self as well: classify() needs it for its own Bearer header,
+        # and the OpenAI client does not hand it back out.
+        self.api_key = api_key = get_api_key(
+            params, 'OPENROUTER_API_KEY', 'OpenRouter', 'https://openrouter.ai/settings/keys'
+        )
         self.client = OpenAI(
             api_key=api_key,
             base_url='https://openrouter.ai/api/v1',
@@ -25,6 +29,17 @@ class OpenRouterModel(OpenAICompletionsModel):
 
         self.messages = [{'role': 'system', 'content': self.system_message}]
         self.supports_image_generation = True
+
+    def classify_url(self) -> str:
+        # The TypeSafe-compatible route, not the alpha /api/alpha/decisions one: same body as
+        # the native and self-hosted paths, so one code path serves all three.
+        return 'https://openrouter.ai/api/v1/systemone'
+
+    def classify_headers(self) -> dict:
+        return {'Authorization': f'Bearer {self.api_key}', 'Content-Type': 'application/json'}
+
+    def wire_model_name(self) -> str:
+        return self.model_name  # The factory already stripped the openrouter/ prefix
 
     def resolve_effort(self) -> tuple[str | None, str | None]:
         # OpenRouter maps effort levels server-side (per its docs); pass through raw.

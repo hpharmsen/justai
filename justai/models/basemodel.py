@@ -320,6 +320,10 @@ class BaseModel(ABC):
         """Overwrite in subclasses that DO support image generation."""
         raise NotImplementedError(f'generate_image() is not supported by {self.__class__.__name__}')
 
+    def classify(self, *args, **kwargs):
+        """Overwrite in subclasses that DO support classification."""
+        raise NotImplementedError(f'classify() is not supported by {self.__class__.__name__}')
+
     @abstractmethod
     def token_count(self, text: str) -> int: ...
 

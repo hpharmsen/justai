@@ -51,5 +51,11 @@ class ModelFactory:
             from justai.models.minimax_models import MiniMaxModel
 
             return MiniMaxModel(model_name, params=kwargs)
+        elif model_name.startswith('systemone/') or model_name.startswith('jev'):
+            # After the openrouter/ branch on purpose: openrouter/typesafe/jev-1.13 is served
+            # by OpenRouter, not by TypeSafe directly.
+            from justai.models.systemone import SystemOneModel
+
+            return SystemOneModel(model_name, params=kwargs)
         else:
             raise ValueError(f'Model {model_name} not supported')
