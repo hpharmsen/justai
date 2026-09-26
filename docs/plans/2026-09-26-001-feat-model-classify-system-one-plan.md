@@ -143,7 +143,7 @@ Verificatie.
 | `tests/test_classify.py` | ja | Wire-formaat, validatie, foutmapping, zonder netwerk |
 | `tests/test_classify_routing.py` | ja | Factory, providerpaden en retries, met gemockte httpx |
 | `tests/test_classify_model.py` | ja | `Model.classify`, caching, tellers, `NotImplementedError` |
-| `examples/classify.py` | ja | Voorbeeld met de modellenmatrix in de comments |
+| `examples/system_one.py` | ja | Voorbeeld met de modellenmatrix in de comments |
 | `README.md` | nee | Prefix-tabel plus een feature-sectie |
 | `CLAUDE.md`, `AGENTS.md` | nee | Prefix-lijst in de Model Factory-sectie |
 | `docs/architecture.md` | nee | Component, routingrijen, cross-cutting regel |
@@ -155,7 +155,7 @@ Verificatie.
 | 01 | Wire-formaat: requestbuilder, antwoorduitpakker, validatie, foutmapping | `justai/models/systemone.py`, `tests/test_classify.py` | - |
 | 02 | Providers: `SystemOneMixin` met retries, `SystemOneModel`, factory-routing, OpenRouter-override | `justai/models/systemone.py`, `justai/models/modelfactory.py`, `justai/models/openrouter_models.py`, `tests/test_classify_routing.py` | 01 |
 | 03 | Publieke API: `Model.classify` plus de `BaseModel`-raiser | `justai/model/model.py`, `justai/models/basemodel.py`, `tests/test_classify_model.py` | 01 |
-| 04 | Voorbeeldscript | `examples/classify.py` | 02, 03 |
+| 04 | Voorbeeldscript | `examples/system_one.py` | 02, 03 |
 | 05 | Documentatie | `README.md`, `CLAUDE.md`, `AGENTS.md`, `docs/architecture.md` | 02, 03 |
 
 02 en 03 raken geen gemeenschappelijk bestand en kunnen samen lopen zodra 01 staat. 02 breidt
@@ -369,7 +369,7 @@ def classify(self, *args, **kwargs):
 
 ## Task 04: voorbeeld
 
-`examples/classify.py`, in de vorm van de bestaande voorbeelden: functies per geval, een
+`examples/system_one.py`, in de vorm van de bestaande voorbeelden: functies per geval, een
 `__main__`-blok dat naar de projectroot chdirt en `load_dotenv(override=True)` doet, zoals
 `examples/basic.py:17-20`.
 
@@ -446,7 +446,7 @@ bestanden hebben dezelfde lijst en beide missen nu `minimax*`, dat sinds
 3. `venv/bin/pytest tests/` laat geen bestaande test kapot. De wijziging in
    `openrouter_models.py` is de enige die aan bestaand gedrag raakt, dus `tests/test_effort.py`
    en `tests/test_cache.py` moeten meelopen.
-4. Met een `OPENROUTER_API_KEY` in `.env`: `venv/bin/python examples/classify.py` geeft vier
+4. Met een `OPENROUTER_API_KEY` in `.env`: `venv/bin/python examples/system_one.py` geeft vier
    antwoorden en een `NotImplementedError` die netjes gevangen wordt. Dit is de enige stap die
    bewijst dat het echte endpoint doet wat de documentatie belooft, en daarmee de afronding van
    OQ1.
