@@ -10,7 +10,7 @@ from typing import Any, AsyncGenerator, Callable
 from pydantic import BaseModel, ConfigDict, create_model
 
 from justai.agent.skills import load_skills
-from justai.model.model import Model
+from justai.model.model import Model, _to_pydantic
 from justai.models.basemodel import (
     DEFAULT_AGENT_RETRIES,
     JSON_TYPE_MAP,
@@ -254,9 +254,10 @@ class Agent:
         if tc.name not in self._tools:
             return None, None
         if tc.name not in budgets:
-            m = self._tools[tc.name][3]
-            validate = lambda raw: m.model_validate_json(raw) if isinstance(raw, str) else m.model_validate(raw)
-            budgets[tc.name] = RepairBudget(validate, self.validation_retries, tc.name, TOOL_FEEDBACK)
+            args_model = self._tools[tc.name][3]
+            budgets[tc.name] = RepairBudget(
+                lambda raw: _to_pydantic(raw, args_model), self.validation_retries, tc.name, TOOL_FEEDBACK
+            )
         instance, feedback = budgets[tc.name].check(tc.raw_arguments if tc.raw_arguments is not None else tc.arguments)
         return (None, feedback) if feedback else (dict(instance), None)
 
