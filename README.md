@@ -91,6 +91,8 @@ With a Pydantic class, `validation_retries` sends validation errors back to the 
 for a corrected answer, up to that many times. Malformed JSON counts as a validation error.
 When the answer is still invalid, `ValidationRetryError` (a `ValueError`) is raised. The default
 `0` raises the original Pydantic `ValidationError`. Token counters include every attempt.
+Validation happens in `Model` for every provider, so a failing validator raises Pydantic's
+`ValidationError` (before 5.8 the Anthropic and OpenAI providers wrapped it in `GeneralException`).
 ```python
 from pydantic import field_validator
 from justai import ValidationRetryError

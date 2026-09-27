@@ -44,7 +44,6 @@ from anthropic import (
     PermissionDeniedError,
     RateLimitError,
 )
-from anthropic.lib._parse._transform import transform_schema
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +410,10 @@ class AnthropicModel(BaseModel):
 
         # Build output schema
         if response_format and hasattr(response_format, 'model_json_schema'):
-            # The schema messages.parse() would send; validation happens in Model.
+            # The schema messages.parse() would send; validation happens in Model. A private SDK
+            # module, imported here so an SDK that moves it breaks structured output only.
+            from anthropic.lib._parse._transform import transform_schema
+
             schema = transform_schema(response_format.model_json_schema())
         elif response_format and isinstance(response_format, dict):
             schema = response_format

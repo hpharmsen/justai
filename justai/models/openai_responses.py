@@ -24,7 +24,6 @@ import httpx
 import pydantic
 from jsonschema import Draft202012Validator, exceptions, validators
 from openai import OpenAI
-from openai.lib._parsing._responses import type_to_text_format_param
 from PIL import Image
 
 from justai.models.basemodel import (
@@ -133,7 +132,10 @@ class OpenAIResponsesModel(BaseModel):
             try:
                 if is_pydantic:
                     # Pydantic model: the strict format responses.parse() would send, but the
-                    # raw text comes back. Model validates it; return_json is ignored here.
+                    # raw text comes back. Model validates it; return_json is ignored here. A private
+                    # SDK module, imported here so an SDK that moves it breaks structured output only.
+                    from openai.lib._parsing._responses import type_to_text_format_param
+
                     response = self._responses_create(
                         model=self.model_name,
                         input=input_list,
