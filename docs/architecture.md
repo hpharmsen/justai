@@ -95,7 +95,9 @@ Async variant (`prompt_async`) yieldt `(content, reasoning)`-tuples per delta-ch
   `ValidationRetryError`. Twee gebruikers: `Model.chat`/`prompt(validation_retries=N)` doet een
   repair call met de fouten (chat via de providerhistorie, prompt met vraag plus fout antwoord),
   en de `Agent` valideert elke tool call tegen een strict args-model (`create_model`,
-  `extra='forbid'`) voordat de tool draait. Kapotte tool-JSON uit `stream()` komt binnen als
+  `extra='forbid'`) voordat de tool draait. Dat args-model is ook de bron van het tool-schema
+  dat naar de provider gaat (`model_json_schema()`), zodat schema en validatie niet uit elkaar
+  lopen. Kapotte tool-JSON uit `stream()` komt binnen als
   `ToolCallRequest.raw_arguments` en volgt dezelfde route. Drie soorten retries staan los van
   elkaar: transport in de SDK (`max_retries` op `Model`), rate limit en verbinding in de
   Agent-lus (`Agent(max_retries=...)`) en validatie (`validation_retries`).
