@@ -6,12 +6,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PIL.Image import Image
+from pydantic import BaseModel as PydanticModel
 
 from justai.models.basemodel import ImageInput
 from justai.models.modelfactory import ModelFactory
 from justai.models.systemone import restore_level_keys
 from justai.tools.cache import cache_save, cached_response
 from justai.tools.images import crop_to_fit
+from justai.tools.validation import RepairBudget
 
 
 def _cache_encode(result) -> str:
@@ -23,10 +25,6 @@ def _cache_encode(result) -> str:
 def _to_pydantic(result, response_format):
     """Convert result to a Pydantic model instance when response_format is a Pydantic class."""
     if not response_format:
-        return result
-    try:
-        from pydantic import BaseModel as PydanticModel
-    except ImportError:
         return result
     if not (isinstance(response_format, type) and issubclass(response_format, PydanticModel)):
         return result
@@ -165,8 +163,47 @@ class Model:
                 self.input_token_count, self.output_token_count = self.model.last_usage
             raise
 
-    def prompt(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=True):
-        self.raise_for_unsupported(images, return_json)
+    def _validated(
+        self,
+        first: Callable[[], tuple],
+        repair: Callable[[object, str], tuple],
+        response_format,
+        validation_retries: int,
+    ):
+        """Run first(), validate against response_format and repair up to validation_retries times."""
+        spent = [0, 0]
+
+        def attempt(call: Callable[..., tuple], *args):
+            # Every attempt was billed, so the counters hold the sum, also when something raises
+            try:
+                result, self.input_token_count, self.output_token_count = self._call(lambda: call(*args))
+                return result
+            finally:
+                spent[0] += self.input_token_count
+                spent[1] += self.output_token_count
+                self.input_token_count, self.output_token_count = spent
+
+        raw = attempt(first)
+        if not validation_retries:
+            return _to_pydantic(raw, response_format)
+        budget = RepairBudget(lambda r: _to_pydantic(r, response_format), validation_retries, response_format.__name__)
+        value, feedback = budget.check(raw)
+        while feedback:
+            raw = attempt(repair, raw, feedback)
+            value, feedback = budget.check(raw)
+        return value
+
+    def prompt(
+        self,
+        prompt: str,
+        *,
+        images: ImageInput = None,
+        return_json=False,
+        response_format=None,
+        cached=True,
+        validation_retries: int = 0,
+    ):
+        self.raise_for_unsupported(images, return_json, response_format, validation_retries)
 
         start_time = time.time()
         if images and not isinstance(images, list):
@@ -194,16 +231,28 @@ class Model:
             if structured:
                 result = json.loads(result)
             self.input_token_count = self.output_token_count = 0
+            result = _to_pydantic(result, response_format)
         else:
-            response = self._call(
-                lambda: self.model.prompt(
-                    prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+
+            def call(text: str, imgs: ImageInput) -> tuple:
+                return self.model.prompt(
+                    text, images=imgs, tools=self.tools, return_json=return_json, response_format=response_format
                 )
+
+            # prompt() is stateless, so a repair call has to repeat the question and the bad answer
+            result = self._validated(
+                lambda: call(prompt, images),
+                lambda raw, feedback: call(
+                    f'{prompt}\n\nYour previous response:\n{raw if isinstance(raw, str) else json.dumps(raw)}'
+                    f'\n\n{feedback}',
+                    None,
+                ),
+                response_format,
+                validation_retries,
             )
-            if cached:
-                stored = (_cache_encode(response[0]), *response[1:]) if structured else response
+            if cached:  # Only a validated result is stored, under the key of the original prompt
                 cache_save(
-                    stored,
+                    (_cache_encode(result) if structured else result, self.input_token_count, self.output_token_count),
                     self.model.model_name,
                     self.model.model_params,
                     self.model.system_message,
@@ -214,10 +263,8 @@ class Model:
                     response_format,
                 )
 
-            result, self.input_token_count, self.output_token_count = response
-
         self.last_response_time = time.time() - start_time
-        return _to_pydantic(result, response_format)
+        return result
 
     def classify(
         self,
@@ -255,8 +302,17 @@ class Model:
         self.last_response_time = time.time() - start_time
         return result
 
-    def chat(self, prompt: str, *, images: ImageInput = None, return_json=False, response_format=None, cached=False):
-        self.raise_for_unsupported(images, return_json)
+    def chat(
+        self,
+        prompt: str,
+        *,
+        images: ImageInput = None,
+        return_json=False,
+        response_format=None,
+        cached=False,
+        validation_retries: int = 0,
+    ):
+        self.raise_for_unsupported(images, return_json, response_format, validation_retries)
         if cached:
             raise NotImplementedError('Model.chat does not support cached=True. Use prompt instead.')
 
@@ -264,15 +320,20 @@ class Model:
         if images and not isinstance(images, list):
             images = [images]
 
-        response = self._call(
-            lambda: self.model.chat(
-                prompt, images=images, tools=self.tools, return_json=return_json, response_format=response_format
+        def call(text: str, imgs: ImageInput) -> tuple:
+            return self.model.chat(
+                text, images=imgs, tools=self.tools, return_json=return_json, response_format=response_format
             )
-        )
 
-        result, self.input_token_count, self.output_token_count = response
+        # The provider history carries the question and the bad answer, so a repair sends only the feedback
+        result = self._validated(
+            lambda: call(prompt, images),
+            lambda raw, feedback: call(feedback, None),
+            response_format,
+            validation_retries,
+        )
         self.last_response_time = time.time() - start_time
-        return _to_pydantic(result, response_format)
+        return result
 
     async def prompt_async(self, prompt, *, images: ImageInput = None):
         # Using 'async for' to properly yield from the chat_async generator
@@ -315,7 +376,13 @@ class Model:
         """Format an assistant message for the current provider."""
         return self.model.format_assistant_message(text, tool_calls)
 
-    def raise_for_unsupported(self, images: ImageInput = None, return_json=False):
+    def raise_for_unsupported(
+        self, images: ImageInput = None, return_json=False, response_format=None, validation_retries: int = 0
+    ):
+        if validation_retries and not (
+            isinstance(response_format, type) and issubclass(response_format, PydanticModel)
+        ):
+            raise ValueError('validation_retries requires a Pydantic class as response_format')
         if return_json and not self.model.supports_return_json:
             raise NotImplementedError(f'{self.model.model_name} does not support return_json')
         if images and not self.model.supports_image_input:
