@@ -5,7 +5,7 @@ set -e
 start_time=$(date +%s)
 uv pip install twine build
 /bin/rm -f dist/*
-export VERSION=`uv run python bumpversion.py -v patch`
+export VERSION=`uv run python bumpversion.py -v minor`
 # uv run, niet kaal python/twine: die landen via PATH op de systeem-Python en
 # niet in de venv waar de regel hierboven build en twine net heeft gezet.
 uv run python -m build
