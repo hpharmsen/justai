@@ -24,6 +24,7 @@ import httpx
 import pydantic
 from jsonschema import Draft202012Validator, exceptions, validators
 from openai import OpenAI
+from openai.lib._parsing._responses import type_to_text_format_param
 from PIL import Image
 
 from justai.models.basemodel import (
@@ -111,9 +112,6 @@ class OpenAIResponsesModel(BaseModel):
     def _responses_create(self, **kwargs):
         return self.client.responses.create(**kwargs, **self._reasoning_extra())
 
-    def _responses_parse(self, **kwargs):
-        return self.client.responses.parse(**kwargs, **self._reasoning_extra())
-
     def prompt(
         self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False
     ) -> tuple[Any, int | None, int | None]:
@@ -133,13 +131,13 @@ class OpenAIResponsesModel(BaseModel):
         for run in range(3):  # Max 3 function calls to prevent infinite loop
             try:
                 if is_pydantic:
-                    # Pydantic model: use native structured output via responses.parse.
-                    # The return_json flag is ignored here; the caller gets a Pydantic instance.
-                    response = self._responses_parse(
+                    # Pydantic model: the strict format responses.parse() would send, but the
+                    # raw text comes back. Model validates it; return_json is ignored here.
+                    response = self._responses_create(
                         model=self.model_name,
                         input=input_list,
                         tools=tool_spec,
-                        text_format=response_format,
+                        text={'format': type_to_text_format_param(response_format)},
                         previous_response_id=last_response_id,
                     )
                 elif response_format:
@@ -197,9 +195,7 @@ class OpenAIResponsesModel(BaseModel):
                     response.usage.output_tokens,
                     cache_read_tokens=getattr(details, 'cached_tokens', 0),
                 )
-                if is_pydantic:
-                    output = response.output_parsed
-                elif return_json:
+                if return_json and not is_pydantic:
                     output = json.loads(response.output_text)
                 else:
                     output = response.output_text

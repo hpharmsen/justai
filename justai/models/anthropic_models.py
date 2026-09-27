@@ -44,6 +44,7 @@ from anthropic import (
     PermissionDeniedError,
     RateLimitError,
 )
+from anthropic.lib._parse._transform import transform_schema
 
 logger = logging.getLogger(__name__)
 
@@ -347,13 +348,24 @@ class AnthropicModel(BaseModel):
             block_types = [getattr(b, 'type', '?') for b in message.content]
             raise BadRequestException(f'No text block in response (blocks: {block_types})')
         response_str = ''.join(texts)
+        # A Pydantic format comes back as raw text: Model validates it, so a failing
+        # field_validator surfaces there with the answer and usage intact.
+        is_pydantic = hasattr(response_format, 'model_json_schema')
+        if use_structured_outputs:
+            # completion() keeps the history itself; this path has to do it here.
+            self.messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': response_str}]})
         if return_json or response_format:
             if use_structured_outputs:
                 # Structured outputs guarantees valid JSON
-                response = json.loads(response_str)
+                response = response_str if is_pydantic else json.loads(response_str)
             else:
                 # Legacy JSON parsing for older models or fallback
-                response = self._parse_json_legacy(response_str)
+                try:
+                    response = self._parse_json_legacy(response_str)
+                except BadRequestException:
+                    if not is_pydantic:
+                        raise
+                    response = response_str
         else:
             response = response_str
 
@@ -398,7 +410,8 @@ class AnthropicModel(BaseModel):
 
         # Build output schema
         if response_format and hasattr(response_format, 'model_json_schema'):
-            schema = response_format.model_json_schema()
+            # The schema messages.parse() would send; validation happens in Model.
+            schema = transform_schema(response_format.model_json_schema())
         elif response_format and isinstance(response_format, dict):
             schema = response_format
         else:
@@ -432,16 +445,11 @@ class AnthropicModel(BaseModel):
                 api_params['tools'] = antr_tools
 
             api_params = self._prepare_api_params(api_params)
-
-            # Use parse() for Pydantic models
-            if response_format and hasattr(response_format, 'model_json_schema'):
-                return self.client.messages.parse(output_format=response_format, **api_params)
-            else:
-                return self.client.messages.create(**api_params)
+            return self.client.messages.create(**api_params)
 
         except (TypeError, AttributeError):
             # Re-raise directly for fallback handling in chat()
-            # This happens when SDK doesn't support output_format/parse
+            # This happens when SDK doesn't support output_config
             raise
         except BadRequestError as e:
             # Re-raise "does not support output format" errors for fallback handling in chat()
