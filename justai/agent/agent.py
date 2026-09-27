@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable
 
+from pydantic import BaseModel, ConfigDict, create_model
+
 from justai.agent.skills import load_skills
 from justai.model.model import Model
 from justai.models.basemodel import (
@@ -22,6 +24,7 @@ from justai.models.basemodel import (
     TimeoutException,
     ToolCallRequest,
 )
+from justai.tools.validation import TOOL_FEEDBACK, RepairBudget, ValidationRetryError
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +69,7 @@ class AgentResult:
     tasks: str = ''
     tokens: tuple[int, int] = (0, 0)
     iterations: int = 0
-    error: str | None = None  # Set when a provider failure stopped the run
+    error: str | None = None  # Set when a provider failure or exhausted validation retries stopped the run
 
 
 @dataclass
@@ -93,7 +96,8 @@ def _build_tool_schema(func: Callable) -> dict:
             continue
         annotation = param.annotation
         json_type = JSON_TYPE_MAP.get(annotation, 'string') if annotation != inspect.Parameter.empty else 'string'
-        properties[name] = {'type': json_type, 'description': name}
+        is_model = inspect.isclass(annotation) and issubclass(annotation, BaseModel)
+        properties[name] = annotation.model_json_schema() if is_model else {'type': json_type, 'description': name}
         if param.default is inspect.Parameter.empty:
             required.append(name)
 
@@ -103,6 +107,18 @@ def _build_tool_schema(func: Callable) -> dict:
         'parameters': properties,
         'required': required,
     }
+
+
+def _build_args_model(name: str, func: Callable, types: dict[str, Any] | None = None) -> type[BaseModel]:
+    """Build a strict args model from func's signature; `types` overrides the annotations (get_tools objects)."""
+    params = {k: p for k, p in inspect.signature(func).parameters.items() if k not in ('self', 'ctx')}
+    if types is None:
+        types = {k: Any if p.annotation is inspect.Parameter.empty else p.annotation for k, p in params.items()}
+    empty = inspect.Parameter.empty
+    fields = {
+        k: (t, params[k].default if k in params and params[k].default is not empty else ...) for k, t in types.items()
+    }
+    return create_model(f'{name}_args', __config__=ConfigDict(extra='forbid'), **fields)
 
 
 class Agent:
@@ -116,6 +132,7 @@ class Agent:
         max_retries: int | None = None,
         max_iterations: int = 50,
         verbose: bool = True,
+        validation_retries: int = 2,
         **model_kwargs,
     ):
         if isinstance(model, str):
@@ -133,9 +150,10 @@ class Agent:
         self.max_retries = max_retries
         self.max_iterations = max_iterations
         self.verbose = verbose
+        self.validation_retries = validation_retries
 
-        # Tool registry: name -> (callable, schema, needs_ctx)
-        self._tools: dict[str, tuple[Callable, dict, bool]] = {}
+        # Tool registry: name -> (callable, schema, needs_ctx, args_model)
+        self._tools: dict[str, tuple[Callable, dict, bool, type[BaseModel]]] = {}
         self._instruction_fns: list[Callable] = []
         self._audit: list[AuditEntry] = []
         self._total_input_tokens = 0
@@ -156,7 +174,7 @@ class Agent:
                         'parameters': {k: {'type': JSON_TYPE_MAP.get(v, 'string')} for k, v in params.items()},
                         'required': list(params.keys()),
                     }
-                    self._tools[name] = (func, schema, False)
+                    self._tools[name] = (func, schema, False, _build_args_model(name, func, params))
             elif callable(t):
                 self._register_tool(t, needs_ctx=False)
 
@@ -170,7 +188,7 @@ class Agent:
         schema = _build_tool_schema(func)
         tool_name = name or func.__name__
         schema['name'] = tool_name
-        self._tools[tool_name] = (func, schema, needs_ctx)
+        self._tools[tool_name] = (func, schema, needs_ctx, _build_args_model(tool_name, func))
 
     def tool(self, func: Callable) -> Callable:
         """Decorator to register a tool with context injection."""
@@ -215,7 +233,7 @@ class Agent:
     def _build_tool_specs(self) -> list[dict]:
         """Build tool specifications for the provider."""
         specs = []
-        for name, (func, schema, needs_ctx) in self._tools.items():
+        for name, (_, schema, *_) in self._tools.items():
             # Build in provider-agnostic format; Model.stream() handles conversion
             input_schema = {
                 'type': 'object',
@@ -231,16 +249,28 @@ class Agent:
             )
         return specs
 
-    def _execute_tool(self, tc: ToolCallRequest, ctx: AgentContext) -> tuple[str, bool]:
-        """Execute a tool call, return (result_str, success)."""
+    def _check_args(self, tc: ToolCallRequest, budgets: dict[str, RepairBudget]) -> tuple[dict | None, str | None]:
+        """Validate a call's arguments: (kwargs, None), (None, feedback), or (None, None) for an unknown tool."""
+        if tc.name not in self._tools:
+            return None, None
+        if tc.name not in budgets:
+            m = self._tools[tc.name][3]
+            validate = lambda raw: m.model_validate_json(raw) if isinstance(raw, str) else m.model_validate(raw)
+            budgets[tc.name] = RepairBudget(validate, self.validation_retries, tc.name, TOOL_FEEDBACK)
+        instance, feedback = budgets[tc.name].check(tc.raw_arguments if tc.raw_arguments is not None else tc.arguments)
+        return (None, feedback) if feedback else (dict(instance), None)
+
+    def _execute_tool(self, tc: ToolCallRequest, ctx: AgentContext, kwargs: dict | None = None) -> tuple[str, bool]:
+        """Execute a tool call with validated kwargs (default: the raw arguments), return (result_str, success)."""
         if tc.name not in self._tools:
             available = ', '.join(self._tools.keys())
             return f'Error: tool "{tc.name}" not found. Available tools: {available}', False
 
-        func, schema, needs_ctx = self._tools[tc.name]
+        func, _, needs_ctx, _ = self._tools[tc.name]
+        kwargs = tc.arguments if kwargs is None else kwargs
         start = time.time()
         try:
-            result = func(ctx, **tc.arguments) if needs_ctx else func(**tc.arguments)
+            result = func(ctx, **kwargs) if needs_ctx else func(**kwargs)
             result_str = str(result) if not isinstance(result, str) else result
             success = True
         except Exception as e:
@@ -280,7 +310,7 @@ class Agent:
         )
 
     def _stop(self, message: str, tasks_content: str, iterations: int) -> list[AgentEvent]:
-        """End the run on a provider failure: log it, then an 'error' event plus 'done'."""
+        """End the run on a provider failure or exhausted validation retries: log, then 'error' plus 'done'."""
         logger.error(f'Agent stopped: {message}')
         self._error = message
         return [
@@ -311,6 +341,7 @@ class Agent:
         ]
 
         yield AgentEvent(type='status', message='Agent started')
+        budgets: dict[str, RepairBudget] = {}  # per tool name, for this run
 
         for iteration in range(self.max_iterations):
             response_text = ''
@@ -367,7 +398,18 @@ class Agent:
             if tool_calls:
                 tool_results = []
                 for tc in tool_calls:
-                    result_str, success = self._execute_tool(tc, ctx)
+                    try:
+                        kwargs, feedback = self._check_args(tc, budgets)
+                    except ValidationRetryError as e:
+                        for event in self._stop(f'{type(e).__name__}: {e}', tasks_content, iteration + 1):
+                            yield event
+                        return
+                    if feedback:
+                        n, total = budgets[tc.name].failures, self.validation_retries
+                        yield AgentEvent(type='status', message=f'Invalid arguments for {tc.name}, retry {n}/{total}')
+                        tool_results.append(self.model.model.format_tool_result(tc.id, tc.name, feedback))
+                        continue
+                    result_str, success = self._execute_tool(tc, ctx, kwargs)
                     yield AgentEvent(type='tool_call', name=tc.name, arguments=tc.arguments, tool_result=result_str)
                     tool_results.append(self.model.model.format_tool_result(tc.id, tc.name, result_str))
 
