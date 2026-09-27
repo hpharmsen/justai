@@ -1,8 +1,11 @@
 """Tests for tool argument validation with repair retries in the Agent (no network)."""
 
 import asyncio
+import enum
+from pathlib import Path
 
-from pydantic import BaseModel
+import pytest
+from pydantic import BaseModel, field_validator
 
 from justai import Agent, AgentEvent
 from justai.models.basemodel import StreamChunk, ToolCallRequest
@@ -125,7 +128,8 @@ def test_pydantic_param_schema_is_object(tmp_path):
         return 'booked'
 
     agent._register_tool(book)
-    prop = agent._tools['book'][1]['parameters']['args']
+    schema = spec(agent, 'book')
+    prop = resolve(schema, schema['properties']['args'])
     assert prop['type'] == 'object' and 'amount' in prop['properties']
 
 
@@ -255,3 +259,129 @@ def test_no_audit_entry_for_rejected_call(tmp_path):
     events = run(agent, tmp_path)
     audit = events[-1].result.audit
     assert [(a.tool_name, a.arguments) for a in audit] == [('add', {'a': 1}), ('final_answer', {'answer': 'ok'})]
+
+
+def spec(agent: Agent, name: str) -> dict:
+    """The input_schema the provider receives for tool `name`."""
+    return next(s['input_schema'] for s in agent._build_tool_specs() if s['name'] == name)
+
+
+def resolve(root: dict, node: dict) -> dict:
+    """Follow a local '#/...' $ref from the schema root."""
+    if '$ref' not in node:
+        return node
+    for part in node['$ref'].removeprefix('#/').split('/'):
+        root = root[part]
+    return root
+
+
+def refs(node) -> list[str]:
+    """All $ref values anywhere in a schema."""
+    if isinstance(node, dict):
+        return ([node['$ref']] if '$ref' in node else []) + [r for v in node.values() for r in refs(v)]
+    return [r for v in node for r in refs(v)] if isinstance(node, list) else []
+
+
+FUTURE_TOOL = """
+from __future__ import annotations
+from pathlib import Path
+from typing import Optional
+from pydantic import BaseModel
+
+class Line(BaseModel):
+    sku: str
+
+def order(path: Path, line: Line, qty: Optional[int] = None) -> str:
+    \"\"\"Place an order.\"\"\"
+    CALLS.append((path, line, qty))
+    return 'ordered'
+"""
+
+
+def test_future_annotations_tool(tmp_path):
+    ns = {'CALLS': []}
+    exec(FUTURE_TOOL, ns)
+    agent, _ = make_agent([[tc('1', 'order', {'path': '/x', 'line': {'sku': 'A'}, 'qty': '2'})], [FINAL]])
+    agent._register_tool(ns['order'])
+    events = run(agent, tmp_path)
+    assert events[-1].result.error is None
+    assert ns['CALLS'] == [(Path('/x'), ns['Line'](sku='A'), 2)]
+
+
+class Custom(Exception):
+    """A user exception that is not a ValueError."""
+
+
+class Picky(BaseModel):
+    code: str
+
+    @field_validator('code')
+    @classmethod
+    def no_x(cls, v: str) -> str:
+        if v == 'x':
+            raise Custom('boom')
+        return v
+
+
+def test_non_validation_error_ends_run(tmp_path):
+    agent, _ = make_agent([[tc('1', 'pick', {'p': {'code': 'x'}})], [FINAL]])
+
+    def pick(p: Picky) -> str:
+        """Pick."""
+        return 'picked'
+
+    agent._register_tool(pick)
+    events = run(agent, tmp_path)
+    assert [e.type for e in events[-2:]] == ['error', 'done']
+    assert 'Custom: boom' in events[-1].result.error
+
+
+class Color(enum.Enum):
+    RED = 'red'
+
+
+class Sub(BaseModel):
+    color: Color
+
+
+class Outer(BaseModel):
+    sub: Sub
+
+
+def test_nested_refs_resolve_and_list_is_array():
+    agent, _ = make_agent([])
+
+    def paint(outer: Outer, tags: list[str]) -> str:
+        """Paint."""
+        return 'painted'
+
+    agent._register_tool(paint)
+    schema = spec(agent, 'paint')
+    assert refs(schema) and all(resolve(schema, {'$ref': r}) for r in refs(schema))
+    assert schema['properties']['tags']['type'] == 'array'
+    assert schema['type'] == 'object' and set(schema['required']) == {'outer', 'tags'}
+
+
+def test_var_keyword_args_reach_tool(tmp_path):
+    agent, _ = make_agent([[tc('1', 'f', {'a': '1', 'z': 9})], [FINAL]])
+    seen = []
+
+    def f(a: int, *args, **kw) -> str:
+        """Accept extras."""
+        seen.append((a, args, kw))
+        return 'ok'
+
+    agent._register_tool(f)
+    assert set(agent._tools['f'][3].model_fields) == {'a'}
+    events = run(agent, tmp_path)
+    assert events[-1].result.error is None
+    assert seen == [(1, (), {'z': 9})]
+
+
+@pytest.mark.parametrize('param', ['_x', 'model_config'])
+def test_reserved_param_name_raises_at_registration(param):
+    agent, _ = make_agent([])
+    ns = {}
+    exec(f'def g({param}: str) -> str:\n    return {param}', ns)
+    with pytest.raises(AssertionError, match=f'g.*{param}'):
+        agent._register_tool(ns['g'])
