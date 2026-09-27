@@ -9,6 +9,8 @@ Usage:
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pydantic
@@ -274,3 +276,18 @@ def test_openai_validation_repair_uses_previous_response_id():
     assert 'Validation errors:' in feedback_messages[0]['content'][-1]['text']
 
     assert (m.input_token_count, m.output_token_count) == (5 + 7, 6 + 8)
+
+
+def test_providers_import_without_private_sdk_helpers():
+    """An SDK that moves its private parse helpers breaks structured output only, not the provider import."""
+    code = (
+        'import sys\n'
+        'class Block:\n'
+        '    def find_spec(self, name, path=None, target=None):\n'
+        "        if name in ('anthropic.lib._parse._transform', 'openai.lib._parsing._responses'):\n"
+        '            raise ImportError(name)\n'
+        'sys.meta_path.insert(0, Block())\n'
+        'import justai.models.anthropic_models, justai.models.openai_responses\n'
+    )
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
