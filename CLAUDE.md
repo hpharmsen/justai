@@ -18,6 +18,7 @@ JustAI is a Python package that provides a unified interface for working with mu
 - **justai/models/modelfactory.py**: Factory pattern implementation that routes to appropriate provider based on model name
 - **justai/models/**: Provider-specific implementations (OpenAI, Anthropic, Google, etc.)
 - **justai/tools/**: Utility modules for caching, image processing, and prompt management
+- **docs/solutions/**: documented solutions to past problems (Dutch, flat, frontmatter `title`, `date`, `tags`, `files`); relevant when working on the files a doc lists
 
 ### Key Design Patterns
 
