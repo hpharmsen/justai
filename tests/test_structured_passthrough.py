@@ -182,3 +182,95 @@ def test_model_chat_raises_validation_error_on_validator_failure():
     m, _ = _anthropic(MINOR)
     with pytest.raises(pydantic.ValidationError):
         m.chat('who?', response_format=Person, cached=False)
+
+
+# ---------------------------------------------------------------------------
+# Validation-retry repair loop through a real provider's history bookkeeping
+#
+# tests/test_validation_retries.py drives the same loop against a FakeProvider
+# stub. These characterize it against the real Anthropic/OpenAI code paths, so
+# a change to their history/cache/previous_response_id bookkeeping that breaks
+# the repair cycle shows up here, not only in production.
+# ---------------------------------------------------------------------------
+
+
+def test_anthropic_validation_repair_uses_provider_history_and_cache_breakpoint():
+    m = Model('claude-sonnet-4-6', ANTHROPIC_API_KEY='k')
+    client = MagicMock()
+    invalid_response = _anthropic_response(MINOR)
+    invalid_response.usage = MagicMock(
+        input_tokens=11, output_tokens=22, cache_creation_input_tokens=0, cache_read_input_tokens=0
+    )
+    valid_response = _anthropic_response(VALID)
+    valid_response.usage = MagicMock(
+        input_tokens=13, output_tokens=27, cache_creation_input_tokens=0, cache_read_input_tokens=0
+    )
+    client.messages.create.side_effect = [invalid_response, valid_response]
+    m.model.client = client
+
+    result = m.chat('Who?', response_format=Person, validation_retries=1)
+
+    assert result == Person(name='Ada', age=36)
+    assert client.messages.create.call_count == 2
+
+    # Second call's messages end with, in order: the original question, the
+    # invalid answer (appended by chat() itself), and the repair feedback.
+    second_messages = client.messages.create.call_args_list[1].kwargs['messages']
+    assert len(second_messages) == 3
+    original_user, assistant_invalid, feedback_user = second_messages
+    assert original_user['role'] == 'user'
+    assert original_user['content'][-1]['text'] == 'Who?'
+    assert assistant_invalid == {'role': 'assistant', 'content': [{'type': 'text', 'text': MINOR}]}
+    assert feedback_user['role'] == 'user'
+    feedback_text = feedback_user['content'][-1]['text']
+    assert 'Validation errors:' in feedback_text
+
+    # Cache breakpoint (docs/solutions/2026-09-08-prompt-caching-faalt-stil.md) sits on
+    # the last message only, not left behind on the assistant turn in between.
+    assert feedback_user['content'][-1]['cache_control'] == {'type': 'ephemeral'}
+    assert 'cache_control' not in assistant_invalid['content'][-1]
+    assert 'cache_control' not in original_user['content'][-1]
+
+    # self.messages (uncached) holds the full turn history the repair was built from.
+    assert len(m.model.messages) == 4
+    assert m.model.messages[0] == original_user
+    assert m.model.messages[1] == assistant_invalid
+    assert m.model.messages[2]['role'] == 'user'
+    assert m.model.messages[2]['content'][-1]['text'] == feedback_text
+    assert 'cache_control' not in m.model.messages[2]['content'][-1]
+    assert m.model.messages[3] == {'role': 'assistant', 'content': [{'type': 'text', 'text': VALID}]}
+
+    assert (m.input_token_count, m.output_token_count) == (11 + 13, 22 + 27)
+
+
+def test_openai_validation_repair_uses_previous_response_id():
+    m = Model('gpt-5.6-luna', OPENAI_API_KEY='k')
+    client = MagicMock()
+
+    resp_invalid = MagicMock()
+    resp_invalid.output = []
+    resp_invalid.output_text = MINOR
+    resp_invalid.id = 'resp_invalid'
+    resp_invalid.usage = MagicMock(input_tokens=5, output_tokens=6)
+
+    resp_valid = MagicMock()
+    resp_valid.output = []
+    resp_valid.output_text = VALID
+    resp_valid.id = 'resp_valid'
+    resp_valid.usage = MagicMock(input_tokens=7, output_tokens=8)
+
+    client.responses.create.side_effect = [resp_invalid, resp_valid]
+    m.model.client = client
+
+    result = m.chat('Who?', response_format=Person, validation_retries=1)
+
+    assert result == Person(name='Ada', age=36)
+    assert client.responses.create.call_count == 2
+
+    second_kwargs = client.responses.create.call_args_list[1].kwargs
+    assert second_kwargs['previous_response_id'] == 'resp_invalid'
+    feedback_messages = [msg for msg in second_kwargs['input'] if msg.get('role') == 'user']
+    assert len(feedback_messages) == 1
+    assert 'Validation errors:' in feedback_messages[0]['content'][-1]['text']
+
+    assert (m.input_token_count, m.output_token_count) == (5 + 7, 6 + 8)
