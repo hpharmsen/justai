@@ -1,8 +1,12 @@
+import asyncio
 import logging
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
+from justai import Model
+from justai.models.basemodel import parse_tool_arguments
 from justai.tools.validation import (
     STRUCTURED_FEEDBACK,
     TOOL_FEEDBACK,
@@ -157,3 +161,102 @@ def test_debug_log_has_no_payload(caplog):
 def test_templates_have_placeholders():
     assert '{errors}' in STRUCTURED_FEEDBACK
     assert '{name}' in TOOL_FEEDBACK and '{errors}' in TOOL_FEEDBACK
+
+
+# Task 04: malformed JSON in tool arguments must not crash a stream.
+
+
+def test_parse_tool_arguments_valid():
+    assert parse_tool_arguments('{"a": 1}') == ({'a': 1}, None)
+
+
+def test_parse_tool_arguments_empty():
+    assert parse_tool_arguments('') == ({}, None)
+
+
+def test_parse_tool_arguments_none():
+    assert parse_tool_arguments(None) == ({}, None)
+
+
+def test_parse_tool_arguments_malformed():
+    assert parse_tool_arguments('{"a": ') == ({}, '{"a": ')
+
+
+def test_parse_tool_arguments_not_an_object():
+    assert parse_tool_arguments('[1]') == ({}, '[1]')
+
+
+class _Obj:
+    """Attribute bag. Not a MagicMock: hasattr() must be able to return False."""
+
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)
+
+
+class _FakeAsyncStream:
+    def __init__(self, events):
+        self._events = events
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    def __aiter__(self):
+        async def gen():
+            for event in self._events:
+                yield event
+
+        return gen()
+
+
+def _tool_calls(model) -> list:
+    async def run():
+        return [chunk async for chunk in model.stream([{'role': 'user', 'content': 'hi'}])]
+
+    chunks = asyncio.run(run())
+    assert chunks[-1].type == 'done'
+    return [tc for c in chunks if c.type == 'tool_calls' for tc in c.tool_calls]
+
+
+def _assert_malformed(calls: list) -> None:
+    assert len(calls) == 1
+    assert calls[0].arguments == {}
+    assert calls[0].raw_arguments == '{"a": '
+
+
+def test_anthropic_stream_malformed_tool_arguments():
+    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    events = [
+        _Obj(type='content_block_start', content_block=_Obj(type='tool_use', id='t1', name='f')),
+        _Obj(type='content_block_delta', delta=_Obj(type='input_json_delta', partial_json='{"a": ')),
+        _Obj(type='content_block_stop'),
+    ]
+    m.model.async_client = MagicMock()
+    m.model.async_client.messages.create = AsyncMock(return_value=_FakeAsyncStream(events))
+    _assert_malformed(_tool_calls(m.model))
+
+
+def test_openai_responses_stream_malformed_tool_arguments():
+    m = Model('gpt-5.6-terra', OPENAI_API_KEY='k')
+    events = [
+        _Obj(
+            type='response.output_item.added', output_index=0, item=_Obj(type='function_call', call_id='c1', name='f')
+        ),
+        _Obj(type='response.function_call_arguments.delta', output_index=0, delta='{"a": '),
+        _Obj(type='response.function_call_arguments.done', output_index=0),
+    ]
+    m.model.client = MagicMock()
+    m.model.client.responses.create.return_value = events
+    _assert_malformed(_tool_calls(m.model))
+
+
+def test_openai_completions_stream_malformed_tool_arguments():
+    m = Model('MiniMax-M3', MINIMAX_API_KEY='k')
+    fn = _Obj(name='f', arguments='{"a": ')
+    delta = _Obj(content=None, tool_calls=[_Obj(index=0, id='c1', function=fn)])
+    chunk = _Obj(choices=[_Obj(delta=delta)], usage=None)
+    m.model.client = MagicMock()
+    m.model.client.chat.completions.create.return_value = [chunk]
+    _assert_malformed(_tool_calls(m.model))
