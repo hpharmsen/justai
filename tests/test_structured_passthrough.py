@@ -279,14 +279,10 @@ def test_openai_validation_repair_uses_previous_response_id():
 
 
 def test_providers_import_without_private_sdk_helpers():
-    """An SDK that moves its private parse helpers breaks structured output only, not the provider import."""
+    """An SDK that renames its private parse helpers breaks structured output only, not the provider import."""
     code = (
-        'import sys\n'
-        'class Block:\n'
-        '    def find_spec(self, name, path=None, target=None):\n'
-        "        if name in ('anthropic.lib._parse._transform', 'openai.lib._parsing._responses'):\n"
-        '            raise ImportError(name)\n'
-        'sys.meta_path.insert(0, Block())\n'
+        'import anthropic.lib._parse._transform as a, openai.lib._parsing._responses as o\n'
+        'del a.transform_schema, o.type_to_text_format_param\n'
         'import justai.models.anthropic_models, justai.models.openai_responses\n'
     )
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
