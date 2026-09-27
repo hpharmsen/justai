@@ -44,7 +44,6 @@ def _mock_response(content_blocks: list, stop_reason: str = 'end_turn') -> Magic
 def _install_client(model, response) -> MagicMock:
     client = MagicMock()
     client.messages.create.return_value = response
-    client.messages.parse.return_value = response
     model.model.client = client
     return client
 

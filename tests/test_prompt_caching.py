@@ -214,7 +214,6 @@ def _install_mock_client(model, resp=None):
     resp = resp or _mock_response()
     mock_client = MagicMock()
     mock_client.messages.create.return_value = resp
-    mock_client.messages.parse.return_value = resp
     model.model.client = mock_client
     return mock_client
 

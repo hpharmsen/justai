@@ -51,7 +51,6 @@ def test_anthropic_no_text_block_still_reports_usage():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
     client = MagicMock()
     client.messages.create.return_value = _thinking_only_response(645, 32768)
-    client.messages.parse.return_value = _thinking_only_response(645, 32768)
     m.model.client = client
 
     with pytest.raises(BadRequestException):
@@ -70,7 +69,6 @@ def test_anthropic_successful_call_still_reports_usage():
     resp.content = [text]
     client = MagicMock()
     client.messages.create.return_value = resp
-    client.messages.parse.return_value = resp
     m.model.client = client
 
     assert m.prompt('hi', cached=False) == 'the answer is 42'
@@ -82,7 +80,6 @@ def test_failure_before_any_response_reports_no_usage():
     m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
     client = MagicMock()
     client.messages.create.side_effect = ConnectionError('no route to host')
-    client.messages.parse.side_effect = ConnectionError('no route to host')
     m.model.client = client
 
     with pytest.raises(Exception):
@@ -101,12 +98,10 @@ def test_stale_usage_is_not_carried_into_the_next_failure():
     ok.content = [text]
     client = MagicMock()
     client.messages.create.return_value = ok
-    client.messages.parse.return_value = ok
     m.model.client = client
     m.prompt('hi', cached=False)
 
     client.messages.create.side_effect = ConnectionError('no route to host')
-    client.messages.parse.side_effect = ConnectionError('no route to host')
     with pytest.raises(Exception):
         m.prompt('hi again', cached=False)
 
@@ -161,7 +156,6 @@ def test_openai_responses_unparseable_json_still_reports_usage():
     response.usage = MagicMock(input_tokens=15, output_tokens=2500)
     client = MagicMock()
     client.responses.create.return_value = response
-    client.responses.parse.return_value = response
     m.model.client = client
 
     with pytest.raises(json.JSONDecodeError):
