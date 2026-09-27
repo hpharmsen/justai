@@ -23,7 +23,8 @@ reparatie vraagt. Twee gebruikers delen dezelfde code:
    met ongeldige arguments.
 
 Malformed JSON, in structured output en in tool arguments, telt als een gewone
-repareerbare validatiefout.
+repareerbare validatiefout. Voor structured output geldt dat bij Anthropic en OpenAI
+Responses; Gemini en de completions-familie parsen de JSON zelf en raisen, zie Uitgesteld.
 
 ```python
 result = model.chat('...', response_format=Person, validation_retries=2)
@@ -66,7 +67,9 @@ meld het.
   eerste ongeldige call de run stopt.
 - Per tool wordt bij registratie één args-model gebouwd met `pydantic.create_model`:
   - uit de signatuur van een callable, zonder `self` en `ctx`;
-  - of uit de `params`-dict van een tool-object met `get_tools()`.
+  - of uit de `params`-dict van een tool-object met `get_tools()`. Defaults komen uit de
+    signatuur van de bijbehorende callable, zodat een weggelaten optioneel argument
+    (`fetch_url(url, raw=False)`) geen fout geeft.
   - Een parameter zonder annotatie wordt `Any`. `extra='forbid'`, zodat verzonnen arguments
     een fout geven in plaats van een `TypeError` bij de aanroep.
   - Een parameter die zelf een Pydantic-model is (`args: InvoiceArgs`) valideert genest en
@@ -181,7 +184,7 @@ De repair-laag krijgt daar geen bruikbare fout te zien. Daarom verandert het con
 
 | Provider | Nu | Wordt |
 |---|---|---|
-| Anthropic structured (`anthropic_models.py`, `_completion_with_structured_output`) | `client.messages.parse(output_format=cls)` | `client.messages.create(...)` met het `output_config`-schema dat de methode al bouwt; `chat()` geeft `response_str` terug zonder `json.loads` |
+| Anthropic structured (`anthropic_models.py`, `_completion_with_structured_output`) | `client.messages.parse(output_format=cls)` | `client.messages.create(...)` met als format `transform_schema(cls.model_json_schema())` uit `anthropic.lib._parse._transform`, precies wat `parse` vandaag stuurt (`parse` vervangt het zelfgebouwde schema); `chat()` geeft `response_str` terug zonder `json.loads` |
 | Anthropic structured, historie | assistant-antwoord ontbreekt in `self.messages` | assistant-tekst wordt aan `self.messages` toegevoegd, net als in het legacy-pad |
 | Anthropic legacy-pad (`_parse_json_legacy`) | raist `JSONDecodeError` | bij een Pydantic-format: bij een parsefout de rauwe tekst teruggeven |
 | OpenAI Responses (`openai_responses.py`, `prompt`) | `_responses_parse(text_format=cls)`, `output_parsed` | `_responses_create(text={'format': type_to_text_format_param(cls)})`, `output_text` |
@@ -323,27 +326,24 @@ tests/test_agent_validation.py tests/test_agent.py`.
 ### Regressie
 
 - De bestaande tests blijven groen: `tests/test_agent.py`, `test_prompt_caching.py`,
-  `test_cache.py`, `test_google_json.py`, `test_usage_on_failure.py` en
-  `test_anthropic_thinking_blocks.py`.
-- `test_agent_execute_tool_error` verwacht bij verkeerde arguments nu mogelijk een
-  validatiefout in plaats van een `TypeError`. Pas de test alleen aan als hij precies dat
-  gedrag test, en vermeld het in het eindrapport.
+  `test_cache.py`, `test_google_json.py`, `test_usage_on_failure.py`,
+  `test_anthropic_thinking_blocks.py` en `test_effort.py`.
+- `test_anthropic_thinking_blocks.py`, `test_prompt_caching.py`, `test_usage_on_failure.py`
+  en `test_effort.py` mocken `client.messages.parse`. Die mocks gaan naar
+  `client.messages.create`; verder verandert er niets aan die tests.
+- `test_agent_execute_tool_error` test een tool die zelf raist, geen verkeerde arguments,
+  en blijft ongewijzigd.
 
-## Wat nog niet geverifieerd is
+## Geverifieerd tegen de SDK
 
-- **Google** `response.parsed`: wat de google-genai SDK doet als een `field_validator`
-  faalt. Verwacht is dat `parsed` dan `None` is en `_parse_gemini_json` een dict oplevert,
-  die `_to_pydantic` valideert. Zo werkt het al centraal. Verifieer dit met een unit test
-  op `convert_to_justai_response` met een nep-response. Raist de SDK zelf, pas dan
-  `convert_to_justai_response` aan zodat de tekst terugkomt.
-- **OpenAI** `type_to_text_format_param` staat in `openai.lib._parsing._responses`, een
-  privémodule. Die functie is precies wat `responses.parse` intern gebruikt, dus het
-  schema blijft identiek. Pin dit in een test, zodat een SDK-upgrade die hem verplaatst
-  direct faalt.
-- **Anthropic**: of `messages.create` met `output_config` bij Pydantic-schema's precies
-  hetzelfde schema stuurt als `messages.parse`. `parse` kan het schema transformeren.
-  Vergelijk in task 02 de body van beide calls met een gemockte transport, en gebruik de
-  transformatie van de SDK als die afwijkt.
+- **Google** `response.parsed`: google-genai vangt een `ValidationError` bij het parsen
+  zelf af, `parsed` is dan `None` en `_parse_gemini_json` levert een dict op die
+  `_to_pydantic` centraal valideert. Een `field_validator`-fout is daar dus al
+  repareerbaar.
+- **Privémodules**: `type_to_text_format_param` (`openai.lib._parsing._responses`) en
+  `transform_schema` (`anthropic.lib._parse._transform`) zijn wat de SDK's intern in
+  `parse` gebruiken. Pin beide in een test, zodat een SDK-upgrade die ze verplaatst direct
+  faalt.
 
 ## Buiten scope
 
@@ -358,3 +358,7 @@ PydanticAI, een nieuwe agent-abstractie, provider-specifieke validation-API's.
 - Validatie van automatic function calling in `Model.prompt`/`chat` via `Model.add_tool`
   (`openai_responses.py` roept `function(*args.values())` ongevalideerd aan). Trigger: een
   bug of feature die dat pad raakt.
+- Malformed JSON repareerbaar maken bij Gemini (`_parse_gemini_json` raist
+  `GeneralException`) en de completions-familie (`json.loads` in
+  `openai_completions.py`). Trigger: de eerste melding van een niet-gerepareerde
+  JSON-fout bij een van die providers.

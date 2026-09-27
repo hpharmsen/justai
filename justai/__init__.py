@@ -17,6 +17,7 @@ from justai.models.basemodel import (
 from justai.agent import Agent, AgentEvent, AgentResult, AuditEntry, AgentContext
 from justai.agent.tools import FileSystemTool, ShellTool, WebFetchTool
 from justai.tools.prompts import get_prompt, set_prompt_file, add_prompt_file
+from justai.tools.validation import ValidationRetryError
 
 
 def _get_version() -> str:
@@ -47,6 +48,7 @@ __all__ = [
     'TruncatedResponseException',
     'RefusalException',
     'EffortDownmapWarning',
+    'ValidationRetryError',
     'Agent',
     'AgentEvent',
     'AgentResult',

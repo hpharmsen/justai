@@ -52,7 +52,6 @@ def _install_mock_anthropic_client(model, response=None):
     resp = response or _mock_anthropic_response()
     mock_client = MagicMock()
     mock_client.messages.create.return_value = resp
-    mock_client.messages.parse.return_value = resp
     model.model.client = mock_client
     async_client = MagicMock()
     async_client.messages.create = AsyncMock(return_value=resp)
@@ -68,7 +67,6 @@ def _install_mock_openai_client(model, response=None):
     resp.id = 'resp_test'
     mock_client = MagicMock()
     mock_client.responses.create.return_value = resp
-    mock_client.responses.parse.return_value = resp
     model.model.client = mock_client
     return mock_client
 
@@ -120,7 +118,7 @@ def test_anthropic_fable5_merges_effort_with_structured_format():
     resp = _mock_anthropic_response(text='{"answer": "ok"}')
     client = _install_mock_anthropic_client(m, response=resp)
     m.chat('hi', response_format=Resp)
-    kwargs = client.messages.parse.call_args.kwargs
+    kwargs = client.messages.create.call_args.kwargs
     assert kwargs['output_config']['effort'] == 'high'
     assert 'format' in kwargs['output_config']
     assert kwargs['output_config']['format']['type'] == 'json_schema'

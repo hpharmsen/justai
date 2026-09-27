@@ -87,6 +87,29 @@ class Character(PydanticModel):
 result = model.chat(prompt, response_format=list[Character])
 ```
 
+With a Pydantic class, `validation_retries` sends validation errors back to the model and asks
+for a corrected answer, up to that many times. Malformed JSON counts as a validation error.
+When the answer is still invalid, `ValidationRetryError` (a `ValueError`) is raised. The default
+`0` raises the original Pydantic `ValidationError`. Token counters include every attempt.
+Validation happens in `Model` for every provider, so a failing validator raises Pydantic's
+`ValidationError` (before 5.8 the Anthropic and OpenAI providers wrapped it in `GeneralException`).
+```python
+from pydantic import field_validator
+from justai import ValidationRetryError
+
+class Person(PydanticModel):
+    name: str
+
+    @field_validator('name')
+    @classmethod
+    def full_name(cls, v: str) -> str:
+        if ' ' not in v:
+            raise ValueError('Must contain first and last name')
+        return v
+
+result = model.chat('Who wrote Hamlet?', response_format=Person, validation_retries=2)
+```
+
 ### Classification (System One models)
 
 System One models do not generate text. They read a state, answer typed questions about
@@ -313,6 +336,16 @@ def search_database(ctx, query: str) -> str:
     return db.search(query)
 ```
 
+Tool arguments are validated against the tool's signature before the tool runs. Values are
+coerced where Pydantic allows it (`"12"` for an `int` arrives as `12`), a parameter typed as a
+Pydantic model arrives as an instance, and unknown arguments are rejected. Invalid or malformed
+arguments go back to the model as the tool result, with the errors, and the tool does not run.
+Each tool gets `validation_retries` attempts in a row (default 2). After that the run stops with an
+`error` event plus `done`, and `AgentResult.error` says why.
+```python
+agent = Agent('claude-sonnet-5', tools=[create_invoice], validation_retries=2)
+```
+
 ### Dynamic instructions
 ```python
 @agent.instructions
@@ -336,7 +369,7 @@ The `agent.run()` async generator yields `AgentEvent` objects with these types:
 - `status` — status messages
 - `response` — streamed text from the model
 - `tool_call` — tool invocation (with `name`, `arguments`, `tool_result`)
-- `error` — error messages
+- `error`: the run stopped (provider failure or exhausted validation retries); `done` follows
 - `done` — final result with `AgentResult` (answer, audit trail, token usage, iterations)
 
 ## License

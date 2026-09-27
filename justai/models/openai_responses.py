@@ -35,6 +35,7 @@ from justai.models.basemodel import (
     client_retry_kwargs,
     client_timeout,
     get_api_key,
+    parse_tool_arguments,
 )
 from justai.models.openai_completions import map_openai_error, tiktoken_token_count
 from justai.tools.images import extract_images, get_image_type, to_base64_data_uri, to_base64_image
@@ -111,9 +112,6 @@ class OpenAIResponsesModel(BaseModel):
     def _responses_create(self, **kwargs):
         return self.client.responses.create(**kwargs, **self._reasoning_extra())
 
-    def _responses_parse(self, **kwargs):
-        return self.client.responses.parse(**kwargs, **self._reasoning_extra())
-
     def prompt(
         self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format, _chat=False
     ) -> tuple[Any, int | None, int | None]:
@@ -133,13 +131,16 @@ class OpenAIResponsesModel(BaseModel):
         for run in range(3):  # Max 3 function calls to prevent infinite loop
             try:
                 if is_pydantic:
-                    # Pydantic model: use native structured output via responses.parse.
-                    # The return_json flag is ignored here; the caller gets a Pydantic instance.
-                    response = self._responses_parse(
+                    # Pydantic model: the strict format responses.parse() would send, but the
+                    # raw text comes back. Model validates it; return_json is ignored here. A private
+                    # SDK module, imported here so an SDK that moves it breaks structured output only.
+                    from openai.lib._parsing._responses import type_to_text_format_param
+
+                    response = self._responses_create(
                         model=self.model_name,
                         input=input_list,
                         tools=tool_spec,
-                        text_format=response_format,
+                        text={'format': type_to_text_format_param(response_format)},
                         previous_response_id=last_response_id,
                     )
                 elif response_format:
@@ -197,9 +198,7 @@ class OpenAIResponsesModel(BaseModel):
                     response.usage.output_tokens,
                     cache_read_tokens=getattr(details, 'cached_tokens', 0),
                 )
-                if is_pydantic:
-                    output = response.output_parsed
-                elif return_json:
+                if return_json and not is_pydantic:
                     output = json.loads(response.output_text)
                 else:
                     output = response.output_text
@@ -318,11 +317,13 @@ class OpenAIResponsesModel(BaseModel):
             elif event.type == 'response.function_call_arguments.done':
                 if event.output_index in pending_calls:
                     call = pending_calls[event.output_index]
+                    arguments, raw = parse_tool_arguments(call['arguments'])
                     tool_calls.append(
                         ToolCallRequest(
                             id=call['call_id'],
                             name=call['name'],
-                            arguments=json.loads(call['arguments']),
+                            arguments=arguments,
+                            raw_arguments=raw,
                         )
                     )
 

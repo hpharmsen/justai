@@ -85,7 +85,24 @@ Async variant (`prompt_async`) yieldt `(content, reasoning)`-tuples per delta-ch
   en worden gezet door `record_usage()`, dus elke provider heeft ze.
 - **Effort** — Universeel API (`effort='high'`), met warning-based downmap per provider.
 - **Tool use** — Uniforme `add_tool()` API; provider vertaalt naar eigen function-calling spec.
-- **JSON / structured output** — `return_json=True` of `response_format=PydanticModel`. Structured output is voorlopig alleen native op OpenAI.
+- **JSON / structured output**: `return_json=True` of `response_format=PydanticModel`. Native
+  structured output bij Anthropic en OpenAI. Bij een Pydantic-klasse geven de providers de
+  rauwe JSON-tekst terug en valideert `Model` centraal via `_to_pydantic`; de SDK-`parse()`-calls
+  worden niet meer gebruikt, zodat een falende `field_validator` het antwoord en de usage niet
+  verliest. Het schema dat naar de provider gaat is dat van `parse()` (`transform_schema`,
+  `type_to_text_format_param`).
+- **Validation retries**: `justai/tools/validation.py` bevat `RepairBudget`, de formatter en
+  `ValidationRetryError`. Twee gebruikers: `Model.chat`/`prompt(validation_retries=N)` doet een
+  repair call met de fouten (chat via de providerhistorie, prompt met vraag plus fout antwoord),
+  en de `Agent` valideert elke tool call tegen een strict args-model (`create_model`,
+  `extra='forbid'`) voordat de tool draait. Dat args-model is ook de bron van het tool-schema
+  dat naar de provider gaat (`model_json_schema()`), zodat schema en validatie niet uit elkaar
+  lopen. Kapotte tool-JSON uit `stream()` komt binnen als
+  `ToolCallRequest.raw_arguments` en volgt dezelfde route. Drie soorten retries staan los van
+  elkaar: transport in de SDK (`max_retries` op `Model`), rate limit en verbinding in de
+  Agent-lus (`Agent(max_retries=...)`) en validatie (`validation_retries`).
+- **Agent-stopregel**: elke fout die de run stopt (providerfout of uitgeputte validation
+  retries) eindigt met een `error`-event plus `done`, en `AgentResult.error` zegt waarom.
 - **Multimodaal** — PIL Image, URL of raw bytes → automatische base64-encoding.
 - **Classificatie** — `Model.classify()` op System One-modellen. Eén wire-formaat
   (`POST /v1/systemone`) achter drie ingangen: TypeSafe, OpenRouter en elke zelf-gehoste
