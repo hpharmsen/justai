@@ -1,5 +1,6 @@
 import base64
 import inspect
+import json
 import os
 import warnings
 from abc import ABC, abstractmethod
@@ -144,6 +145,19 @@ class ToolCallRequest:
     id: str
     name: str
     arguments: dict
+    raw_arguments: str | None = None  # set only when the arguments were malformed JSON
+
+
+def parse_tool_arguments(raw: str | None) -> tuple[dict, str | None]:
+    """Parse streamed tool arguments into (arguments, raw); raw is set only when they are malformed."""
+    if not raw:
+        return {}, None
+    try:
+        arguments = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}, raw
+    # Valid JSON that is not an object cannot be keyword arguments: let validation report it.
+    return (arguments, None) if isinstance(arguments, dict) else ({}, raw)
 
 
 @dataclass

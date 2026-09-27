@@ -80,6 +80,7 @@ from justai.models.basemodel import (
     client_retry_kwargs,
     client_timeout,
     get_api_key,
+    parse_tool_arguments,
     stream_timeout,
 )
 from justai.tools.display import DEBUG_COLOR2, color_print
@@ -458,11 +459,13 @@ class OpenAICompletionsModel(BaseModel):
             tool_calls = []
             for idx in sorted(pending_tool_calls):
                 tc = pending_tool_calls[idx]
+                arguments, raw = parse_tool_arguments(tc['arguments'])
                 tool_calls.append(
                     ToolCallRequest(
                         id=tc['id'],
                         name=tc['name'],
-                        arguments=json.loads(tc['arguments']) if tc['arguments'] else {},
+                        arguments=arguments,
+                        raw_arguments=raw,
                     )
                 )
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)

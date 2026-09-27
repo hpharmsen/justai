@@ -36,6 +36,7 @@ from justai.models.basemodel import (
     client_retry_kwargs,
     client_timeout,
     get_api_key,
+    parse_tool_arguments,
 )
 from justai.models.openai_completions import map_openai_error, tiktoken_token_count
 from justai.tools.images import extract_images, get_image_type, to_base64_data_uri, to_base64_image
@@ -314,11 +315,13 @@ class OpenAIResponsesModel(BaseModel):
             elif event.type == 'response.function_call_arguments.done':
                 if event.output_index in pending_calls:
                     call = pending_calls[event.output_index]
+                    arguments, raw = parse_tool_arguments(call['arguments'])
                     tool_calls.append(
                         ToolCallRequest(
                             id=call['call_id'],
                             name=call['name'],
-                            arguments=json.loads(call['arguments']),
+                            arguments=arguments,
+                            raw_arguments=raw,
                         )
                     )
 

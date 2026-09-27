@@ -95,6 +95,7 @@ from justai.models.basemodel import (
     client_timeout,
     get_api_key,
     identify_image_format_from_base64,
+    parse_tool_arguments,
     stream_timeout,
 )
 from justai.tools.images import to_base64_image
@@ -703,12 +704,13 @@ class AnthropicModel(BaseModel):
                                 current_tool['json_str'] += event.delta.partial_json
                     elif event.type == 'content_block_stop':
                         if current_tool is not None:
-                            arguments = json.loads(current_tool['json_str']) if current_tool['json_str'] else {}
+                            arguments, raw = parse_tool_arguments(current_tool['json_str'])
                             tool_calls.append(
                                 ToolCallRequest(
                                     id=current_tool['id'],
                                     name=current_tool['name'],
                                     arguments=arguments,
+                                    raw_arguments=raw,
                                 )
                             )
                             current_tool = None
