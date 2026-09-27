@@ -1,5 +1,6 @@
 """Agent class for autonomous agent execution with streaming events."""
 
+import asyncio
 import inspect
 import logging
 import time
@@ -9,15 +10,31 @@ from typing import Any, AsyncGenerator, Callable
 from justai.agent.skills import load_skills
 from justai.model.model import Model
 from justai.models.basemodel import (
-    JSON_TYPE_MAP,
-    ToolCallRequest,
     DEFAULT_AGENT_RETRIES,
-    RatelimitException,
+    JSON_TYPE_MAP,
     AuthorizationException,
+    BadRequestException,
     ConnectionException,
+    GeneralException,
+    ModelOverloadException,
+    RatelimitException,
+    RefusalException,
+    TimeoutException,
+    ToolCallRequest,
 )
 
 logger = logging.getLogger(__name__)
+
+# Provider failures that end the run with an 'error' event plus 'done'. Anything else is a
+# bug and raises. GeneralException also covers TruncatedResponseException.
+STOP_EXCEPTIONS = (
+    AuthorizationException,
+    BadRequestException,
+    GeneralException,
+    ModelOverloadException,
+    RefusalException,
+    TimeoutException,
+)
 
 
 @dataclass
@@ -49,6 +66,7 @@ class AgentResult:
     tasks: str = ''
     tokens: tuple[int, int] = (0, 0)
     iterations: int = 0
+    error: str | None = None  # Set when a provider failure stopped the run
 
 
 @dataclass
@@ -123,6 +141,7 @@ class Agent:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._answer: str = ''
+        self._error: str | None = None
 
         # Register built-in final_answer tool
         self._register_tool(self._final_answer, needs_ctx=False, name='final_answer')
@@ -257,7 +276,17 @@ class Agent:
             tasks=tasks_content,
             tokens=(self._total_input_tokens, self._total_output_tokens),
             iterations=iterations,
+            error=self._error,
         )
+
+    def _stop(self, message: str, tasks_content: str, iterations: int) -> list[AgentEvent]:
+        """End the run on a provider failure: log it, then an 'error' event plus 'done'."""
+        logger.error(f'Agent stopped: {message}')
+        self._error = message
+        return [
+            AgentEvent(type='error', message=message),
+            AgentEvent(type='done', result=self._build_result(tasks_content, iterations)),
+        ]
 
     async def run(self, tasks_file: str, deps: Any = None) -> AsyncGenerator[AgentEvent, None]:
         """Run the agent loop, yielding events as it progresses."""
@@ -266,6 +295,7 @@ class Agent:
         self._total_input_tokens = 0
         self._total_output_tokens = 0
         self._answer = ''
+        self._error = None
 
         # Build system prompt and tool specs
         system_prompt = self._build_system_prompt(ctx)
@@ -303,38 +333,28 @@ class Agent:
                             if chunk.output_tokens:
                                 self._total_output_tokens += chunk.output_tokens
                     break  # Success
-                except RatelimitException:
+                except (RatelimitException, ConnectionException) as e:
+                    # A failed stream is only safe to replay while nothing has left this
+                    # step yet. Once text has streamed to the caller or a tool call is
+                    # pending, a retry would duplicate output or re-run side effects.
+                    kind = 'Rate limit' if isinstance(e, RatelimitException) else 'Connection lost'
                     retry_count += 1
-                    if retry_count > self.max_retries:
-                        yield AgentEvent(type='error', message='Rate limit exceeded, max retries reached')
-                        yield AgentEvent(type='done', result=self._build_result(tasks_content, iteration + 1))
-                        return
-                    yield AgentEvent(
-                        type='status', message=f'Rate limited, retrying ({retry_count}/{self.max_retries})...'
-                    )
-                    import asyncio
-
-                    await asyncio.sleep(2**retry_count)
-                except ConnectionException:
-                    # A dropped stream is only safe to replay while nothing has
-                    # left this step yet. Once text has streamed to the caller or
-                    # a tool call is pending, a retry would duplicate output or
-                    # re-run side effects, so the failure has to surface.
                     if response_text or tool_calls:
-                        raise
-                    retry_count += 1
-                    if retry_count > self.max_retries:
-                        raise
-                    yield AgentEvent(
-                        type='status',
-                        message=f'Connection lost, retrying ({retry_count}/{self.max_retries})...',
-                    )
-                    import asyncio
-
-                    await asyncio.sleep(2**retry_count)
-                except AuthorizationException as e:
-                    yield AgentEvent(type='error', message=f'Authorization error: {e}')
-                    yield AgentEvent(type='done', result=self._build_result(tasks_content, iteration + 1))
+                        message = f'{kind} mid-response, not retried: {e}'
+                    elif retry_count > self.max_retries:
+                        message = f'{kind}, max retries reached: {e}'
+                    else:
+                        yield AgentEvent(
+                            type='status', message=f'{kind}, retrying ({retry_count}/{self.max_retries})...'
+                        )
+                        await asyncio.sleep(2**retry_count)
+                        continue
+                    for event in self._stop(message, tasks_content, iteration + 1):
+                        yield event
+                    return
+                except STOP_EXCEPTIONS as e:
+                    for event in self._stop(f'{type(e).__name__}: {e}', tasks_content, iteration + 1):
+                        yield event
                     return
 
             # Build assistant message in provider-specific format

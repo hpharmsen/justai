@@ -9,13 +9,24 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from dotenv import load_dotenv
 
-from justai import Agent, AgentEvent, AgentResult, AgentContext, Model, FileSystemTool, ShellTool, WebFetchTool
+from justai import Agent, AgentContext, AgentEvent, AgentResult, FileSystemTool, Model, ShellTool, WebFetchTool
 from justai.agent.skills import load_skills
-from justai.models.basemodel import ToolCallRequest, StreamChunk
-
+from justai.models.basemodel import (
+    AuthorizationException,
+    BadRequestException,
+    ConnectionException,
+    GeneralException,
+    ModelOverloadException,
+    RatelimitException,
+    RefusalException,
+    StreamChunk,
+    TimeoutException,
+    ToolCallRequest,
+)
 
 # ──────────────────────────────────────────────
 # Unit tests (no API calls)
@@ -375,6 +386,125 @@ def test_agent_with_model_instance():
     print('  OK: agent with model instance')
 
 
+def _fake_stream(failures: list[Exception], text: str = ''):
+    """Stream that raises the given failures in turn, then calls final_answer. Returns (stream, calls)."""
+    calls = []
+
+    async def stream(messages, tools):
+        calls.append(1)
+        if text:
+            yield StreamChunk(type='text', content=text)
+        if len(calls) <= len(failures):
+            raise failures[len(calls) - 1]
+        yield StreamChunk(type='tool_calls', tool_calls=[ToolCallRequest('1', 'final_answer', {'answer': 'ok'})])
+        yield StreamChunk(type='done')
+
+    return stream, calls
+
+
+def _run_events(stream, **kwargs) -> list[AgentEvent]:
+    """Run an agent on a fake stream and collect all events, without sleeping between retries."""
+    agent = Agent(model='claude-sonnet-4-6', role='test', goal='test', verbose=False, **kwargs)
+    agent.model.model.stream = stream
+
+    async def collect():
+        return [event async for event in agent.run('')]
+
+    with patch('asyncio.sleep'):
+        return asyncio.run(collect())
+
+
+def _assert_stopped(events: list[AgentEvent]) -> AgentResult:
+    """The run ended with an error event followed by done, and the result carries the error."""
+    assert [e.type for e in events[-2:]] == ['error', 'done'], [e.type for e in events]
+    result = events[-1].result
+    assert result.error == events[-2].message
+    return result
+
+
+def test_agent_stop_rate_limit_exhausted():
+    """Rate-limit retries running out end with error + done."""
+    stream, calls = _fake_stream([RatelimitException('429')] * 5)
+    events = _run_events(stream, max_retries=2)
+    assert 'Rate limit' in _assert_stopped(events).error
+    assert len(calls) == 3
+
+    print('  OK: rate limit exhausted stops with error')
+
+
+def test_agent_stop_connection_exhausted():
+    """Connection retries running out end with error + done, not an exception."""
+    stream, calls = _fake_stream([ConnectionException('reset')] * 5)
+    events = _run_events(stream, max_retries=2)
+    assert 'Connection' in _assert_stopped(events).error
+    assert len(calls) == 3
+
+    print('  OK: connection exhausted stops with error')
+
+
+def test_agent_stop_connection_mid_stream():
+    """A connection lost after text streamed is not replayed, and ends with error + done."""
+    stream, calls = _fake_stream([ConnectionException('reset')] * 5, text='partial')
+    events = _run_events(stream, max_retries=3)
+    _assert_stopped(events)
+    assert len(calls) == 1
+
+    print('  OK: mid-stream connection loss stops without replay')
+
+
+def test_agent_stop_rate_limit_mid_stream():
+    """A rate limit after text streamed is not replayed either: a replay would duplicate output."""
+    stream, calls = _fake_stream([RatelimitException('429')] * 5, text='partial')
+    events = _run_events(stream, max_retries=3)
+    _assert_stopped(events)
+    assert len(calls) == 1
+
+    print('  OK: mid-stream rate limit stops without replay')
+
+
+def test_agent_stop_provider_errors():
+    """Known provider exceptions end with error + done, carrying the exception type."""
+    for exc in (
+        AuthorizationException('bad key'),
+        BadRequestException('bad request'),
+        ModelOverloadException('overloaded'),
+        TimeoutException('slow'),
+        GeneralException('general'),
+        RefusalException('cyber'),
+    ):
+        stream, calls = _fake_stream([exc])
+        result = _assert_stopped(_run_events(stream, max_retries=3))
+        assert type(exc).__name__ in result.error, result.error
+        assert len(calls) == 1
+
+    print('  OK: provider errors stop with error')
+
+
+def test_agent_unknown_exception_raises():
+    """An exception justai does not know is a bug and keeps raising."""
+    stream, _ = _fake_stream([KeyError('bug')])
+    try:
+        _run_events(stream)
+        assert False, 'Should have raised KeyError'
+    except KeyError:
+        pass
+
+    print('  OK: unknown exception raises')
+
+
+def test_agent_retry_then_success_has_no_error():
+    """A retried call that then succeeds leaves AgentResult.error empty."""
+    stream, calls = _fake_stream([RatelimitException('429'), ConnectionException('reset')])
+    events = _run_events(stream, max_retries=3)
+    result = events[-1].result
+    assert events[-1].type == 'done'
+    assert result.error is None
+    assert result.answer == 'ok'
+    assert len(calls) == 3
+
+    print('  OK: retry then success has no error')
+
+
 def test_filesystem_tool_symlink_write_blocked():
     """Test that FileSystemTool blocks writing through symlinks."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -492,6 +622,13 @@ if __name__ == '__main__':
     test_agent_build_tool_specs()
     test_agent_read_tasks()
     test_agent_with_model_instance()
+    test_agent_stop_rate_limit_exhausted()
+    test_agent_stop_connection_exhausted()
+    test_agent_stop_connection_mid_stream()
+    test_agent_stop_rate_limit_mid_stream()
+    test_agent_stop_provider_errors()
+    test_agent_unknown_exception_raises()
+    test_agent_retry_then_success_has_no_error()
 
     print('\nIntegration tests:')
     test_agent_run_live()
