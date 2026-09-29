@@ -162,20 +162,17 @@ def test_effort_on_unsupported_anthropic_model_ignored_with_warning():
 
 
 # ---------------------------------------------------------------------------
-# 5. max on gpt-5.6-sol → xhigh + warning; 'none' on gpt-5.6-luna → none
+# 5. max on gpt-5.6-sol → max, no warning; 'none' on gpt-5.6-luna → none
 # ---------------------------------------------------------------------------
 
 
-def test_max_on_gpt_56_downmaps_to_xhigh_with_warning():
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter('always')
+def test_max_on_gpt_56_passes_through_without_warning():
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', EffortDownmapWarning)
         m = Model('gpt-5.6-sol', OPENAI_API_KEY='k', effort='max')
         client = _install_mock_openai_client(m)
         m.prompt('hi')
-    kwargs = client.responses.create.call_args.kwargs
-    assert kwargs['reasoning'] == {'effort': 'xhigh'}
-    downmap = [x for x in w if x.category is EffortDownmapWarning]
-    assert len(downmap) == 1
+    assert client.responses.create.call_args.kwargs['reasoning'] == {'effort': 'max'}
 
 
 def test_none_passthrough_on_gpt_56():
@@ -511,7 +508,7 @@ def test_opus5_drops_temperature():
 
 
 @pytest.mark.parametrize('name', ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'])
-@pytest.mark.parametrize('level', ['low', 'medium', 'high', 'xhigh'])
+@pytest.mark.parametrize('level', ['low', 'medium', 'high', 'xhigh', 'max'])
 def test_gpt6_sends_native_effort(name, level):
     with warnings.catch_warnings():
         warnings.simplefilter('error', EffortDownmapWarning)
