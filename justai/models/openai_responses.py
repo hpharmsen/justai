@@ -40,19 +40,10 @@ from justai.models.basemodel import (
 from justai.models.openai_completions import map_openai_error, tiktoken_token_count
 from justai.tools.images import extract_images, get_image_type, to_base64_data_uri, to_base64_image
 
-# Models that support the reasoning parameter (GPT-5.6 series only, per current OpenAI docs).
-EFFORT_MODELS_GPT56 = re.compile(r'gpt-5\.6')
-
-# Per decision #4: cap our OpenAI vocabulary at 'xhigh' — the SDK's ReasoningEffort Literal
-# does not include 'max'. Requests with our 'max' are silently downmapped with a warning.
-_EFFORT_MAP_GPT56 = {
-    'low': ('low', None),
-    'medium': ('medium', None),
-    'high': ('high', None),
-    'xhigh': ('xhigh', None),
-    'max': ('xhigh', 'max -> xhigh (SDK caps at xhigh)'),
-    'none': ('none', None),
-}
+# Models that support the reasoning parameter (GPT-5.6 and GPT-6, per OpenAI docs, September 2026).
+EFFORT_MODELS = re.compile(r'gpt-(5\.6|6)')
+# GPT-6 Astra answers reasoning effort 'none' with HTTP 400.
+NO_NONE_EFFORT_MODELS = re.compile(r'gpt-6-astra')
 
 
 def _validate_json_schema(schema: Any) -> None:
@@ -83,8 +74,12 @@ class OpenAIResponsesModel(BaseModel):
         self.last_response_id = None
 
     def _validate_effort(self, value: Any) -> None:
-        # 'none' is a valid pass-through for GPT-5.6 only (turns reasoning off).
-        if value == 'none' and EFFORT_MODELS_GPT56.search(self.model_name):
+        # 'none' is a valid pass-through for effort models that can turn reasoning off.
+        if (
+            value == 'none'
+            and EFFORT_MODELS.search(self.model_name)
+            and not NO_NONE_EFFORT_MODELS.search(self.model_name)
+        ):
             return
         super()._validate_effort(value)
 
@@ -92,14 +87,10 @@ class OpenAIResponsesModel(BaseModel):
         level = self.model_params.get('effort')
         if level is None:
             return (None, None)
-        if EFFORT_MODELS_GPT56.search(self.model_name):
-            native, warn_key = _EFFORT_MAP_GPT56[level]
-            warn = (
-                None
-                if warn_key is None
-                else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
-            )
-            return (native, warn)
+        if EFFORT_MODELS.search(self.model_name):
+            # Every justai level is native. 'max' goes through although the SDK's ReasoningEffort
+            # Literal stops at 'xhigh': the API accepts it (OpenAI docs, September 2026).
+            return (level, None)
         return (None, f'effort is not supported by {self.model_name}, ignoring')
 
     def _reasoning_extra(self) -> dict:
