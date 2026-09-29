@@ -45,17 +45,6 @@ EFFORT_MODELS = re.compile(r'gpt-(5\.6|6)')
 # GPT-6 Astra answers reasoning effort 'none' with HTTP 400.
 NO_NONE_EFFORT_MODELS = re.compile(r'gpt-6-astra')
 
-# Per decision #4: cap our OpenAI vocabulary at 'xhigh' — the SDK's ReasoningEffort Literal
-# does not include 'max'. Requests with our 'max' are silently downmapped with a warning.
-_EFFORT_MAP = {
-    'low': ('low', None),
-    'medium': ('medium', None),
-    'high': ('high', None),
-    'xhigh': ('xhigh', None),
-    'max': ('xhigh', 'max -> xhigh (SDK caps at xhigh)'),
-    'none': ('none', None),
-}
-
 
 def _validate_json_schema(schema: Any) -> None:
     """Raise ValueError if schema is not a valid JSON Schema. Honours $schema when present."""
@@ -99,13 +88,9 @@ class OpenAIResponsesModel(BaseModel):
         if level is None:
             return (None, None)
         if EFFORT_MODELS.search(self.model_name):
-            native, warn_key = _EFFORT_MAP[level]
-            warn = (
-                None
-                if warn_key is None
-                else f'effort={level!r} not natively supported by {self.model_name}; {warn_key}'
-            )
-            return (native, warn)
+            # Every justai level is native. 'max' goes through although the SDK's ReasoningEffort
+            # Literal stops at 'xhigh': the API accepts it (OpenAI docs, September 2026).
+            return (level, None)
         return (None, f'effort is not supported by {self.model_name}, ignoring')
 
     def _reasoning_extra(self) -> dict:

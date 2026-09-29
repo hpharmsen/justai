@@ -246,10 +246,10 @@ Model('gpt-5.6-sol', effort='none')  # explicitly turn reasoning off (GPT-5.6 on
 
 | Provider | Native support |
 |---|---|
-| Anthropic (Fable 5, Mythos 5, Opus 4.7/4.8, Sonnet 5) | full set (`low`/`medium`/`high`/`xhigh`/`max`) |
+| Anthropic (Fable 5, Mythos 5, Opus 5/5.5, Opus 4.7/4.8, Sonnet 5) | full set (`low`/`medium`/`high`/`xhigh`/`max`) |
 | Anthropic (Opus 4.6, Sonnet 4.6) | `xhigh` maps up to `max` with warning |
 | Anthropic (Opus 4.5) | `xhigh` and `max` map down to `high` with warning |
-| OpenAI (`gpt-5.6-*`) | full set; `max` maps to `xhigh` (SDK cap) with warning; also accepts `'none'` |
+| OpenAI (`gpt-5.6-*`, `gpt-6-*`) | full set; also accepts `'none'`, except on `gpt-6-astra` |
 | Google (Gemini 3.x) | `low`/`medium`/`high`; `xhigh`/`max` map to `HIGH` with warning |
 | xAI (`grok-4.5`, `grok-4.3`, `grok-4.20-multi-agent`) | `low`/`medium`/`high`; `xhigh`/`max` map to `high` with warning |
 | OpenRouter | passed through raw; OpenRouter maps server-side |
