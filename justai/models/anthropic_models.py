@@ -57,14 +57,17 @@ NO_PREFILL_MODELS = re.compile(r'claude-(opus-4-[6-9]|sonnet-4-[6-9])')
 # Per-model parameter restrictions: (regex, frozenset of param keys to strip on match).
 # Extend this list rather than adding more NO_X_MODELS constants.
 RESTRICTED_PARAMS: list[tuple[re.Pattern, frozenset[str]]] = [
-    (re.compile(r'claude-(opus-4-[78]|fable-5|mythos-5|sonnet-5)'), frozenset({'temperature', 'top_p', 'top_k'})),
+    (
+        re.compile(r'claude-(opus-4-[78]|opus-5|fable-5|mythos-5|sonnet-5)'),
+        frozenset({'temperature', 'top_p', 'top_k'}),
+    ),
 ]
 
-# Effort support tiers (per Anthropic docs, verified July 2026).
+# Effort support tiers (per Anthropic docs, verified September 2026).
 # Each entry: (pattern, effort_map). First match wins.
 EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
     (
-        re.compile(r'claude-(fable-5|mythos-5|opus-4-[78]|sonnet-5)'),
+        re.compile(r'claude-(fable-5|mythos-5|opus-5|opus-4-[78]|sonnet-5)'),
         {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'},
     ),
     (
