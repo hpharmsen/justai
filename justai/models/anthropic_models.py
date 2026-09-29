@@ -15,6 +15,7 @@ Claude 3 Haiku:  claude-3-haiku-20240307
 Claude 4 Sonnet: claude-sonnet-4-5-*
 Claude 4 Opus:   claude-opus-4-*
 Claude 4 Haiku:  claude-haiku-4-*
+Claude 5 Opus:   claude-opus-5-*
 
 Supported parameters:
 max_tokens: int (default 800)
@@ -48,7 +49,7 @@ from anthropic import (
 logger = logging.getLogger(__name__)
 
 # Models that support structured outputs (GA since Jan 2026)
-STRUCTURED_OUTPUT_MODELS = re.compile(r'claude-(sonnet-4|opus-4|haiku-4)')
+STRUCTURED_OUTPUT_MODELS = re.compile(r'claude-(sonnet-4|opus-4|opus-5|haiku-4)')
 
 # Models that do not support assistant message prefill
 NO_PREFILL_MODELS = re.compile(r'claude-(opus-4-[6-9]|sonnet-4-[6-9])')

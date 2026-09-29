@@ -48,7 +48,7 @@ def _thinking_only_response(input_tokens: int, output_tokens: int) -> MagicMock:
 
 
 def test_anthropic_no_text_block_still_reports_usage():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     client = MagicMock()
     client.messages.create.return_value = _thinking_only_response(645, 32768)
     m.model.client = client
@@ -61,7 +61,7 @@ def test_anthropic_no_text_block_still_reports_usage():
 
 def test_anthropic_successful_call_still_reports_usage():
     """The happy path must keep reporting the same numbers as before."""
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     text = MagicMock()
     text.type = 'text'
     text.text = 'the answer is 42'
@@ -77,7 +77,7 @@ def test_anthropic_successful_call_still_reports_usage():
 
 def test_failure_before_any_response_reports_no_usage():
     """Nothing came back, so nothing was billed. Do not invent a number."""
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     client = MagicMock()
     client.messages.create.side_effect = ConnectionError('no route to host')
     m.model.client = client
@@ -90,7 +90,7 @@ def test_failure_before_any_response_reports_no_usage():
 
 def test_stale_usage_is_not_carried_into_the_next_failure():
     """A later failure must not report the tokens of an earlier successful call."""
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     text = MagicMock()
     text.type = 'text'
     text.text = 'first answer'

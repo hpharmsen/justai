@@ -130,19 +130,19 @@ def test_anthropic_dict_schema_still_returns_dict():
 
 
 def test_anthropic_legacy_returns_raw_on_bad_json():
-    m, _ = _anthropic('no json here', model_name='claude-fable-5')
+    m, _ = _anthropic('no json here', model_name='claude-fable-5-1')
     response, _, _ = m.model.chat('who?', response_format=Person)
     assert response == 'no json here'
 
 
 def test_anthropic_legacy_parses_fenced_json():
-    m, _ = _anthropic('```json' + VALID + '```', model_name='claude-fable-5')
+    m, _ = _anthropic('```json' + VALID + '```', model_name='claude-fable-5-1')
     response, _, _ = m.model.chat('who?', response_format=Person)
     assert response == {'name': 'Ada', 'age': 36}
 
 
 def test_anthropic_legacy_return_json_still_raises():
-    m, _ = _anthropic('no json here', model_name='claude-fable-5')
+    m, _ = _anthropic('no json here', model_name='claude-fable-5-1')
     with pytest.raises(BadRequestException):
         m.model.chat('who?', return_json=True)
 

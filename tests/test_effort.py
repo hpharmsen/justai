@@ -77,7 +77,7 @@ def _install_mock_openai_client(model, response=None):
 
 
 def test_effort_none_sends_no_output_config_anthropic():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     client = _install_mock_anthropic_client(m)
     m.model.completion('hi')
     kwargs = client.messages.create.call_args.kwargs
@@ -94,13 +94,13 @@ def test_effort_none_sends_no_reasoning_openai():
 
 
 # ---------------------------------------------------------------------------
-# 2. Each valid level on claude-fable-5 → correct output_config['effort']
+# 2. Each valid level on claude-fable-5-1 → correct output_config['effort']
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize('level', ['low', 'medium', 'high', 'xhigh', 'max'])
 def test_anthropic_fable5_sends_native_effort(level):
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort=level)
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k', effort=level)
     client = _install_mock_anthropic_client(m)
     m.model.completion('hi')
     kwargs = client.messages.create.call_args.kwargs
@@ -241,7 +241,7 @@ def test_effort_invalid_value_raises_at_setattr():
 
 def test_none_string_on_anthropic_raises():
     with pytest.raises(ValueError, match='effort must be one of'):
-        Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='none')
+        Model('claude-fable-5-1', ANTHROPIC_API_KEY='k', effort='none')
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +250,8 @@ def test_none_string_on_anthropic_raises():
 
 
 def test_cache_key_differs_across_effort_values():
-    m_none = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
-    m_high = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='high')
+    m_none = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
+    m_high = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k', effort='high')
     # Use the same hash inputs as cached_response uses for prompt()
     prompt = 'test prompt'
     h1 = (
@@ -303,7 +303,7 @@ def test_smoke_effort_low_reaches_provider():
 
 
 def test_effort_reaches_anthropic_streaming_path():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='high')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k', effort='high')
     client = _install_mock_anthropic_client(m)
     # completion(stream=True) returns the client's messages.create result directly
     m.model.completion('hi', stream=True)
@@ -413,7 +413,7 @@ def test_openrouter_forwards_reasoning():
 
 
 def test_api_params_strips_effort():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k', effort='high')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k', effort='high')
     assert 'effort' in m.model.model_params
     assert 'effort' not in m.model.api_params
 
@@ -433,7 +433,7 @@ def test_refusal_exception_import_and_category():
 
 
 def test_anthropic_refusal_raises_with_category():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     resp = _mock_anthropic_response(text='', stop_reason='refusal', refusal_category='csam')
     client = _install_mock_anthropic_client(m, response=resp)
     with pytest.raises(RefusalException) as ei:
@@ -448,7 +448,7 @@ def test_anthropic_refusal_raises_with_category():
 
 
 def test_refusal_short_circuits_retry_loop():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     resp = _mock_anthropic_response(text='', stop_reason='refusal', refusal_category='violence')
     client = _install_mock_anthropic_client(m, response=resp)
     with pytest.raises(RefusalException):

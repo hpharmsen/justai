@@ -49,7 +49,7 @@ def _install_client(model, response) -> MagicMock:
 
 
 def test_thinking_block_before_text_returns_text():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     thinking = _block('thinking', thinking='let me reason...')
     text = _block('text', text='the answer is 42')
     _install_client(m, _mock_response([thinking, text]))
@@ -60,7 +60,7 @@ def test_thinking_block_before_text_returns_text():
 
 
 def test_thinking_block_before_json_text_returns_parsed_json():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     thinking = _block('thinking', thinking='reasoning about the shape...')
     text = _block('text', text='{"answer": 42}')
     _install_client(m, _mock_response([thinking, text]))
@@ -72,7 +72,7 @@ def test_thinking_block_before_json_text_returns_parsed_json():
 
 def test_multiple_text_blocks_are_joined():
     """Citations and mid-stream fallbacks split one answer over several text blocks."""
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     blocks = [
         _block('thinking', thinking='reasoning...'),
         _block('text', text='the answer '),
@@ -86,7 +86,7 @@ def test_multiple_text_blocks_are_joined():
 
 
 def test_no_text_block_raises_bad_request():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     only_thinking = _block('thinking', thinking='never got to a text block')
     _install_client(m, _mock_response([only_thinking]))
 
@@ -96,7 +96,7 @@ def test_no_text_block_raises_bad_request():
 
 def test_non_json_response_raises_bad_request_not_value_error():
     """Regression: previously raised raw ValueError, crashing concurrent callers."""
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     text = _block('text', text='[Analyseer plattegrond]\n\nHet dakterras...')
     _install_client(m, _mock_response([text]))
 
@@ -138,7 +138,7 @@ def _collect(async_gen):
 
 def test_chat_async_skips_thinking_deltas():
     """Streaming yields text deltas only; thinking deltas carry .thinking, not .text."""
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     events = [
         _Obj(delta=_Obj(type='thinking_delta', thinking='let me reason...')),
         _Obj(delta=_Obj(type='text_delta', text='the answer is 42')),
@@ -151,7 +151,7 @@ def test_chat_async_skips_thinking_deltas():
 
 
 def test_stateless_stream_skips_thinking_deltas():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     events = [
         _Obj(type='message_start', message=_Obj(usage=_Obj(input_tokens=7))),
         _Obj(type='content_block_delta', delta=_Obj(type='thinking_delta', thinking='hmm')),

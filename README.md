@@ -229,7 +229,7 @@ Available on every provider. Anthropic reports both; OpenAI and Gemini cache ser
 Control reasoning depth with a single portable setting. The library translates it to each provider's native parameter.
 
 ```python
-model = Model('claude-fable-5', effort='low')
+model = Model('claude-fable-5-1', effort='low')
 # or
 model = Model('gpt-5.6-terra')
 model.effort = 'xhigh'

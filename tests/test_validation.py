@@ -227,7 +227,7 @@ def _assert_malformed(calls: list) -> None:
 
 
 def test_anthropic_stream_malformed_tool_arguments():
-    m = Model('claude-fable-5', ANTHROPIC_API_KEY='k')
+    m = Model('claude-fable-5-1', ANTHROPIC_API_KEY='k')
     events = [
         _Obj(type='content_block_start', content_block=_Obj(type='tool_use', id='t1', name='f')),
         _Obj(type='content_block_delta', delta=_Obj(type='input_json_delta', partial_json='{"a": ')),
