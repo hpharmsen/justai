@@ -484,3 +484,52 @@ def test_gguf_does_not_leak_effort_kwarg():
     # GGUF loading requires llama-cpp-python + a real GGUF file. Skip if unavailable.
     pytest.importorskip('llama_cpp')
     pytest.skip('GGUF test requires a real .gguf file; verified manually.')
+
+
+# ---------------------------------------------------------------------------
+# Opus 5.x and GPT-6 get native effort (per provider docs, Sept 2026)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('name', ['claude-opus-5', 'claude-opus-5-5'])
+@pytest.mark.parametrize('level', ['low', 'medium', 'high', 'xhigh', 'max'])
+def test_opus5_sends_native_effort(name, level):
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', EffortDownmapWarning)
+        m = Model(name, ANTHROPIC_API_KEY='k', effort=level)
+        client = _install_mock_anthropic_client(m)
+        m.model.completion('hi')
+    assert client.messages.create.call_args.kwargs['output_config']['effort'] == level
+
+
+def test_opus5_drops_temperature():
+    with pytest.warns(UserWarning, match='temperature'):
+        m = Model('claude-opus-5-5', ANTHROPIC_API_KEY='k', temperature=0.2)
+    client = _install_mock_anthropic_client(m)
+    m.model.completion('hi')
+    assert 'temperature' not in client.messages.create.call_args.kwargs
+
+
+@pytest.mark.parametrize('name', ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'])
+@pytest.mark.parametrize('level', ['low', 'medium', 'high', 'xhigh'])
+def test_gpt6_sends_native_effort(name, level):
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', EffortDownmapWarning)
+        m = Model(name, OPENAI_API_KEY='k', effort=level)
+        client = _install_mock_openai_client(m)
+        m.prompt('hi')
+    assert client.responses.create.call_args.kwargs['reasoning'] == {'effort': level}
+
+
+@pytest.mark.parametrize('name', ['gpt-6-sol', 'gpt-6-luna'])
+def test_none_passthrough_on_gpt6(name):
+    m = Model(name, OPENAI_API_KEY='k', effort='none')
+    client = _install_mock_openai_client(m)
+    m.prompt('hi')
+    assert client.responses.create.call_args.kwargs['reasoning'] == {'effort': 'none'}
+
+
+def test_none_on_gpt6_astra_raises():
+    """GPT-6 Astra answers effort='none' with HTTP 400; fail before the call."""
+    with pytest.raises(ValueError, match='effort must be one of'):
+        Model('gpt-6-astra', OPENAI_API_KEY='k', effort='none')
