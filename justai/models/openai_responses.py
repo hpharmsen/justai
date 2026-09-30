@@ -230,11 +230,11 @@ class OpenAIResponsesModel(BaseModel):
             model=self.model_name, input=input_, stream=True, previous_response_id=last_response_id
         )
 
-        # Save the response id for subsequent requests
-        self.last_response_id = response.id if _chat else None
-
         for event in response:
-            if hasattr(event, 'delta'):
+            # A Stream has no id; it arrives in the first event. Save it for subsequent requests
+            if event.type == 'response.created':
+                self.last_response_id = event.response.id if _chat else None
+            elif hasattr(event, 'delta'):
                 yield event.delta, ''  # Second value is reasoning (not available for OpenAI)
 
     def chat(
