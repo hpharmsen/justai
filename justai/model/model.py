@@ -335,17 +335,26 @@ class Model:
         self.last_response_time = time.time() - start_time
         return result
 
+    async def _streamed(self, stream):
+        """Yield from a provider stream and keep the token counters describing that stream."""
+        self.input_token_count = self.output_token_count = 0
+        self.model.last_usage = None
+        async for item in stream:
+            yield item
+        if self.model.last_usage:
+            self.input_token_count, self.output_token_count = self.model.last_usage
+
     async def prompt_async(self, prompt, *, images: ImageInput = None):
         # Using 'async for' to properly yield from the chat_async generator
         if images and not isinstance(images, list):
             images = [images]
-        async for content, reasoning in self.model.prompt_async(prompt=prompt, images=images):
+        async for content, reasoning in self._streamed(self.model.prompt_async(prompt=prompt, images=images)):
             yield content, reasoning
 
     async def chat_async(self, prompt, *, images: ImageInput = None):
         if images and not isinstance(images, list):
             images = [images]
-        async for word in self.model.chat_async(prompt=prompt, images=images):
+        async for word in self._streamed(self.model.chat_async(prompt=prompt, images=images)):
             if word:
                 yield word
 
@@ -359,7 +368,7 @@ class Model:
         """Same as chat_async but returns the reasoning content as well"""
         if images and not isinstance(images, list):
             images = [images]
-        async for word, reasoning_content in self.model.chat_async(prompt=prompt, images=images):
+        async for word, reasoning_content in self._streamed(self.model.chat_async(prompt=prompt, images=images)):
             if word or reasoning_content:
                 yield word, reasoning_content
 

@@ -100,6 +100,16 @@ class OpenAIResponsesModel(BaseModel):
             self._emit_effort_warning(warn)
         return {'reasoning': {'effort': native}} if native is not None else {}
 
+    def _record_response_usage(self, usage) -> None:
+        """Record the usage of a Responses API call."""
+        # OpenAI cachet server-side en vanzelf; alleen de read-teller vult zich.
+        # Anders dan bij Anthropic zijn deze tokens een deelverzameling van
+        # input_tokens, niet iets dat er los naast staat.
+        details = getattr(usage, 'input_tokens_details', None)
+        self.record_usage(
+            usage.input_tokens, usage.output_tokens, cache_read_tokens=getattr(details, 'cached_tokens', 0)
+        )
+
     def _responses_create(self, **kwargs):
         return self.client.responses.create(**kwargs, **self._reasoning_extra())
 
@@ -180,15 +190,7 @@ class OpenAIResponsesModel(BaseModel):
 
             if not function_call or run == 2:
                 # Record before parsing: output that turns out not to be JSON was billed too.
-                # OpenAI cachet server-side en vanzelf; alleen de read-teller vult zich.
-                # Anders dan bij Anthropic zijn deze tokens een deelverzameling van
-                # input_tokens, niet iets dat er los naast staat.
-                details = getattr(response.usage, 'input_tokens_details', None)
-                self.record_usage(
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    cache_read_tokens=getattr(details, 'cached_tokens', 0),
-                )
+                self._record_response_usage(response.usage)
                 if return_json and not is_pydantic:
                     output = json.loads(response.output_text)
                 else:
@@ -226,16 +228,20 @@ class OpenAIResponsesModel(BaseModel):
 
         last_response_id = self.last_response_id if _chat else None
 
-        response = self._responses_create(
-            model=self.model_name, input=input_, stream=True, previous_response_id=last_response_id
-        )
-
-        for event in response:
-            # A Stream has no id; it arrives in the first event. Save it for subsequent requests
-            if event.type == 'response.created':
-                self.last_response_id = event.response.id if _chat else None
-            elif hasattr(event, 'delta'):
-                yield event.delta, ''  # Second value is reasoning (not available for OpenAI)
+        try:
+            response = self._responses_create(
+                model=self.model_name, input=input_, stream=True, previous_response_id=last_response_id
+            )
+            for event in response:
+                # A Stream has no id; it arrives in the first event. Save it for subsequent requests
+                if event.type == 'response.created':
+                    self.last_response_id = event.response.id if _chat else None
+                elif event.type == 'response.output_text.delta':
+                    yield event.delta, ''  # Second value is reasoning (not available for OpenAI)
+                elif event.type == 'response.completed':
+                    self._record_response_usage(event.response.usage)
+        except Exception as e:
+            raise map_openai_error(e)
 
     def chat(
         self, prompt: str, images: list[ImageInput], tools, return_json: bool, response_format
