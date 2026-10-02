@@ -106,3 +106,20 @@ def test_mid_stream_transport_error_is_mapped():
 
     with pytest.raises(ConnectionException):
         asyncio.run(_collect(m, 'hi'))
+
+
+def test_stream_mid_stream_timeout_is_mapped():
+    """The Agent path: a read timeout halfway through the stream must reach the retry as ConnectionException."""
+
+    class TimedOutStream(FakeStream):
+        def __iter__(self):
+            yield from self.events
+            raise httpx.ReadTimeout('The read operation timed out')
+
+    m, _ = _stream_model(TimedOutStream('resp_1', ['Hi']))
+
+    async def consume():
+        return [chunk async for chunk in m.model.stream([{'role': 'user', 'content': 'hi'}])]
+
+    with pytest.raises(ConnectionException):
+        asyncio.run(consume())
