@@ -279,6 +279,12 @@ class OpenAIResponsesModel(BaseModel):
                     }
                 )
 
+        # Track function calls: {output_index: {call_id, name, arguments_str}}
+        pending_calls = {}
+        tool_calls = []
+        input_tokens = 0
+        output_tokens = 0
+
         try:
             response = self._responses_create(
                 model=self.model_name,
@@ -286,48 +292,42 @@ class OpenAIResponsesModel(BaseModel):
                 tools=tool_spec or [],
                 stream=True,
             )
+            # Inside the try: a read that breaks off mid-stream must become a ConnectionException too
+            for event in response:
+                if event.type == 'response.output_text.delta':
+                    yield StreamChunk(type='text', content=event.delta)
+
+                elif event.type == 'response.output_item.added':
+                    if hasattr(event, 'item') and event.item.type == 'function_call':
+                        pending_calls[event.output_index] = {
+                            'call_id': event.item.call_id,
+                            'name': event.item.name,
+                            'arguments': '',
+                        }
+
+                elif event.type == 'response.function_call_arguments.delta':
+                    if event.output_index in pending_calls:
+                        pending_calls[event.output_index]['arguments'] += event.delta
+
+                elif event.type == 'response.function_call_arguments.done':
+                    if event.output_index in pending_calls:
+                        call = pending_calls[event.output_index]
+                        arguments, raw = parse_tool_arguments(call['arguments'])
+                        tool_calls.append(
+                            ToolCallRequest(
+                                id=call['call_id'],
+                                name=call['name'],
+                                arguments=arguments,
+                                raw_arguments=raw,
+                            )
+                        )
+
+                elif event.type == 'response.completed':
+                    usage = event.response.usage
+                    input_tokens = usage.input_tokens
+                    output_tokens = usage.output_tokens
         except Exception as e:
             raise map_openai_error(e)
-
-        # Track function calls: {output_index: {call_id, name, arguments_str}}
-        pending_calls = {}
-        tool_calls = []
-        input_tokens = 0
-        output_tokens = 0
-
-        for event in response:
-            if event.type == 'response.output_text.delta':
-                yield StreamChunk(type='text', content=event.delta)
-
-            elif event.type == 'response.output_item.added':
-                if hasattr(event, 'item') and event.item.type == 'function_call':
-                    pending_calls[event.output_index] = {
-                        'call_id': event.item.call_id,
-                        'name': event.item.name,
-                        'arguments': '',
-                    }
-
-            elif event.type == 'response.function_call_arguments.delta':
-                if event.output_index in pending_calls:
-                    pending_calls[event.output_index]['arguments'] += event.delta
-
-            elif event.type == 'response.function_call_arguments.done':
-                if event.output_index in pending_calls:
-                    call = pending_calls[event.output_index]
-                    arguments, raw = parse_tool_arguments(call['arguments'])
-                    tool_calls.append(
-                        ToolCallRequest(
-                            id=call['call_id'],
-                            name=call['name'],
-                            arguments=arguments,
-                            raw_arguments=raw,
-                        )
-                    )
-
-            elif event.type == 'response.completed':
-                usage = event.response.usage
-                input_tokens = usage.input_tokens
-                output_tokens = usage.output_tokens
 
         if tool_calls:
             yield StreamChunk(type='tool_calls', tool_calls=tool_calls)
