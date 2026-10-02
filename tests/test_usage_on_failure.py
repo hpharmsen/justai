@@ -179,3 +179,20 @@ def test_openai_completions_empty_json_still_reports_usage():
         m.prompt('hi', return_json=True, cached=False)
 
     assert m.last_token_count() == (7, 900, 907)
+
+
+def test_openai_completions_truncated_json_raises_truncated():
+    """finish_reason 'length' means the JSON was cut off; say so instead of a bare JSONDecodeError."""
+    m = Model('openrouter/google/gemini-3-flash-preview', OPENROUTER_API_KEY='k')
+    completion = MagicMock()
+    completion.choices = [MagicMock(message=MagicMock(content='{\n  "oordeel": ', tool_calls=None), finish_reason='length')]
+    completion.usage = MagicMock(prompt_tokens=7, completion_tokens=16384)
+    client = MagicMock()
+    client.chat.completions.create.return_value = completion
+    client.chat.completions.parse.return_value = completion
+    m.model.client = client
+
+    with pytest.raises(TruncatedResponseException):
+        m.prompt('hi', return_json=True, cached=False)
+
+    assert m.last_token_count() == (7, 16384, 16391)

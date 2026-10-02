@@ -77,6 +77,7 @@ from justai.models.basemodel import (
     RatelimitException,
     StreamChunk,
     ToolCallRequest,
+    TruncatedResponseException,
     client_retry_kwargs,
     client_timeout,
     get_api_key,
@@ -187,6 +188,10 @@ class OpenAICompletionsModel(BaseModel):
         if return_json and self.supports_return_json:
             if not message_text:
                 raise ValueError(f'Expected JSON response but got empty response from {self.model_name}')
+            if completion.choices[0].finish_reason == 'length':
+                raise TruncatedResponseException(
+                    f'{self.model_name} hit its output limit after {output_token_count} tokens, JSON is incomplete'
+                )
             result = json.loads(message_text)
         else:
             result = message_text
