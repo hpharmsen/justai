@@ -52,7 +52,6 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import httpx
 import tiktoken
 from openai import (
     NOT_GIVEN,
@@ -67,6 +66,7 @@ from openai import (
 
 from justai.models.basemodel import (
     JSON_TYPE_MAP,
+    TRANSPORT_ERRORS,
     AuthorizationException,
     BadRequestException,
     BaseModel,
@@ -97,7 +97,7 @@ def map_openai_error(e: Exception) -> Exception:
         return ModelOverloadException(e)
     if isinstance(e, APIConnectionError):
         return ConnectionException(e)
-    if isinstance(e, httpx.TransportError):
+    if isinstance(e, TRANSPORT_ERRORS):
         # Mid-stream read failures (ReadError, ReadTimeout, RemoteProtocolError)
         # surface as raw httpx errors: the SDK only wraps the request it issues
         # itself, not the bytes we pull off an already-established stream.

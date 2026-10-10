@@ -33,7 +33,6 @@ import warnings
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import httpx
 from anthropic import (
     Anthropic,
     APIConnectionError,
@@ -83,6 +82,7 @@ EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
 
 from justai.models.basemodel import (
     JSON_TYPE_MAP,
+    TRANSPORT_ERRORS,
     AuthorizationException,
     BadRequestException,
     BaseModel,
@@ -116,7 +116,7 @@ def _map_anthropic_error(e: Exception) -> Exception:
     """
     if isinstance(e, APIConnectionError):
         exc, label = ConnectionException(e), 'APIConnectionError'
-    elif isinstance(e, httpx.TransportError):
+    elif isinstance(e, TRANSPORT_ERRORS):
         # Mid-stream read failures (ReadError, ReadTimeout, RemoteProtocolError)
         # surface as raw httpx errors: the SDK only wraps the request it issues
         # itself, not the bytes we pull off an already-established stream.
@@ -204,15 +204,11 @@ class AnthropicModel(BaseModel):
         # Client — always create both sync and async clients
         timeout = client_timeout(params)
         retries = client_retry_kwargs(params)
+        self.async_client = AsyncAnthropic(api_key=api_key, timeout=timeout, **retries)
         if params.get('async'):
-            http_client = httpx.AsyncClient(timeout=timeout)
-            self.client = AsyncAnthropic(api_key=api_key, http_client=http_client, **retries)
-            self.async_client = self.client
+            self.client = self.async_client
         else:
-            http_client = httpx.Client(timeout=timeout)
-            self.client = Anthropic(api_key=api_key, http_client=http_client, **retries)
-            async_http_client = httpx.AsyncClient(timeout=timeout)
-            self.async_client = AsyncAnthropic(api_key=api_key, http_client=async_http_client, **retries)
+            self.client = Anthropic(api_key=api_key, timeout=timeout, **retries)
 
         # Required model parameters
         if 'max_tokens' not in params:

@@ -23,7 +23,9 @@ import openai
 import pytest
 import tomllib
 
-from justai import Model
+from justai import ConnectionException, Model
+from justai.models.anthropic_models import _map_anthropic_error
+from justai.models.openai_completions import map_openai_error
 from justai.tools import cache
 
 PYPROJECT = Path(__file__).parent.parent / 'pyproject.toml'
@@ -185,3 +187,14 @@ def test_import_without_future_or_deprecation_warnings():
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Mid-stream transport errors: both SDKs now raise httpx2 errors, not httpx errors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize('error', [httpx2.ReadError('dropped'), httpx2.RemoteProtocolError('closed')])
+@pytest.mark.parametrize('mapper', [_map_anthropic_error, map_openai_error])
+def test_httpx2_transport_error_maps_to_connection_exception(mapper, error):
+    assert isinstance(mapper(error), ConnectionException)

@@ -111,6 +111,9 @@ class OpenAIResponsesModel(BaseModel):
         )
 
     def _responses_create(self, **kwargs):
+        # The Responses API calls the output cap max_output_tokens. temperature is never sent.
+        if (max_tokens := self.model_params.get('max_tokens')) is not None:
+            kwargs['max_output_tokens'] = max_tokens
         return self.client.responses.create(**kwargs, **self._reasoning_extra())
 
     def prompt(

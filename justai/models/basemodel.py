@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
+import httpx2
 from dotenv import dotenv_values
 from PIL.Image import Image
 
@@ -39,6 +40,10 @@ CONNECT_TIMEOUT = 10.0
 # the total length of a response, only the gaps in it.
 STREAM_READ_TIMEOUT = 30.0
 
+# Raw transport errors from a stream. anthropic>=1 and openai>=3 run on httpx2, whose
+# errors do not subclass httpx's.
+TRANSPORT_ERRORS = (httpx.TransportError, httpx2.TransportError)
+
 
 def client_retry_kwargs(params: dict) -> dict:
     """max_retries kwarg for a provider SDK client; empty dict keeps the SDK default."""
@@ -52,10 +57,10 @@ def client_retry_attempts(params: dict) -> int | None:
     return None if max_retries is None else max_retries + 1
 
 
-def client_timeout(params: dict) -> httpx.Timeout:
+def client_timeout(params: dict) -> httpx2.Timeout:
     """Timeout for the SDK client. Read stays generous: a non-streaming call waits
     for the entire answer in one read, so tightening it would break long generations."""
-    return httpx.Timeout(
+    return httpx2.Timeout(
         params.get('timeout', DEFAULT_TIMEOUT),
         connect=CONNECT_TIMEOUT,
         write=CONNECT_TIMEOUT,
@@ -63,11 +68,11 @@ def client_timeout(params: dict) -> httpx.Timeout:
     )
 
 
-def stream_timeout(params: dict) -> httpx.Timeout:
+def stream_timeout(params: dict) -> httpx2.Timeout:
     """Timeout for one streaming request. Read applies per chunk here, so it can be
     far tighter than the client default without capping the total response."""
     read = min(params.get('timeout', DEFAULT_TIMEOUT), STREAM_READ_TIMEOUT)
-    return httpx.Timeout(
+    return httpx2.Timeout(
         read,
         connect=CONNECT_TIMEOUT,
         write=CONNECT_TIMEOUT,
