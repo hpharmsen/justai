@@ -890,7 +890,7 @@ wheels = [
 
 [[package]]
 name = "justai"
-version = "5.8.4"
+version = "5.8.5"
 source = { editable = "." }
 dependencies = [
     { name = "absl-py" },
