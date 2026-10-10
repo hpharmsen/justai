@@ -62,6 +62,9 @@ RESTRICTED_PARAMS: list[tuple[re.Pattern, frozenset[str]]] = [
     ),
 ]
 
+# Sampling params the API accepts but anthropic>=1.13 no longer takes as Messages.create kwargs.
+SAMPLING_PARAMS = ('temperature', 'top_p', 'top_k')
+
 # Effort support tiers (per Anthropic docs, verified September 2026).
 # Each entry: (pattern, effort_map). First match wins.
 EFFORT_TIERS: list[tuple[re.Pattern, dict[str, str]]] = [
@@ -256,7 +259,8 @@ class AnthropicModel(BaseModel):
         return (None, f'effort is not supported by {name}, ignoring')
 
     def _prepare_api_params(self, api_params: dict) -> dict:
-        """Merge effort into output_config and apply max_tokens auto-raise when appropriate."""
+        """Merge effort into output_config, auto-raise max_tokens and move sampling params into extra_body."""
+        api_params = dict(api_params)
         native, warn = self.resolve_effort()
         if warn:
             self._emit_effort_warning(warn)
@@ -277,6 +281,10 @@ class AnthropicModel(BaseModel):
                     self._effort_warned.add(msg)
                     warnings.warn(msg, UserWarning, stacklevel=3)
                 api_params = {**api_params, 'max_tokens': floor}
+        # anthropic>=1.13 dropped the sampling params from Messages.create; the API still takes them.
+        sampling = {k: api_params.pop(k) for k in SAMPLING_PARAMS if k in api_params}
+        if sampling:
+            api_params['extra_body'] = {**(api_params.get('extra_body') or {}), **sampling}
         return api_params
 
     def prompt(
