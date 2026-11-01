@@ -10,7 +10,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 keywords = ["OpenAI", "ChatGPT", "GPT-5", "GPT5", "api", "Claude", "Anthropic", "Lllama", "Gemini", "Grok", "Perplexity", "Sonar", "Kimi", "Moonshot"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "absl-py",
     "anthropic>=1",
