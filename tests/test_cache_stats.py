@@ -40,7 +40,7 @@ def isolate_cache(monkeypatch, tmp_path):
     ('model_name', 'key'),
     [
         ('claude-sonnet-4-6', 'ANTHROPIC_API_KEY'),
-        ('gpt-5-mini', 'OPENAI_API_KEY'),
+        ('gpt-5.6-terra', 'OPENAI_API_KEY'),
         ('gemini-2.5-flash', 'GOOGLE_API_KEY'),
         ('deepseek-chat', 'DEEPSEEK_API_KEY'),
     ],
@@ -113,7 +113,7 @@ def test_anthropic_reports_cache_creation():
 
 
 def test_openai_responses_reports_cached_tokens():
-    m = Model('gpt-5-mini', OPENAI_API_KEY='k')
+    m = Model('gpt-5.6-terra', OPENAI_API_KEY='k')
     resp = MagicMock()
     resp.output = []
     resp.output_text = 'ok'
@@ -147,7 +147,7 @@ def test_openai_completions_reports_cached_tokens():
 def test_missing_usage_details_do_not_raise():
     # Oudere SDK-responses hebben het veld niet. Een AttributeError midden in een
     # geslaagde call zou een gefactureerd antwoord weggooien om een telling.
-    m = Model('gpt-5-mini', OPENAI_API_KEY='k')
+    m = Model('gpt-5.6-terra', OPENAI_API_KEY='k')
     resp = MagicMock()
     resp.output = []
     resp.output_text = 'ok'

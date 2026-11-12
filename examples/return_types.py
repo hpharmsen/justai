@@ -73,6 +73,6 @@ if __name__ == '__main__':
     data = json_example(Model('claude-sonnet-4-6'))
     print(json.dumps(data, indent=4))
 
-    data = structured_output_with_pydantic(Model('gpt-5'))
+    data = structured_output_with_pydantic(Model('gpt-5.6-sol'))
     for person in data.persons:
         print(person)

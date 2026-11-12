@@ -279,7 +279,7 @@ def test_smoke_effort_low_reaches_provider():
         ran_any = True
 
     if os.getenv('OPENAI_API_KEY'):
-        m = Model('gpt-5-mini')
+        m = Model('gpt-5.6-terra')
         result = m.prompt('reply exactly: pong')
         assert 'pong' in result.lower()
         ran_any = True

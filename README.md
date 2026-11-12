@@ -37,7 +37,7 @@ MINIMAX_API_KEY=your-minimax-api-key
 ```python
 from justai import Model
 
-model = Model('gpt-5-mini')
+model = Model('gpt-5.6-terra')
 model.system = """You are a movie critic. I feed you with movie
                   titles and you give me a review in 50 words."""
 
@@ -158,14 +158,14 @@ Models that are not System One models raise `NotImplementedError`.
 ### Images
 Pass images as URLs, raw bytes or PIL images:
 ```python
-model = Model('gpt-5-nano')
+model = Model('gpt-5.6-luna')
 url = 'https://upload.wikimedia.org/wikipedia/commons/9/94/Common_dolphin.jpg'
 message = model.chat("What is in this image", images=url)
 ```
 
 ### Image generation
 ```python
-model = Model('gpt-5')
+model = Model('gpt-5.6-sol')
 pil_image = model.generate_image("A dolphin reading a book")
 ```
 

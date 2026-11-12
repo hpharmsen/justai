@@ -6,7 +6,7 @@ JustAI is een Python-package die een uniforme interface biedt voor het werken me
 
 Zonder JustAI moet je per provider (OpenAI, Anthropic, Google, X AI, DeepSeek, Perplexity, Reve, OpenRouter, lokale GGUF) een aparte SDK leren, met verschillende auth, message-formats en response-structuren. Dat is repetitief en foutgevoelig.
 
-Met JustAI kies je een model op naam (`gpt-5-mini`, `claude-sonnet-4-5`, `gemini-2.5-flash`, ...) en werkt de rest hetzelfde: `Model(name).chat(prompt)`.
+Met JustAI kies je een model op naam (`gpt-5.6-terra`, `claude-sonnet-4-5`, `gemini-2.5-flash`, ...) en werkt de rest hetzelfde: `Model(name).chat(prompt)`.
 
 ## Kernprincipes
 

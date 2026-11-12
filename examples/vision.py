@@ -9,7 +9,7 @@ HEADERS = {'User-Agent': 'justai-examples/1.0 (https://github.com/hpharmsen/just
 
 if __name__ == '__main__':
     # Example with PIL image and GPT4o-mini
-    model = Model('gpt-5-mini')
+    model = Model('gpt-5.6-terra')
     url = 'https://upload.wikimedia.org/wikipedia/commons/9/94/Common_dolphin.jpg'
     image = Image.open(io.BytesIO(httpx.get(url, headers=HEADERS).content))
     message = model.prompt('What is in this image', images=image, cached=False)

@@ -27,9 +27,9 @@ if __name__ == '__main__':
     prompt = 'Give me 5 names for a juice bar that focuses senior citizens.'
 
     # Once plain
-    asyncio.run(print_words('gpt-5-nano', prompt))
+    asyncio.run(print_words('gpt-5.6-luna', prompt))
     # asyncio.run(print_words("sonar-pro", prompt))
 
     # And once with reasoning output
-    # asyncio.run(print_words_reasoning("gpt-5-nano", prompt))
+    # asyncio.run(print_words_reasoning("gpt-5.6-luna", prompt))
     print()

@@ -48,7 +48,7 @@ async def _collect(model: Model, prompt: str) -> list[tuple[str, str]]:
 
 
 def test_chat_async_reasoning_streams_and_chains_response_id():
-    m = Model('gpt-5-mini')
+    m = Model('gpt-5.6-terra')
     client = MagicMock()
     client.responses.create.side_effect = [FakeStream('resp_1', ['Hel', 'lo']), FakeStream('resp_2', ['Hi'])]
     m.model.client = client
@@ -60,7 +60,7 @@ def test_chat_async_reasoning_streams_and_chains_response_id():
 
 
 def _stream_model(*streams) -> tuple[Model, MagicMock]:
-    m = Model('gpt-5-mini')
+    m = Model('gpt-5.6-terra')
     client = MagicMock()
     client.responses.create.side_effect = list(streams)
     m.model.client = client

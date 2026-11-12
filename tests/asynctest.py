@@ -13,7 +13,7 @@ async def main():
     load_dotenv()
 
     models = [
-        Model('gpt-5-nano', temperature=1),
+        Model('gpt-5.6-luna', temperature=1),
         # Model('claude-3-7-sonnet-latest', temperature=1),
         Model('gemini-2.5-flash', temperature=1),
         Model('grok-4', temperature=0),

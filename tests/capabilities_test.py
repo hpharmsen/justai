@@ -4,7 +4,7 @@ Capabilities tested: async, json, pydantic, vision, tooluse
 
 Usage:
     python tests/capabilities_test.py                           # All tests, all models
-    python tests/capabilities_test.py -m gpt-5-mini gemini-2.5-flash
+    python tests/capabilities_test.py -m gpt-5.6-terra gemini-2.5-flash
     python tests/capabilities_test.py -t async pydantic
     python tests/capabilities_test.py -t json -m deepseek-chat sonar
 """
@@ -20,7 +20,7 @@ from examples.return_types import json_example, structured_output_with_pydantic
 
 ALL_MODELS = [
     'claude-sonnet-4-6',
-    'gpt-5-mini',
+    'gpt-5.6-terra',
     'claude-haiku-4-5',
     'gemini-2.5-flash',
     'grok-4.20-non-reasoning',
