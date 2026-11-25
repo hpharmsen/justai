@@ -262,7 +262,7 @@ class OpenAICompletionsModel(BaseModel):
             if return_json and not stream and self.supports_return_json:
                 response_format = {'type': 'json_object'}
 
-            if self.model_name.startswith('gpt-5'):
+            if self.model_name.startswith('gpt'):
                 self.model_params['temperature'] = 1  # Only the default of 1 is supported in GPT-5
 
         # Create the completion with streaming
